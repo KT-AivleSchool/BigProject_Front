@@ -44,6 +44,7 @@ export default function Home() {
   const [showSimModal, setShowSimModal] = useState(false);
   const [simStep, setSimStep] = useState(0);
   const [simLogs, setSimLogs] = useState([]);
+  const [isSimulating, setIsSimulating] = useState(false);
 
   // 5. 로그인 모달 상태
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -391,33 +392,68 @@ export default function Home() {
     alert('공간 좌표 및 지번 속성이 보정 완료되었습니다. [Step 3: AHP 인자 설정] 단계를 진행합니다.');
   };
 
-  // AI 시뮬레이션 개시
+  // 최종 시뮬레이션 결과 단독 로드 API
+  const fetchSimulationResults = async (parcelId) => {
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/simulation/results/${parcelId}`);
+      if (res.ok) {
+        const data = await res.json();
+        // 백엔드 통계 데이터로 해당 필지 상태 갱신
+        setSelectedParcel(prev => ({
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            css: data.conflict_sensitivity_score,
+            cssGrade: data.conflict_sensitivity_score >= 7.0 ? '상' : data.conflict_sensitivity_score >= 4.0 ? '중' : '하',
+            simulated: true
+          }
+        }));
+      }
+    } catch (err) {
+      console.error("[E2E Error] 결과 조회 실패:", err);
+    }
+  };
+
+  // AI 시뮬레이션 개시 (EventSource SSE 실시간 연동)
   const runSimulation = () => {
     setShowSimModal(true);
     setSimStep(0);
     setSimLogs([]);
-  };
+    setIsSimulating(true);
 
-  useEffect(() => {
-    if (!showSimModal) return;
+    const activeParcel = selectedParcel[activeTab];
+    const parcelId = activeParcel.id;
 
-    const debateScripts = [
-      { sender: '시스템', text: '⚡ pgvector RAG로부터 용산구 간재/행정 조례 데이터셋 매핑 완료...' },
-      { sender: '시스템', text: `⚡ 지역 갈등 민감도 CSS(${selectedParcel[activeTab].css}점) 및 통제 인자 에이전트 주입 완료.` },
-      { sender: '주민대표 (반대)', text: '🔴 학교 인근 정화구역 경계선 바로 바깥이라 해도, 아이들 보행 안전과 간접흡연 우려로 절대 찬성할 수 없습니다!' },
-      { sender: '상인대표 (찬성)', text: '🔵 상가 앞 흡연 꽁초 투기로 매출 타격이 막심합니다. 규격화된 흡연부스를 세워 흡연자를 격리하는 것이 타개책입니다.' },
-      { sender: '공무원 (조정)', text: '🟢 주민분들의 연막 소독 필터 및 운영시간 차단 요구를 조례 규칙 제4조에 의거 수용하여, 08시~22시 가동 락(Lock)을 조건으로 합의안을 발의합니다.' },
-      { sender: '시스템', text: '✅ 시뮬레이션 분석 종결. 3대 시나리오 확률 예측: 시나리오 A(일반적 협상) 78% 타결 예상.' }
-    ];
+    // EventSource 커넥션 생성
+    const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
 
-    if (simStep < debateScripts.length) {
-      const timer = setTimeout(() => {
-        setSimLogs(prev => [...prev, debateScripts[simStep]]);
+    eventSource.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        
+        // 실시간 대사 누적 및 스텝 갱신
+        setSimLogs(prev => [...prev, { sender: data.sender, text: data.text }]);
         setSimStep(prev => prev + 1);
-      }, 1200);
-      return () => clearTimeout(timer);
-    }
-  }, [showSimModal, simStep, activeTab]);
+
+        // 마지막 패킷 수신 시 연결 종료 및 최종 결과 로드
+        if (data.is_finished) {
+          eventSource.close();
+          setIsSimulating(false);
+          fetchSimulationResults(parcelId);
+        }
+      } catch (err) {
+        console.error("SSE 파싱 에러:", err);
+      }
+    };
+
+    eventSource.onerror = (err) => {
+      console.error("SSE 통신 에러 (서버 연결 실패 또는 종료):", err);
+      eventSource.close();
+      setIsSimulating(false);
+      // 에러 시 폴백 시뮬레이션 결과라도 갱신
+      fetchSimulationResults(parcelId);
+    };
+  };
 
   // 로그인 처리
   const handleLogin = (e) => {
@@ -721,7 +757,7 @@ export default function Home() {
                   <span className="text-slate-200">{log.text}</span>
                 </div>
               ))}
-              {simStep < 6 && (
+              {isSimulating && (
                 <div className="text-slate-500 animate-pulse">... 에이전트 심의 분석 진행 중 ...</div>
               )}
             </div>
@@ -736,7 +772,7 @@ export default function Home() {
                   onClick={() => {
                     alert('WeasyPrint를 통해 입지 타당성 분석 PDF를 컴파일 및 다운로드합니다.');
                   }}
-                  disabled={simStep < 6}
+                  disabled={isSimulating}
                   className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-all cursor-pointer"
                 >
                   📝 WeasyPrint PDF 보고서 다운로드
