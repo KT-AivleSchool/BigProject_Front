@@ -17,15 +17,11 @@ export default function Home() {
   const [auditMetadata, setAuditMetadata] = useState(null);
 
   // 1. AHP 가중치 입력 상태
-  const [ahpWeights, setAhpWeights] = useState({
-    traffic: 5,
-    complaint: 5,
-    dumping: 5,
-    population: 5,
-    youth: 5
-  });
+  const [ahpWeights, setAhpWeights] = useState({});
   const [crValue, setCrValue] = useState(0.04);
   const [isAhpLocked, setIsAhpLocked] = useState(false);
+  const [auditReason, setAuditReason] = useState('');
+  const [userIntent, setUserIntent] = useState('');
 
   // 2. 후보지 탭 및 상태 (Step 4 & 5에서 노출)
   const [activeTab, setActiveTab] = useState('top1');
@@ -246,16 +242,9 @@ export default function Home() {
 
       const marker = L.marker([hitlLat, hitlLng], {
         icon: markerIcon,
-        draggable: true,
-        autoPan: false // 마커 드래그 시 지도 자동 스크롤(autoPan) 완전 차단
+        draggable: false, // 좌표 보정 기능 비활성화에 따른 드래그 잠금
+        autoPan: false
       }).addTo(map);
-
-      // 마우스 드래그 좌표 보정 동기화 (HITL)
-      marker.on('dragend', (e) => {
-        const { lat, lng } = e.target.getLatLng();
-        setHitlLat(parseFloat(lat.toFixed(6)));
-        setHitlLng(parseFloat(lng.toFixed(6)));
-      });
 
       // 법정 금제 원형 레이어 오버레이
       const subwayBuffer = L.circle([37.5290, 126.9680], {
@@ -278,65 +267,6 @@ export default function Home() {
         fillOpacity: 0.1,
         radius: 400
       }).addTo(map);
-
-      marker.on('dragstart', () => {
-        map.dragging.disable(); // 마커 드래그 개시 시 지도 드래그 일시 잠금 (이격 예방)
-      });
-
-      marker.isWarning = false; // 드래그 도중 DOM 업데이트 쓰레싱 방지 플래그
-
-      marker.on('drag', (e) => {
-        const pos = e.target.getLatLng();
-        const distSubway = pos.distanceTo(L.latLng(37.5290, 126.9680));
-        const distSchool = pos.distanceTo(L.latLng(37.5315, 126.9740));
-        const distMilitary = pos.distanceTo(L.latLng(37.5240, 126.9650));
-
-        const shouldWarn = (distSubway < 30 || distSchool < 200 || distMilitary < 400);
-
-        if (shouldWarn !== marker.isWarning) {
-          marker.isWarning = shouldWarn;
-          if (shouldWarn) {
-            marker.setIcon(L.divIcon({
-              className: 'custom-marker-warning',
-              html: `<div style="
-                width: 30px; 
-                height: 30px; 
-                background: #ef4444; 
-                border: 2px solid white; 
-                border-radius: 50%; 
-                display: flex; 
-                align-items: center; 
-                justify-content: center; 
-                font-size: 11px; 
-                font-weight: bold; 
-                color: white;
-                box-shadow: 0 0 15px rgba(239,68,68,0.8);
-              ">⚠️</div>`,
-              iconSize: [30, 30]
-            }));
-          } else {
-            marker.setIcon(markerIcon);
-          }
-        }
-      });
-
-      marker.on('dragend', () => {
-        map.dragging.enable(); // 드래그 완료 시 지도 드래그 재활성화
-        const newPos = marker.getLatLng();
-        const distSubway = newPos.distanceTo(L.latLng(37.5290, 126.9680));
-        const distSchool = newPos.distanceTo(L.latLng(37.5315, 126.9740));
-        const distMilitary = newPos.distanceTo(L.latLng(37.5240, 126.9650));
-
-        if (distSubway < 30 || distSchool < 200 || distMilitary < 400) {
-          alert('⚠️ 경고: 해당 지점은 법정 금역 구역(지하철/학교/군사보호구역)에 침범합니다. 안전한 구역으로 위치를 복원합니다.');
-          marker.setLatLng([hitlLat, hitlLng]);
-          marker.setIcon(markerIcon);
-          marker.isWarning = false;
-          return;
-        }
-        setHitlLat(parseFloat(newPos.lat.toFixed(4)));
-        setHitlLng(parseFloat(newPos.lng.toFixed(4)));
-      });
 
       markersRef.current['temp'] = marker;
       markersRef.current['subway'] = subwayBuffer;
@@ -486,21 +416,25 @@ export default function Home() {
   const handleSliderChange = (key, val) => {
     if (isAhpLocked) return;
     const value = parseInt(val);
-    setAhpWeights(prev => ({ ...prev, [key]: value }));
-    const values = [...Object.values({ ...ahpWeights, [key]: value })];
-    const maxVal = Math.max(...values);
-    const minVal = Math.min(...values);
-    const mockCr = parseFloat(((maxVal - minVal) / 20).toFixed(2));
-    setCrValue(mockCr);
+    setAhpWeights(prev => {
+      const updated = { ...prev, [key]: value };
+      const values = Object.values(updated);
+      const maxVal = Math.max(...values);
+      const minVal = Math.min(...values);
+      const mockCr = parseFloat(((maxVal - minVal) / 25).toFixed(3));
+      setCrValue(mockCr);
+      return updated;
+    });
   };
 
-  // 5x5 상대 쌍대비교 역수 행렬 조립 함수
+  // 상대 쌍대비교 역수 행렬 조립 함수 (동적 N x N 스펙 대응)
   const buildPairwiseMatrix = (weights) => {
-    const keys = ['traffic', 'complaint', 'dumping', 'population', 'youth'];
+    const keys = Object.keys(weights);
+    const n = keys.length;
     const matrix = [];
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < n; i++) {
       const row = [];
-      for (let j = 0; j < 5; j++) {
+      for (let j = 0; j < n; j++) {
         const valI = weights[keys[i]] || 1;
         const valJ = weights[keys[j]] || 1;
         row.push(parseFloat((valI / valJ).toFixed(4)));
@@ -515,6 +449,7 @@ export default function Home() {
     if (pipelineStep !== 3 || isAhpLocked) return;
 
     const matrix = buildPairwiseMatrix(ahpWeights);
+    const keys = Object.keys(ahpWeights);
 
     try {
       // 1. 백엔드 AHP 일관성 비율(C.R.) 연산 API 호출
@@ -524,7 +459,7 @@ export default function Home() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          matrix_size: 5,
+          matrix_size: keys.length,
           pairwise_matrix: matrix
         })
       });
@@ -584,47 +519,15 @@ export default function Home() {
     }
   }, [activeTab, selectedParcel]);
 
-  // HITL 보정 완료
-  const handleHitlCommit = async () => {
-    if (!isValidCoordinate(hitlLat, hitlLng)) {
-      alert('⚠️ 예외 감지: 입력된 좌표가 결측치(Null/Zero) 상태이거나 위경도 한계를 이탈했습니다. (군사기지 및 주요 보안시설로 자동 감지되어 분석 후보군에서 즉시 예외 처리 및 격리 제외됩니다.)');
+  // HITL 보정 완료 (로컬 프론트 격리 상태 갱신)
+  const handleHitlCommit = () => {
+    if (!userIntent.trim()) {
+      alert('⚠️ 예외 감지: 탐색 의도가 비어있습니다. 의도를 작성해야 필지 연산으로 진행할 수 있습니다.');
       return;
     }
     
-    try {
-      const res = await fetch('http://localhost:8000/api/v1/lands/hitl/commit', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          parcel_id: selectedParcel[activeTab].id,
-          corrected_address: hitlJibun,
-          corrected_lat: hitlLat,
-          corrected_lng: hitlLng
-        })
-      });
-
-      if (res.ok) {
-        setSelectedParcel(prev => ({
-          ...prev,
-          [activeTab]: {
-            ...prev[activeTab],
-            jibun: hitlJibun,
-            lat: hitlLat,
-            lng: hitlLng
-          }
-        }));
-        setPipelineStep(3);
-        alert('공간 좌표 및 지번 속성이 보정 완료되어 백엔드 서버에 성공적으로 커밋되었습니다. [Step 3: AHP 인자 설정] 단계를 진행합니다.');
-      } else {
-        const errData = await res.json();
-        alert(`커밋 실패: ${errData.detail || '알 수 없는 오류'}`);
-      }
-    } catch (err) {
-      console.error("HITL 커밋 통신 실패:", err);
-      alert("서버 연결에 실패했습니다.");
-    }
+    setPipelineStep(3);
+    alert('실무자 피드백(HITL)에 의거하여 탐색 의도 보정이 완료되었습니다. [Step 3: AHP 인자 설정] 단계를 진행합니다. (의도 데이터는 로컬 보안 정책에 따라 서버로 전송되지 않고 브라우저에 격리 보관됩니다.)');
   };
 
   // 최종 시뮬레이션 결과 단독 로드 API
@@ -735,15 +638,49 @@ export default function Home() {
     setShowLoginModal(false);
   };
 
-  // Step 1 파일 드롭 모사 및 AI 감리 수행
+  // Step 1 파일 드롭 모사 및 AI 감리 수행 (실물 CSV API 연동)
   const triggerFileAudit = () => {
-    setIsAuditComplete(true);
-    setAuditMetadata({
-      fileName: 'Yongsan_Smart_Facility_2026.shp / Traffic_Flow.csv',
-      schemaScore: 98,
-      inferredIntention: '도시 스마트 공간 인프라 (흡연부스/정화지/쉼터 등) 설치 입지 타당성 분석',
-      features: ['geom (MultiPolygon)', 'traffic_density (Float)', 'complaint_count (Int)']
-    });
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.csv';
+    
+    input.onchange = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const ext = file.name.split('.').pop().toLowerCase();
+      if (ext !== 'csv') {
+        alert('⚠️ 파일 유형 제한: Step 1 사전 감리 파이프라인에는 오직 CSV 파일만 업로드할 수 있습니다.');
+        return;
+      }
+      
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/lands/audit/csv', {
+          method: 'POST',
+          body: formData
+        });
+        
+        if (res.ok) {
+          const data = await res.json();
+          setAuditReason(data.audit_reason);
+          setUserIntent(data.user_intent);
+          setAhpWeights(data.extracted_weights); // 동적 가중치 슬라이더 항목 대입
+          setIsAuditComplete(true);
+          alert('AI 사전 감리가 완료되었습니다. 추출된 감사 사유 및 사용자 의도를 Step 2에서 확인하십시오.');
+        } else {
+          const errData = await res.json();
+          alert(`감리 실패: ${errData.detail || '알 수 없는 오류'}`);
+        }
+      } catch (err) {
+        console.error("CSV 감리 통신 실패:", err);
+        alert("서버 연결에 실패했습니다.");
+      }
+    };
+    
+    input.click();
   };
 
   return (
@@ -797,8 +734,8 @@ export default function Home() {
         {/* [Step 1] 데이터 일괄 업로드 및 AI 감리 의도 검증 */}
         <div className={`flex flex-col gap-3 transition-all duration-300 ${pipelineStep !== 1 ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold text-slate-300">Step 1. 파일 일괄 수집 & AI 감리</label>
-            <span className="text-[10px] text-blue-400 font-mono">SHP, CSV, PDF, HWP</span>
+            <label className="text-xs font-semibold text-slate-300">Step 1. CSV 수집 & AI 감리</label>
+            <span className="text-[10px] text-blue-400 font-mono">CSV 파일 전용</span>
           </div>
 
           {!isAuditComplete ? (
@@ -806,25 +743,25 @@ export default function Home() {
               onClick={triggerFileAudit}
               className="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-xl p-5 text-center cursor-pointer transition-all bg-slate-950/40 hover:bg-slate-900/30"
             >
-              <p className="text-xs text-slate-300 font-semibold">📁 파일 일괄 드래그앤드롭</p>
-              <p className="text-[10px] text-slate-500 mt-1">파일 수집 및 스키마 구조 분석 시작</p>
+              <p className="text-xs text-slate-300 font-semibold">📁 CSV 파일 일괄 드래그앤드롭</p>
+              <p className="text-[10px] text-slate-500 mt-1">AI 감리 및 가중치 추출 개시</p>
             </div>
           ) : (
             /* AI 감리 결과 판독 및 실무자 의도 승인 루프 */
             <div className="bg-slate-950/60 p-4 rounded-xl border border-blue-500/30 flex flex-col gap-3">
               <div className="flex justify-between items-center border-b border-slate-900 pb-1.5">
-                <span className="text-[11px] text-blue-400 font-bold">✓ AI 감리 결과 (98% 일치)</span>
-                <span className="text-[10px] text-slate-500">인프라 스펙 매핑 성공</span>
+                <span className="text-[11px] text-blue-400 font-bold">✓ AI 사전 감리 완료</span>
+                <span className="text-[10px] text-slate-500">LLM 의도 매핑 성공</span>
               </div>
-              <div className="text-[11px] flex flex-col gap-1 text-slate-300 leading-relaxed">
-                <p><strong className="text-slate-400">분석 의도 판독:</strong> {auditMetadata.inferredIntention}</p>
-                <p><strong className="text-slate-400">스키마 확인:</strong> {auditMetadata.features.join(', ')}</p>
+              <div className="text-[11px] flex flex-col gap-2 text-slate-300 leading-relaxed">
+                <p><strong className="text-slate-400">감리 사유:</strong> {auditReason}</p>
+                <p><strong className="text-slate-400">추출된 의도:</strong> {userIntent}</p>
               </div>
               <button
                 onClick={() => setPipelineStep(2)}
                 className="w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold py-2 rounded-lg transition-all"
               >
-                의도 일치 확인 및 공간 매핑 승인 (Approve)
+                추출 의도 확인 및 검증 단계 진입 (Approve)
               </button>
             </div>
           )}
@@ -834,8 +771,8 @@ export default function Home() {
         <div className={`flex flex-col gap-4 border-t border-slate-800/80 pt-4 transition-all duration-300 ${pipelineStep < 3 ? 'opacity-20 pointer-events-none' : ''} ${pipelineStep > 3 ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="flex justify-between items-center">
             <label className="text-xs font-semibold text-slate-300">Step 3. AHP 인자별 상대 가중치</label>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${crValue < 0.1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-              C.R. = {crValue} ({crValue < 0.1 ? '만족' : '위배'})
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${Object.keys(ahpWeights).length === 0 ? 'bg-slate-500/20 text-slate-400' : crValue < 0.1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+              C.R. = {Object.keys(ahpWeights).length === 0 ? '-' : crValue} ({Object.keys(ahpWeights).length === 0 ? '대기' : crValue < 0.1 ? '만족' : '위배'})
             </span>
           </div>
 
@@ -843,7 +780,7 @@ export default function Home() {
             {Object.keys(ahpWeights).map(key => (
               <div key={key} className="flex flex-col gap-1">
                 <div className="flex justify-between text-[11px] text-slate-400">
-                  <span>{key === 'traffic' ? '대중교통 유동성' : key === 'complaint' ? '불법 민원빈도' : key === 'dumping' ? '상습 무단투기' : key === 'population' ? '배후 생활인구' : '청소년 비율'}</span>
+                  <span>{key}</span>
                   <span className="font-mono text-white">{ahpWeights[key]}</span>
                 </div>
                 <input
@@ -862,7 +799,7 @@ export default function Home() {
           {/* AHP 잠금 버튼 -> 입지 분석 트리거 */}
           <button
             onClick={handleAhpLock}
-            disabled={crValue >= 0.1 || pipelineStep !== 3}
+            disabled={crValue >= 0.1 || pipelineStep !== 3 || Object.keys(ahpWeights).length === 0}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-all disabled:opacity-30"
           >
             🔒 AHP 가중치 확정 및 추천 입지 연산 (Lock)
@@ -886,39 +823,32 @@ export default function Home() {
       {/* 4. 우측 플로팅 패널: 후보지 탭 및 속성 정보 카드 (Information & HITL Panel) */}
       <div className="floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto">
         
-        {/* [Step 2] 비주얼 HITL 좌표 보정 영역 */}
+        {/* [Step 2] 탐색 의도 검증 및 HITL 보정 영역 */}
         {pipelineStep === 2 && (
           <div className="flex flex-col gap-3">
             <div className="border-b border-slate-800 pb-2">
-              <h2 className="text-xs font-bold text-amber-500">Step 2. 비주얼 HITL 좌표 보정 중</h2>
-              <p className="text-[10px] text-slate-400 font-medium">지도의 주황색 핀을 드래그하거나 아래 좌표를 보정하세요</p>
+              <h2 className="text-xs font-bold text-amber-500">Step 2. 정보 탐색 의도 피드백 (HITL)</h2>
+              <p className="text-[10px] text-slate-400 font-medium">AI가 해석한 탐색 의도를 검토 및 수정해 주세요.</p>
             </div>
             
             <div className="bg-slate-950/40 p-4 rounded-xl border border-amber-500/30 flex flex-col gap-3">
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400">임시 지번 주소 수정</span>
-                <input 
-                  type="text" 
-                  value={hitlJibun} 
-                  onChange={(e) => setHitlJibun(e.target.value)} 
-                  className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-amber-500"
+                <span className="text-slate-400">사용자 탐색 의도 및 목적 수정</span>
+                <textarea 
+                  rows={4}
+                  value={userIntent} 
+                  onChange={(e) => setUserIntent(e.target.value)} 
+                  className="bg-slate-900 border border-slate-700 rounded p-2 text-white text-xs outline-none focus:border-amber-500 resize-none leading-relaxed"
                 />
               </div>
-              <div className="flex gap-2">
-                <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                  <span className="text-slate-400">경도(Lng)</span>
-                  <input type="number" step="0.0001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
-                </div>
-                <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                  <span className="text-slate-400">위도(Lat)</span>
-                  <input type="number" step="0.0001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
-                </div>
-              </div>
+              <p className="text-[10px] text-slate-500 leading-snug">
+                * 이 데이터는 로컬 브라우저 상태(Client-side)에만 격리되어 저장되며, 보안 규정에 의해 외부 서버나 데이터베이스로 전송되지 않습니다.
+              </p>
               <button 
                 onClick={handleHitlCommit}
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2 rounded-lg transition-all"
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2 rounded-lg transition-all cursor-pointer"
               >
-                보정 완료 및 데이터 확정 (Commit)
+                보정 완료 및 의사결정 인자 도출 (Commit)
               </button>
             </div>
           </div>
