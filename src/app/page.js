@@ -52,6 +52,86 @@ export default function Home() {
   const [municipalId, setMunicipalId] = useState('');
   const [department, setDepartment] = useState('스마트도시과');
 
+  // 조례 RAG 관리 모달 관련 상태
+  const [showRegulationModal, setShowRegulationModal] = useState(false);
+  const [regulationsList, setRegulationsList] = useState([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  // 조례 목록 비동기 동기화 조회
+  const fetchRegulations = async () => {
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/upload/regulations');
+      if (res.ok) {
+        const data = await res.json();
+        setRegulationsList(data);
+      }
+    } catch (err) {
+      console.error("조례 목록 로드 실패:", err);
+    }
+  };
+
+  // 모달 활성화 시 자동 fetch
+  useEffect(() => {
+    if (showRegulationModal) {
+      fetchRegulations();
+    }
+  }, [showRegulationModal]);
+
+  // 다중 업로드 핸들러 (중복 가드 적용)
+  const handleRegulationUpload = async (e) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    setIsUploading(true);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/upload/regulation', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (res.ok) {
+        alert('조례 PDF 파일이 성공적으로 업로드되었습니다.');
+        fetchRegulations();
+      } else {
+        const errData = await res.json();
+        alert(`업로드 실패: ${errData.detail || '알 수 없는 오류'}`);
+      }
+    } catch (err) {
+      console.error("업로드 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    } finally {
+      setIsUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  // 물리 삭제 핸들러 (Deletion Engine)
+  const handleRegulationDelete = async (filename) => {
+    if (!confirm(`조례 '${filename}' 및 RAG 텍스트 캐시를 영구 삭제하시겠습니까?`)) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/upload/regulations/${encodeURIComponent(filename)}`, {
+        method: 'DELETE'
+      });
+
+      if (res.ok) {
+        alert('조례 및 RAG 캐시 파일이 성공적으로 물리 삭제되었습니다.');
+        fetchRegulations();
+      } else {
+        const errData = await res.json();
+        alert(`삭제 실패: ${errData.detail || '알 수 없는 오류'}`);
+      }
+    } catch (err) {
+      console.error("삭제 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    }
+  };
+
   // Leaflet 지도 인스턴스 참조
   const mapRef = useRef(null);
   const markersRef = useRef({});
@@ -489,6 +569,12 @@ export default function Home() {
         <nav className="flex items-center gap-8 text-xs font-semibold">
           <Link href="/" className="text-white border-b-2 border-blue-500 pb-1">입지분석 메인 (Map)</Link>
           <Link href="/dashboard" className="text-slate-400 hover:text-white transition-all pb-1">이력 대시보드 (Analytics)</Link>
+          <button 
+            onClick={() => setShowRegulationModal(true)} 
+            className="text-slate-400 hover:text-white transition-all pb-1 cursor-pointer flex items-center gap-1.5"
+          >
+            ⚖️ 법규 RAG 관리
+          </button>
         </nav>
         <div>
           {isLoggedIn ? (
@@ -830,6 +916,83 @@ export default function Home() {
                 행정망 접속 승인
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* 조례 RAG 관리 모달 */}
+      {showRegulationModal && (
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-6">
+          <div className="w-[550px] glass-panel p-6 flex flex-col gap-5 border border-slate-800">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-white">⚖️ 법규 RAG 지식베이스 관리</h3>
+                <p className="text-[10px] text-slate-400 mt-0.5">RAG에 활용될 조례 PDF 목록을 관리하고 다중 업로드합니다.</p>
+              </div>
+              <button 
+                onClick={() => setShowRegulationModal(false)} 
+                className="text-slate-400 hover:text-white text-xl font-bold cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            {/* 다중 파일 드롭존 / 업로드 영역 */}
+            <div className="bg-slate-950/40 border border-slate-800/80 p-4 rounded-xl flex flex-col gap-3">
+              <div className="flex justify-between items-center">
+                <span className="text-[11px] font-semibold text-slate-300">조례 PDF 다중 업로드</span>
+                <span className="text-[10px] text-slate-500 font-mono">PDF 파일만 허용</span>
+              </div>
+              <div className="relative border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-lg p-5 text-center cursor-pointer transition-all bg-slate-900/40">
+                <input 
+                  type="file" 
+                  multiple 
+                  accept=".pdf"
+                  onChange={handleRegulationUpload}
+                  className="absolute inset-0 opacity-0 cursor-pointer" 
+                />
+                <p className="text-xs text-slate-300 font-medium">📁 PDF 파일 일괄 드래그 또는 클릭</p>
+                <p className="text-[10px] text-slate-500 mt-1">동일 파일명 업로드 시 중복 방지 가드가 작동합니다.</p>
+              </div>
+              {isUploading && <p className="text-[10px] text-blue-400 animate-pulse text-center">조례 분석 및 RAG 임베딩 텍스트 파싱 중...</p>}
+            </div>
+
+            {/* 조례 리스트 테이블 */}
+            <div className="flex flex-col gap-2">
+              <span className="text-[11px] font-semibold text-slate-300">📋 적재된 조례 목록 ({regulationsList.length}건)</span>
+              <div className="max-h-[220px] overflow-y-auto bg-slate-950/60 rounded-xl border border-slate-800/80 p-2">
+                {regulationsList.length === 0 ? (
+                  <p className="text-center text-xs text-slate-500 py-6">적재된 조례 문서가 없습니다.</p>
+                ) : (
+                  <table className="w-full text-[11px] text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-slate-800 text-slate-400 font-medium">
+                        <th className="pb-2 pl-2">파일명</th>
+                        <th className="pb-2">크기 (KB)</th>
+                        <th className="pb-2 text-right pr-2">작업</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {regulationsList.map((item, idx) => (
+                        <tr key={idx} className="border-b border-slate-900/50 hover:bg-slate-900/30 text-slate-300">
+                          <td className="py-2 pl-2 max-w-[280px] truncate" title={item.filename}>{item.filename}</td>
+                          <td className="py-2">{(item.size / 1024).toFixed(1)} KB</td>
+                          <td className="py-2 text-right pr-2">
+                            <button 
+                              onClick={() => handleRegulationDelete(item.filename)}
+                              className="text-rose-400 hover:text-rose-500 font-bold hover:scale-110 transition-all cursor-pointer"
+                              title="조례 및 RAG 캐시 삭제"
+                            >
+                              🗑️
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}
