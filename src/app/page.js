@@ -56,6 +56,7 @@ export default function Home() {
   const [showRegulationModal, setShowRegulationModal] = useState(false);
   const [regulationsList, setRegulationsList] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const simEndRef = useRef(null);
 
   // 조례 목록 비동기 동기화 조회
   const fetchRegulations = async () => {
@@ -648,6 +649,13 @@ export default function Home() {
     }
   };
 
+  // AI 모의 심의 대사 인입 시 터미널 스크롤 최하단 자동 갱신
+  useEffect(() => {
+    if (simEndRef.current) {
+      simEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [simLogs]);
+
   // AI 시뮬레이션 개시 (EventSource SSE 실시간 연동)
   const runSimulation = () => {
     setShowSimModal(true);
@@ -996,6 +1004,7 @@ export default function Home() {
               {isSimulating && (
                 <div className="text-slate-500 animate-pulse">... 에이전트 심의 분석 진행 중 ...</div>
               )}
+              <div ref={simEndRef} />
             </div>
 
             {/* 하단 제어 바 (보고서 다운로드 포함) */}
