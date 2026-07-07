@@ -697,6 +697,33 @@ export default function Home() {
     };
   };
 
+  // WeasyPrint 타당성 PDF 보고서 실물 다운로드 연동
+  const handleDownloadPdf = async () => {
+    const activeParcel = selectedParcel[activeTab];
+    const parcelId = activeParcel.id;
+    
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/simulation/report/${parcelId}`);
+      if (!res.ok) {
+        alert("PDF 리포트 생성에 실패했습니다. (백엔드 4주차 모듈 미완성)");
+        return;
+      }
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `OmniSite_입지타당성보고서_PNU_${activeParcel.pnu}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF 다운로드 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    }
+  };
+
   // 로그인 처리
   const handleLogin = (e) => {
     e.preventDefault();
@@ -840,6 +867,19 @@ export default function Home() {
           >
             🔒 AHP 가중치 확정 및 추천 입지 연산 (Lock)
           </button>
+
+          {isAhpLocked && (
+            <button
+              onClick={() => {
+                setIsAhpLocked(false);
+                setPipelineStep(3);
+                alert("AHP 가중치 잠금이 해제되었습니다. 가중치를 재조정한 뒤 다시 Lock을 걸어 공간 차집합 연산을 가동하십시오.");
+              }}
+              className="w-full mt-2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer transition-all border border-slate-700/80"
+            >
+              🔓 AHP 가중치 잠금 해제 (Unlock)
+            </button>
+          )}
         </div>
       </div>
 
@@ -1014,9 +1054,7 @@ export default function Home() {
               </span>
               <div className="flex gap-3">
                 <button
-                  onClick={() => {
-                    alert('WeasyPrint를 통해 입지 타당성 분석 PDF를 컴파일 및 다운로드합니다.');
-                  }}
+                  onClick={handleDownloadPdf}
                   disabled={isSimulating}
                   className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-all cursor-pointer"
                 >
