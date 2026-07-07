@@ -247,6 +247,13 @@ export default function Home() {
         autoPan: false // 마커 드래그 시 지도 자동 스크롤(autoPan) 완전 차단
       }).addTo(map);
 
+      // 마우스 드래그 좌표 보정 동기화 (HITL)
+      marker.on('dragend', (e) => {
+        const { lat, lng } = e.target.getLatLng();
+        setHitlLat(parseFloat(lat.toFixed(6)));
+        setHitlLng(parseFloat(lng.toFixed(6)));
+      });
+
       // 법정 금제 원형 레이어 오버레이
       const subwayBuffer = L.circle([37.5290, 126.9680], {
         color: '#ef4444',
@@ -454,22 +461,46 @@ export default function Home() {
   }, [activeTab, selectedParcel]);
 
   // HITL 보정 완료
-  const handleHitlCommit = () => {
+  const handleHitlCommit = async () => {
     if (!isValidCoordinate(hitlLat, hitlLng)) {
       alert('⚠️ 예외 감지: 입력된 좌표가 결측치(Null/Zero) 상태이거나 위경도 한계를 이탈했습니다. (군사기지 및 주요 보안시설로 자동 감지되어 분석 후보군에서 즉시 예외 처리 및 격리 제외됩니다.)');
       return;
     }
-    setSelectedParcel(prev => ({
-      ...prev,
-      [activeTab]: {
-        ...prev[activeTab],
-        jibun: hitlJibun,
-        lat: hitlLat,
-        lng: hitlLng
+    
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/lands/hitl/commit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          parcel_id: selectedParcel[activeTab].id,
+          corrected_address: hitlJibun,
+          corrected_lat: hitlLat,
+          corrected_lng: hitlLng
+        })
+      });
+
+      if (res.ok) {
+        setSelectedParcel(prev => ({
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            jibun: hitlJibun,
+            lat: hitlLat,
+            lng: hitlLng
+          }
+        }));
+        setPipelineStep(3);
+        alert('공간 좌표 및 지번 속성이 보정 완료되어 백엔드 서버에 성공적으로 커밋되었습니다. [Step 3: AHP 인자 설정] 단계를 진행합니다.');
+      } else {
+        const errData = await res.json();
+        alert(`커밋 실패: ${errData.detail || '알 수 없는 오류'}`);
       }
-    }));
-    setPipelineStep(3);
-    alert('공간 좌표 및 지번 속성이 보정 완료되었습니다. [Step 3: AHP 인자 설정] 단계를 진행합니다.');
+    } catch (err) {
+      console.error("HITL 커밋 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    }
   };
 
   // 최종 시뮬레이션 결과 단독 로드 API
