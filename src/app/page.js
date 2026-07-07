@@ -454,6 +454,84 @@ export default function Home() {
     setCrValue(mockCr);
   };
 
+  // 5x5 상대 쌍대비교 역수 행렬 조립 함수
+  const buildPairwiseMatrix = (weights) => {
+    const keys = ['traffic', 'complaint', 'dumping', 'population', 'youth'];
+    const matrix = [];
+    for (let i = 0; i < 5; i++) {
+      const row = [];
+      for (let j = 0; j < 5; j++) {
+        const valI = weights[keys[i]] || 1;
+        const valJ = weights[keys[j]] || 1;
+        row.push(parseFloat((valI / valJ).toFixed(4)));
+      }
+      matrix.push(row);
+    }
+    return matrix;
+  };
+
+  // AHP 일관성(C.R.) 검증 및 DB 락 요청 연동
+  const handleAhpLock = async () => {
+    if (pipelineStep !== 3 || isAhpLocked) return;
+
+    const matrix = buildPairwiseMatrix(ahpWeights);
+
+    try {
+      // 1. 백엔드 AHP 일관성 비율(C.R.) 연산 API 호출
+      const calcRes = await fetch('http://localhost:8000/api/v1/ahp/calculate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          matrix_size: 5,
+          pairwise_matrix: matrix
+        })
+      });
+
+      if (!calcRes.ok) {
+        const calcErr = await calcRes.json();
+        alert(`AHP 계산 실패: ${calcErr.detail || '알 수 없는 오류'}`);
+        return;
+      }
+
+      const calcData = await calcRes.json();
+      const { consistency_ratio, is_locked_allowed, weights } = calcData;
+
+      setCrValue(parseFloat(consistency_ratio.toFixed(4)));
+
+      if (!is_locked_allowed) {
+        alert(`⚠️ 일관성 비율(C.R.) 기준 미달: 현재 일관성 비율은 ${consistency_ratio.toFixed(3)}입니다. 의사결정의 일관성을 확보하기 위해 가중치를 다시 조절하십시오. (C.R. < 0.1 필수)`);
+        return;
+      }
+
+      // 2. 일관성 통과 시 백엔드 DB 가중치 락 저장 호출
+      const lockRes = await fetch('http://localhost:8000/api/v1/ahp/lock', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          pairwise_matrix: matrix,
+          weights: weights,
+          consistency_ratio: consistency_ratio
+        })
+      });
+
+      if (lockRes.ok) {
+        setIsAhpLocked(true);
+        setPipelineStep(4);
+        alert(`AHP 일관성 검증 승인 (C.R: ${consistency_ratio.toFixed(3)}). 가중치가 DB에 안전하게 동결 저장되었습니다. PostGIS 최적 입지(Top 1~3) 연산이 기동됩니다!`);
+      } else {
+        const lockErr = await lockRes.json();
+        alert(`AHP 락 저장 실패: ${lockErr.detail || '알 수 없는 오류'}`);
+      }
+    } catch (err) {
+      console.error("AHP 락 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    }
+  };
+
   // HITL 폼 동기화
   useEffect(() => {
     const active = selectedParcel[activeTab];
@@ -709,11 +787,7 @@ export default function Home() {
 
           {/* AHP 잠금 버튼 -> 입지 분석 트리거 */}
           <button
-            onClick={() => {
-              setIsAhpLocked(true);
-              setPipelineStep(4);
-              alert('AHP 모델 일관성 검증 승인. PostGIS 다기준 공간 차집합 연산 기동 완료! [Step 4: 최적 입지 선정 결과]를 우측에서 확인하세요.');
-            }}
+            onClick={handleAhpLock}
             disabled={crValue >= 0.1 || pipelineStep !== 3}
             className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-all disabled:opacity-30"
           >
