@@ -370,7 +370,7 @@ export default function Home() {
             font-size: 11px; 
             font-weight: bold; 
             color: white;
-            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+            box-shadow: ${isSelected ? '0 0 15px hsl(217, 91%, 60%)' : '0 0 10px rgba(0,0,0,0.5)'};
           ">${key.replace('top', '')}</div>`,
           iconSize: [28, 28]
         });
@@ -385,7 +385,46 @@ export default function Home() {
         });
 
         markersRef.current[key] = marker;
+
+        // 선택된 후보지인 경우, 주변 대중교통 배후 유동 영향 반경 시각화 (Wow Point)
+        if (isSelected) {
+          const influenceBuffer = L.circle([parcel.lat, parcel.lng], {
+            color: '#3b82f6',
+            fillColor: '#3b82f6',
+            fillOpacity: 0.12,
+            weight: 1.5,
+            dashArray: '4, 4',
+            radius: 150
+          }).addTo(map);
+          markersRef.current[`influence_${key}`] = influenceBuffer;
+        }
       });
+
+      // 법정 제한구역 배제 영역(Exclusion Mask) 오버레이 유지 (ST_Difference 공간 연산 근거 전시)
+      const subwayBuffer = L.circle([37.5290, 126.9680], {
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.15,
+        radius: 30
+      }).addTo(map);
+
+      const schoolBuffer = L.circle([37.5315, 126.9740], {
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.1,
+        radius: 200
+      }).addTo(map);
+
+      const militaryBuffer = L.circle([37.5240, 126.9650], {
+        color: '#ef4444',
+        fillColor: '#ef4444',
+        fillOpacity: 0.08,
+        radius: 400
+      }).addTo(map);
+
+      markersRef.current['subway_ex'] = subwayBuffer;
+      markersRef.current['school_ex'] = schoolBuffer;
+      markersRef.current['military_ex'] = militaryBuffer;
 
       const activeParcel = selectedParcel[activeTab];
       if (activeParcel && isValidCoordinate(activeParcel.lat, activeParcel.lng)) {
