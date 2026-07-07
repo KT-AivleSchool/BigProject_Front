@@ -73,7 +73,9 @@ export default function Home() {
   // 모달 활성화 시 자동 fetch
   useEffect(() => {
     if (showRegulationModal) {
-      fetchRegulations();
+      setTimeout(() => {
+        fetchRegulations();
+      }, 0);
     }
   }, [showRegulationModal]);
 
@@ -158,13 +160,13 @@ export default function Home() {
     }
 
     if (window.L) {
-      setLeafletLoaded(true);
+      setTimeout(() => setLeafletLoaded(true), 0);
     } else {
       const script = document.createElement('script');
       script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
       script.async = true;
       script.onload = () => {
-        setLeafletLoaded(true);
+        setTimeout(() => setLeafletLoaded(true), 0);
       };
       document.body.appendChild(script);
     }
@@ -390,7 +392,7 @@ export default function Home() {
         map.panTo([activeParcel.lat, activeParcel.lng]);
       }
     }
-  }, [leafletLoaded, pipelineStep]);
+  }, [leafletLoaded, pipelineStep]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 마커 속성 및 지도 동기화 효과 (드래그 스냅 보정)
   useEffect(() => {
@@ -455,9 +457,13 @@ export default function Home() {
   // HITL 폼 동기화
   useEffect(() => {
     const active = selectedParcel[activeTab];
-    setHitlJibun(active.jibun);
-    setHitlLng(active.lng);
-    setHitlLat(active.lat);
+    if (active) {
+      setTimeout(() => {
+        setHitlJibun(active.jibun || '');
+        setHitlLng(active.lng || 0);
+        setHitlLat(active.lat || 0);
+      }, 0);
+    }
   }, [activeTab, selectedParcel]);
 
   // HITL 보정 완료
