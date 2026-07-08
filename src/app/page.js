@@ -794,24 +794,27 @@ export default function Home() {
     }
   };
 
-  // Step 1 파일 드롭 모사 및 AI 감리 수행 (실물 CSV API 연동)
+  // Step 1 다중 파일 드롭 모사 및 AI 통합 사전 감리 수행 (실물 다중 CSV API 연동)
   const triggerFileAudit = () => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.csv';
+    input.multiple = true; // 다중 파일 선택 허용
     
     input.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-      
-      const ext = file.name.split('.').pop().toLowerCase();
-      if (ext !== 'csv') {
-        alert('⚠️ 파일 유형 제한: Step 1 사전 감리 파이프라인에는 오직 CSV 파일만 업로드할 수 있습니다.');
-        return;
-      }
+      const selectedFiles = e.target.files;
+      if (!selectedFiles || selectedFiles.length === 0) return;
       
       const formData = new FormData();
-      formData.append('file', file);
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext !== 'csv') {
+          alert(`⚠️ 파일 유형 제한: 오직 CSV 파일만 업로드할 수 있습니다. (에러 파일: ${file.name})`);
+          return;
+        }
+        formData.append('files', file); // 동일한 'files' 키로 다중 추가
+      }
       
       try {
         const res = await fetch('http://localhost:8000/api/v1/lands/audit/csv', {
@@ -825,7 +828,7 @@ export default function Home() {
           setUserIntent(data.user_intent);
           setAhpWeights(data.extracted_weights); // 동적 가중치 슬라이더 항목 대입
           setIsAuditComplete(true);
-          alert('AI 사전 감리가 완료되었습니다. 추출된 감사 사유 및 사용자 의도를 Step 2에서 확인하십시오.');
+          alert(`🎉 AI 통합 감리가 성공적으로 완료되었습니다. 총 ${selectedFiles.length}개의 데이터셋 분석을 기반으로 도출된 감리 사유 및 의도를 Step 2에서 확인하십시오.`);
         } else {
           const errData = await res.json();
           alert(`감리 실패: ${errData.detail || '알 수 없는 오류'}`);
