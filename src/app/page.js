@@ -42,11 +42,15 @@ export default function Home() {
   const [simLogs, setSimLogs] = useState([]);
   const [isSimulating, setIsSimulating] = useState(false);
 
-  // 5. 로그인 모달 상태
+  // 5. 로그인 및 회원가입 인증 상태 (백엔드 auth API 실물 동기화 연동)
   const [showLoginModal, setShowLoginModal] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' | 'register'
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
   const [municipalId, setMunicipalId] = useState('');
-  const [department, setDepartment] = useState('스마트도시과');
+  const [department, setDepartment] = useState('용산구 스마트도시과');
 
   // 조례 RAG 관리 모달 관련 상태
   const [showRegulationModal, setShowRegulationModal] = useState(false);
@@ -734,15 +738,60 @@ export default function Home() {
     }
   };
 
-  // 로그인 처리
-  const handleLogin = (e) => {
+  // 실제 백엔드 연계 로그인 인증 처리 (JWT 토큰 발급)
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (!municipalId.trim()) {
-      alert('공무원 ID를 입력해주세요.');
+    if (!email.trim() || !password.trim()) {
+      alert('행정 이메일과 비밀번호를 모두 입력해주세요.');
       return;
     }
-    setIsLoggedIn(true);
-    setShowLoginModal(false);
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        localStorage.setItem('auth_token', data.access_token);
+        setIsLoggedIn(true);
+        setMunicipalId(email.split('@')[0]); // 이메일 ID 부분을 실무자 ID로 노출
+        setShowLoginModal(false);
+        alert('🎉 도시행정망 접속 인증에 성공했습니다.');
+      } else {
+        alert(`❌ 로그인 실패: ${data.detail || '이메일 혹은 패스워드가 올바르지 않습니다.'}`);
+      }
+    } catch (err) {
+      console.error('로그인 통신 장애:', err);
+      alert('백엔드 인증 서버와의 통신에 실패했습니다.');
+    }
+  };
+
+  // 실제 백엔드 연계 신규 실무자 회원가입 처리
+  const handleRegister = async (e) => {
+    e.preventDefault();
+    if (!email.trim() || !password.trim() || !username.trim()) {
+      alert('모든 필수 항목(이메일, 비밀번호, 실무자 이름)을 기입해주세요.');
+      return;
+    }
+    try {
+      const res = await fetch('http://localhost:8000/api/v1/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password, username })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert('🎉 신규 행정망 실무자 계정 등록에 성공했습니다. 로그인 모드에서 로그인을 진행해 주세요.');
+        setAuthMode('login'); // 성공 후 로그인 화면으로 전환
+        setPassword('');
+      } else {
+        alert(`❌ 회원가입 실패: ${data.detail || '입력 규격을 다시 확인해 주세요.'}`);
+      }
+    } catch (err) {
+      console.error('회원가입 통신 장애:', err);
+      alert('백엔드 회원가입 서버와의 통신에 실패했습니다.');
+    }
   };
 
   // Step 1 파일 드롭 모사 및 AI 감리 수행 (실물 CSV API 연동)
@@ -1135,16 +1184,60 @@ export default function Home() {
         </div>
       )}
 
-      {/* 공무원 로그인 모달 */}
+      {/* 공무원 로그인 & 회원가입 통합 인증 모달 */}
       {showLoginModal && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
           <div className="w-[400px] glass-panel p-6 flex flex-col gap-4">
             <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-semibold text-slate-300">도시행정망 실무자 인증</h3>
-              <button onClick={() => setShowLoginModal(false)} className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer">&times;</button>
+              <h3 className="text-sm font-semibold text-slate-300">
+                {authMode === 'login' ? '🔑 도시행정망 실무자 인증' : '📝 신규 실무자 계정 등록'}
+              </h3>
+              <button 
+                onClick={() => {
+                  setShowLoginModal(false);
+                  setEmail('');
+                  setPassword('');
+                  setUsername('');
+                }} 
+                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+              >
+                &times;
+              </button>
             </div>
 
-            <form onSubmit={handleLogin} className="flex flex-col gap-4">
+            {/* 로그인 / 회원가입 전환 탭 */}
+            <div className="flex gap-2 border-b border-slate-800 pb-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('login');
+                  setPassword('');
+                }}
+                className={`flex-1 text-[11px] py-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                  authMode === 'login' 
+                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40' 
+                    : 'bg-transparent text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                로그인 모드
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMode('register');
+                  setPassword('');
+                }}
+                className={`flex-1 text-[11px] py-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                  authMode === 'register' 
+                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40' 
+                    : 'bg-transparent text-slate-400 hover:text-slate-200 border border-transparent'
+                }`}
+              >
+                회원가입 모드
+              </button>
+            </div>
+
+            <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1 text-xs">
                 <span className="text-slate-400">소속 자치구 / 부서</span>
                 <select 
@@ -1158,22 +1251,46 @@ export default function Home() {
                 </select>
               </div>
 
+              {authMode === 'register' && (
+                <div className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-400">실무자 이름</span>
+                  <input 
+                    type="text" 
+                    placeholder="홍길동 주무관"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+                  />
+                </div>
+              )}
+
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400">공무원 행정 ID</span>
+                <span className="text-slate-400">행정 이메일</span>
                 <input 
-                  type="text" 
-                  placeholder="admin_yongsan"
-                  value={municipalId}
-                  onChange={(e) => setMunicipalId(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none"
+                  type="email" 
+                  placeholder="admin@yongsan.go.kr"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1 text-xs">
+                <span className="text-slate-400">행정망 비밀번호</span>
+                <input 
+                  type="password" 
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all"
+                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all cursor-pointer"
               >
-                행정망 접속 승인
+                {authMode === 'login' ? '행정망 접속 승인' : '신규 실무자 등록 신청'}
               </button>
             </form>
           </div>
