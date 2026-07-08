@@ -240,13 +240,15 @@ export default function Home() {
         return;
       }
 
+      // Step 2 용 임시 마커 객체를 생성 및 초기화합니다.
+      // draggable: true 옵션으로 마커를 지도 위에서 마우스 드래그앤드롭하여 좌표를 정정할 수 있도록 합니다.
       const marker = L.marker([hitlLat, hitlLng], {
         icon: markerIcon,
-        draggable: false, // 좌표 보정 기능 비활성화에 따른 드래그 잠금
+        draggable: true, // [HITL 피처] 지도 마커 드래그 보정 활성화
         autoPan: false
       }).addTo(map);
 
-      // 법정 금제 원형 레이어 오버레이
+      // 법정 제한구역(지하철역 30m, 스쿨존 200m, 군사보호 400m)을 시각적으로 나타내는 차집합 차단 마스크 레이어(적색 원)를 지도에 투영합니다.
       const subwayBuffer = L.circle([37.5290, 126.9680], {
         color: '#ef4444',
         fillColor: '#ef4444',
@@ -267,6 +269,74 @@ export default function Home() {
         fillOpacity: 0.1,
         radius: 400
       }).addTo(map);
+
+      // 드래그가 시작될 때 지도의 자체 드래깅/패닝 이벤트를 일시 정지하여 마커 조작성에 간섭을 배제합니다.
+      marker.on('dragstart', () => {
+        map.dragging.disable();
+      });
+
+      // 마커의 현재 경고 상태 플래그를 저장합니다.
+      marker.isWarning = false;
+
+      // 마커를 드래그하는 도중에 실시간으로 각 규제 영역 중심점과의 구면 거리를 측정하여 침범 여부를 스캔합니다.
+      marker.on('drag', (e) => {
+        const pos = e.target.getLatLng();
+        const distSubway = pos.distanceTo(L.latLng(37.5290, 126.9680));
+        const distSchool = pos.distanceTo(L.latLng(37.5315, 126.9740));
+        const distMilitary = pos.distanceTo(L.latLng(37.5240, 126.9650));
+
+        // 각 구역의 법적 규제 반경 미만으로 들어가면 침범 상태(shouldWarn)로 판정합니다.
+        const shouldWarn = (distSubway < 30 || distSchool < 200 || distMilitary < 400);
+
+        // 경고 상태가 전환될 때만 마커 아이콘을 경고(divIcon ⚠️) 혹은 일반 아이콘으로 실시간 교체하여 성능 지연을 최소화합니다.
+        if (shouldWarn !== marker.isWarning) {
+          marker.isWarning = shouldWarn;
+          if (shouldWarn) {
+            marker.setIcon(L.divIcon({
+              className: 'custom-marker-warning',
+              html: `<div style="
+                width: 30px; 
+                height: 30px; 
+                background: #ef4444; 
+                border: 2px solid white; 
+                border-radius: 50%; 
+                display: flex; 
+                align-items: center; 
+                justify-content: center; 
+                font-size: 11px; 
+                font-weight: bold; 
+                color: white;
+                box-shadow: 0 0 15px rgba(239,68,68,0.8);
+              ">⚠️</div>`,
+              iconSize: [30, 30]
+            }));
+          } else {
+            marker.setIcon(markerIcon);
+          }
+        }
+      });
+
+      // 드래그가 끝났을 때(마우스를 놓았을 때) 지도의 기본 드래깅 기능을 재활성화하고, 최종 안착지의 적격성을 검사합니다.
+      marker.on('dragend', () => {
+        map.dragging.enable();
+        const newPos = marker.getLatLng();
+        const distSubway = newPos.distanceTo(L.latLng(37.5290, 126.9680));
+        const distSchool = newPos.distanceTo(L.latLng(37.5315, 126.9740));
+        const distMilitary = newPos.distanceTo(L.latLng(37.5240, 126.9650));
+
+        // 최종 안착지가 법정 금역 구역 내일 경우 경고 메시지를 출력하고 마커를 드래그 이전 시작 위치로 강제 롤백 처리합니다.
+        if (distSubway < 30 || distSchool < 200 || distMilitary < 400) {
+          alert('⚠️ 경고: 해당 지점은 법정 금역 구역(지하철/학교/군사보호구역)에 침범합니다. 안전한 구역으로 위치를 복원합니다.');
+          marker.setLatLng([hitlLat, hitlLng]);
+          marker.setIcon(markerIcon);
+          marker.isWarning = false;
+          return;
+        }
+
+        // 합법적인 구역일 경우에만 소수점 4자리 정밀도로 위경도 입력 폼 상태를 갱신합니다.
+        setHitlLat(parseFloat(newPos.lat.toFixed(4)));
+        setHitlLng(parseFloat(newPos.lng.toFixed(4)));
+      });
 
       markersRef.current['temp'] = marker;
       markersRef.current['subway'] = subwayBuffer;
@@ -519,15 +589,52 @@ export default function Home() {
     }
   }, [activeTab, selectedParcel]);
 
-  // HITL 보정 완료 (로컬 프론트 격리 상태 갱신)
-  const handleHitlCommit = () => {
+  // [하이브리드 HITL 의사결정 보정 이벤트 헨들러]
+  // 1. 공공 데이터의 위경도 오차 및 오역 지번(Jibun) 정보를 서버 DB에 정식 반영하기 위해 API를 호출합니다.
+  // 2. 사용자가 기입한 '텍스트 기획 의도(userIntent)'는 정보 보호 가이드에 입각해 로컬 상태로만 안전 격리하고 서버로는 발송하지 않습니다.
+  const handleHitlCommit = async () => {
+    // 텍스트 의도가 미입력되었을 경우 연산을 차단하는 유효성 가드입니다.
     if (!userIntent.trim()) {
       alert('⚠️ 예외 감지: 탐색 의도가 비어있습니다. 의도를 작성해야 필지 연산으로 진행할 수 있습니다.');
       return;
     }
-    
-    setPipelineStep(3);
-    alert('실무자 피드백(HITL)에 의거하여 탐색 의도 보정이 완료되었습니다. [Step 3: AHP 인자 설정] 단계를 진행합니다. (의도 데이터는 로컬 보안 정책에 따라 서버로 전송되지 않고 브라우저에 격리 보관됩니다.)');
+
+    try {
+      // 보정된 물리적 주소 및 위경도를 백엔드 HITL API로 커밋 전송합니다.
+      const res = await fetch('http://localhost:8000/api/v1/lands/hitl/commit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          parcel_id: selectedParcel[activeTab].id,
+          corrected_address: hitlJibun,
+          corrected_lat: hitlLat,
+          corrected_lng: hitlLng
+        })
+      });
+
+      // API 전송 성공 시, 클라이언트의 후보 부지 주소/좌표 데이터를 갱신하고 Step 3로 상태를 진입시킵니다.
+      if (res.ok) {
+        setSelectedParcel(prev => ({
+          ...prev,
+          [activeTab]: {
+            ...prev[activeTab],
+            jibun: hitlJibun,
+            lat: hitlLat,
+            lng: hitlLng
+          }
+        }));
+        setPipelineStep(3);
+        alert('공간 좌표 및 지번 속성이 보정 완료되어 백엔드 서버에 성공적으로 커밋되었습니다. 의사결정 의도 보정도 완료되어 [Step 3: AHP 인자 설정] 단계를 진행합니다. (의도 데이터는 로컬 보안 정책에 따라 서버로 전송되지 않고 브라우저에 격리 보관됩니다.)');
+      } else {
+        const errData = await res.json();
+        alert(`커밋 실패: ${errData.detail || '알 수 없는 오류'}`);
+      }
+    } catch (err) {
+      console.error("HITL 커밋 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    }
   };
 
   // 최종 시뮬레이션 결과 단독 로드 API
@@ -823,32 +930,58 @@ export default function Home() {
       {/* 4. 우측 플로팅 패널: 후보지 탭 및 속성 정보 카드 (Information & HITL Panel) */}
       <div className="floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto">
         
-        {/* [Step 2] 탐색 의도 검증 및 HITL 보정 영역 */}
+        {/* [Step 2] 하이브리드 HITL: 탐색 의도 및 물리 좌표 동시 보정 영역 */}
         {pipelineStep === 2 && (
           <div className="flex flex-col gap-3">
             <div className="border-b border-slate-800 pb-2">
-              <h2 className="text-xs font-bold text-amber-500">Step 2. 정보 탐색 의도 피드백 (HITL)</h2>
-              <p className="text-[10px] text-slate-400 font-medium">AI가 해석한 탐색 의도를 검토 및 수정해 주세요.</p>
+              <h2 className="text-xs font-bold text-amber-500">Step 2. 하이브리드 공간 및 의도 보정 (HITL)</h2>
+              <p className="text-[10px] text-slate-400 font-medium">지도의 주황색 핀을 드래그하거나 아래 폼에서 피드백을 보정하세요.</p>
             </div>
             
             <div className="bg-slate-950/40 p-4 rounded-xl border border-amber-500/30 flex flex-col gap-3">
+              {/* 1. 탐색 의도 보정 */}
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400">사용자 탐색 의도 및 목적 수정</span>
+                <span className="text-slate-400 font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
                 <textarea 
-                  rows={4}
+                  rows={3}
                   value={userIntent} 
                   onChange={(e) => setUserIntent(e.target.value)} 
                   className="bg-slate-900 border border-slate-700 rounded p-2 text-white text-xs outline-none focus:border-amber-500 resize-none leading-relaxed"
                 />
+                <span className="text-[9px] text-slate-500">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
               </div>
-              <p className="text-[10px] text-slate-500 leading-snug">
-                * 이 데이터는 로컬 브라우저 상태(Client-side)에만 격리되어 저장되며, 보안 규정에 의해 외부 서버나 데이터베이스로 전송되지 않습니다.
-              </p>
+
+              {/* 2. 지번 및 위경도 보정 */}
+              <div className="flex flex-col gap-2.5 border-t border-slate-800/80 pt-2.5">
+                <span className="text-[11px] text-slate-400 font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
+                
+                <div className="flex flex-col gap-1 text-xs">
+                  <span className="text-slate-500">지번 주소</span>
+                  <input 
+                    type="text" 
+                    value={hitlJibun} 
+                    onChange={(e) => setHitlJibun(e.target.value)} 
+                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-amber-500"
+                  />
+                </div>
+                
+                <div className="flex gap-2">
+                  <div className="flex-1 flex flex-col gap-1 text-[11px]">
+                    <span className="text-slate-500">경도(Lng)</span>
+                    <input type="number" step="0.000001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
+                  </div>
+                  <div className="flex-1 flex flex-col gap-1 text-[11px]">
+                    <span className="text-slate-500">위도(Lat)</span>
+                    <input type="number" step="0.000001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
+                  </div>
+                </div>
+              </div>
+
               <button 
                 onClick={handleHitlCommit}
-                className="w-full bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2 rounded-lg transition-all cursor-pointer"
+                className="w-full mt-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all cursor-pointer"
               >
-                보정 완료 및 의사결정 인자 도출 (Commit)
+                보정 완료 및 데이터 확정 (Commit)
               </button>
             </div>
           </div>
