@@ -56,6 +56,7 @@ export default function Home() {
   const [showRegulationModal, setShowRegulationModal] = useState(false);
   const [regulationsList, setRegulationsList] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const simEndRef = useRef(null);
 
   // 조례 목록 비동기 동기화 조회
@@ -193,7 +194,7 @@ export default function Home() {
 
       L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-      L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
         attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
       }).addTo(map);
 
@@ -843,31 +844,28 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-slate-100 font-sans">
+    <div className="relative min-h-screen overflow-hidden text-ink font-sans bg-canvas-soft">
       
       {/* 1. 상단 글로벌 네비게이션 헤더 */}
-      <header className="absolute top-0 left-0 right-0 h-16 glass-panel rounded-none border-t-0 border-x-0 z-45 px-8 flex justify-between items-center">
+      <header className="absolute top-0 left-0 right-0 h-16 glass-panel rounded-none border-t-0 border-x-0 border-b border-hairline z-50 px-8 flex justify-between items-center text-glass-crisp">
         <div className="flex items-center gap-3">
-          <span className="text-xl font-bold tracking-tight text-white">OmniSite</span>
-          <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">B2G SDSS v1.0</span>
-        </div>
-        <nav className="flex items-center gap-8 text-xs font-semibold">
-          <Link href="/" className="text-white border-b-2 border-blue-500 pb-1">입지분석 메인 (Map)</Link>
-          <Link href="/dashboard" className="text-slate-400 hover:text-white transition-all pb-1">이력 대시보드 (Analytics)</Link>
           <button 
-            onClick={() => setShowRegulationModal(true)} 
-            className="text-slate-400 hover:text-white transition-all pb-1 cursor-pointer flex items-center gap-1.5"
+            onClick={() => setIsSidebarOpen(prev => !prev)}
+            className="text-ink hover:text-primary text-xl font-bold cursor-pointer p-1 transition-colors mr-1"
+            title="메뉴 토글"
           >
-            ⚖️ 법규 RAG 관리
+            ☰
           </button>
-        </nav>
+          <span className="text-xl font-bold tracking-tight text-primary">OmniSite</span>
+          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-medium">B2G SDSS v1.0</span>
+        </div>
         <div>
           {isLoggedIn ? (
-            <span className="text-xs text-slate-300 font-medium">{department} | {municipalId}</span>
+            <span className="text-xs text-ink-secondary font-medium">{department} | {municipalId}</span>
           ) : (
             <button 
               onClick={() => setShowLoginModal(true)}
-              className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg font-semibold cursor-pointer transition-all"
+              className="btn-primary text-xs px-4 py-1.5 font-semibold"
             >
               공무원 로그인
             </button>
@@ -875,17 +873,47 @@ export default function Home() {
         </div>
       </header>
 
+      {/* 1-1. 왼쪽 사이드바 (Toggleable Left Sidebar) */}
+      <aside className={`fixed top-0 left-0 h-full w-64 glass-panel rounded-none border-y-0 border-l-0 border-r border-hairline z-48 p-6 flex flex-col gap-6 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} text-glass-crisp pt-20 bg-white/70`}>
+        <div className="flex justify-between items-center border-b border-hairline pb-4">
+          <span className="text-xs font-bold text-ink-secondary">행정 시스템 메뉴</span>
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="text-ink-secondary hover:text-ink text-sm font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+        <nav className="flex flex-col gap-2.5 text-xs font-semibold">
+          <Link href="/" className="text-primary hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5 border border-primary/10 bg-primary/5">
+            🗺️ 입지분석 메인 (Map)
+          </Link>
+          <Link href="/dashboard" className="text-ink hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5">
+            📊 이력 대시보드 (Analytics)
+          </Link>
+          <button 
+            onClick={() => {
+              setShowRegulationModal(true);
+              setIsSidebarOpen(false); // 모달 오픈 시 사이드바 닫기
+            }} 
+            className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5"
+          >
+            ⚖️ 법규 RAG 관리
+          </button>
+        </nav>
+      </aside>
+
       {/* 2. 인터랙티브 Leaflet GIS 3D 맵 공간 영역 (Map Container) */}
       <div id="interactive-map" className="map-container w-full h-full" />
 
       {/* 3. 좌측 플로팅 패널: 일괄 업로드 및 AHP 가중치 제어 (Upload & AHP Control Panel) */}
-      <div className="floating-overlay left-6 top-20 w-96 glass-panel p-6 flex flex-col gap-6 max-h-[82vh] overflow-y-auto">
+      <div className={`floating-overlay top-20 w-96 glass-panel p-6 flex flex-col gap-6 max-h-[82vh] overflow-y-auto text-glass-crisp transition-all duration-300 ${isSidebarOpen ? 'left-[280px]' : 'left-6'}`}>
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-sm font-bold text-white mb-0.5">입지선정 기준 설정</h2>
-            <p className="text-[10px] text-slate-400">데이터 적재 및 가중치 의사결정 수립</p>
+            <h2 className="text-sm font-bold text-ink mb-0.5">입지선정 기준 설정</h2>
+            <p className="text-[10px] text-ink-secondary">데이터 적재 및 가중치 의사결정 수립</p>
           </div>
-          <span className="text-xs bg-blue-600/20 text-blue-400 px-2.5 py-1 rounded-full font-bold">
+          <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold">
             Step {pipelineStep} / 5
           </span>
         </div>
@@ -893,32 +921,32 @@ export default function Home() {
         {/* [Step 1] 데이터 일괄 업로드 및 AI 감리 의도 검증 */}
         <div className={`flex flex-col gap-3 transition-all duration-300 ${pipelineStep !== 1 ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold text-slate-300">Step 1. CSV 수집 & AI 감리</label>
-            <span className="text-[10px] text-blue-400 font-mono">CSV 파일 전용</span>
+            <label className="text-xs font-semibold text-ink-secondary">Step 1. CSV 수집 & AI 감리</label>
+            <span className="text-[10px] text-primary font-mono font-medium">CSV 파일 전용</span>
           </div>
 
           {!isAuditComplete ? (
             <div 
               onClick={triggerFileAudit}
-              className="border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-xl p-5 text-center cursor-pointer transition-all bg-slate-950/40 hover:bg-slate-900/30"
+              className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-5 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
             >
-              <p className="text-xs text-slate-300 font-semibold">📁 CSV 파일 일괄 드래그앤드롭</p>
-              <p className="text-[10px] text-slate-500 mt-1">AI 감리 및 가중치 추출 개시</p>
+              <p className="text-xs text-ink font-semibold">📁 CSV 파일 일괄 드래그앤드롭</p>
+              <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 가중치 추출 개시</p>
             </div>
           ) : (
             /* AI 감리 결과 판독 및 실무자 의도 승인 루프 */
-            <div className="bg-slate-950/60 p-4 rounded-xl border border-blue-500/30 flex flex-col gap-3">
-              <div className="flex justify-between items-center border-b border-slate-900 pb-1.5">
-                <span className="text-[11px] text-blue-400 font-bold">✓ AI 사전 감리 완료</span>
-                <span className="text-[10px] text-slate-500">LLM 의도 매핑 성공</span>
+            <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-3">
+              <div className="flex justify-between items-center border-b border-hairline pb-1.5">
+                <span className="text-[11px] text-primary font-bold">✓ AI 사전 감리 완료</span>
+                <span className="text-[10px] text-ink-secondary">LLM 의도 매핑 성공</span>
               </div>
-              <div className="text-[11px] flex flex-col gap-2 text-slate-300 leading-relaxed">
-                <p><strong className="text-slate-400">감리 사유:</strong> {auditReason}</p>
-                <p><strong className="text-slate-400">추출된 의도:</strong> {userIntent}</p>
+              <div className="text-[11px] flex flex-col gap-2 text-ink leading-relaxed">
+                <p><strong className="text-ink-secondary">감리 사유:</strong> {auditReason}</p>
+                <p><strong className="text-ink-secondary">추출된 의도:</strong> {userIntent}</p>
               </div>
               <button
                 onClick={() => setPipelineStep(2)}
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold py-2 rounded-lg transition-all"
+                className="btn-primary w-full text-[11px]"
               >
                 추출 의도 확인 및 검증 단계 진입 (Approve)
               </button>
@@ -927,10 +955,10 @@ export default function Home() {
         </div>
 
         {/* [Step 3] AHP 슬라이더 컨트롤러 */}
-        <div className={`flex flex-col gap-4 border-t border-slate-800/80 pt-4 transition-all duration-300 ${pipelineStep < 3 ? 'opacity-20 pointer-events-none' : ''} ${pipelineStep > 3 ? 'opacity-40 pointer-events-none' : ''}`}>
+        <div className={`flex flex-col gap-4 border-t border-hairline pt-4 transition-all duration-300 ${pipelineStep < 3 ? 'opacity-20 pointer-events-none' : ''} ${pipelineStep > 3 ? 'opacity-40 pointer-events-none' : ''}`}>
           <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold text-slate-300">Step 3. AHP 인자별 상대 가중치</label>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${Object.keys(ahpWeights).length === 0 ? 'bg-slate-500/20 text-slate-400' : crValue < 0.1 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+            <label className="text-xs font-semibold text-ink-secondary">Step 3. AHP 인자별 상대 가중치</label>
+            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${Object.keys(ahpWeights).length === 0 ? 'bg-ink-secondary/10 text-ink-secondary' : crValue < 0.1 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
               C.R. = {Object.keys(ahpWeights).length === 0 ? '-' : crValue} ({Object.keys(ahpWeights).length === 0 ? '대기' : crValue < 0.1 ? '만족' : '위배'})
             </span>
           </div>
@@ -938,9 +966,9 @@ export default function Home() {
           <div className="flex flex-col gap-3">
             {Object.keys(ahpWeights).map(key => (
               <div key={key} className="flex flex-col gap-1">
-                <div className="flex justify-between text-[11px] text-slate-400">
+                <div className="flex justify-between text-[11px] text-ink-secondary">
                   <span>{key}</span>
-                  <span className="font-mono text-white">{ahpWeights[key]}</span>
+                  <span className="font-mono text-ink font-semibold">{ahpWeights[key]}</span>
                 </div>
                 <input
                   type="range"
@@ -949,7 +977,7 @@ export default function Home() {
                   disabled={isAhpLocked || pipelineStep !== 3}
                   value={ahpWeights[key]}
                   onChange={(e) => handleSliderChange(key, e.target.value)}
-                  className="w-full accent-blue-500 cursor-pointer h-1 bg-slate-800 rounded-lg appearance-none"
+                  className="w-full accent-primary cursor-pointer h-1 bg-gray-200 rounded-lg appearance-none"
                 />
               </div>
             ))}
@@ -959,7 +987,7 @@ export default function Home() {
           <button
             onClick={handleAhpLock}
             disabled={crValue >= 0.1 || pipelineStep !== 3 || Object.keys(ahpWeights).length === 0}
-            className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold cursor-pointer transition-all disabled:opacity-30"
+            className="btn-primary w-full text-xs disabled:opacity-30"
           >
             🔒 AHP 가중치 확정 및 추천 입지 연산 (Lock)
           </button>
@@ -971,7 +999,7 @@ export default function Home() {
                 setPipelineStep(3);
                 alert("AHP 가중치 잠금이 해제되었습니다. 가중치를 재조정한 뒤 다시 Lock을 걸어 공간 차집합 연산을 가동하십시오.");
               }}
-              className="w-full mt-2 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-[11px] font-semibold cursor-pointer transition-all border border-slate-700/80"
+              className="btn-secondary w-full text-[11px]"
             >
               🔓 AHP 가중치 잠금 해제 (Unlock)
             </button>
@@ -980,58 +1008,58 @@ export default function Home() {
       </div>
 
       {/* 4. 우측 플로팅 패널: 후보지 탭 및 속성 정보 카드 (Information & HITL Panel) */}
-      <div className="floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto">
+      <div className="floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto text-glass-crisp">
         
         {/* [Step 2] 하이브리드 HITL: 탐색 의도 및 물리 좌표 동시 보정 영역 */}
         {pipelineStep === 2 && (
           <div className="flex flex-col gap-3">
-            <div className="border-b border-slate-800 pb-2">
-              <h2 className="text-xs font-bold text-amber-500">Step 2. 하이브리드 공간 및 의도 보정 (HITL)</h2>
-              <p className="text-[10px] text-slate-400 font-medium">지도의 주황색 핀을 드래그하거나 아래 폼에서 피드백을 보정하세요.</p>
+            <div className="border-b border-hairline pb-2">
+              <h2 className="text-xs font-bold text-amber-600">Step 2. 하이브리드 공간 및 의도 보정 (HITL)</h2>
+              <p className="text-[10px] text-ink-secondary font-medium">지도의 주황색 핀을 드래그하거나 아래 폼에서 피드백을 보정하세요.</p>
             </div>
             
-            <div className="bg-slate-950/40 p-4 rounded-xl border border-amber-500/30 flex flex-col gap-3">
+            <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-3">
               {/* 1. 탐색 의도 보정 */}
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400 font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
+                <span className="text-ink-secondary font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
                 <textarea 
                   rows={3}
                   value={userIntent} 
                   onChange={(e) => setUserIntent(e.target.value)} 
-                  className="bg-slate-900 border border-slate-700 rounded p-2 text-white text-xs outline-none focus:border-amber-500 resize-none leading-relaxed"
+                  className="text-input-notion resize-none leading-relaxed"
                 />
-                <span className="text-[9px] text-slate-500">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
+                <span className="text-[9px] text-ink-secondary">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
               </div>
 
               {/* 2. 지번 및 위경도 보정 */}
-              <div className="flex flex-col gap-2.5 border-t border-slate-800/80 pt-2.5">
-                <span className="text-[11px] text-slate-400 font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
+              <div className="flex flex-col gap-2.5 border-t border-hairline pt-2.5">
+                <span className="text-[11px] text-ink-secondary font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
                 
                 <div className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-500">지번 주소</span>
+                  <span className="text-ink-secondary">지번 주소</span>
                   <input 
                     type="text" 
                     value={hitlJibun} 
                     onChange={(e) => setHitlJibun(e.target.value)} 
-                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-amber-500"
+                    className="text-input-notion"
                   />
                 </div>
                 
                 <div className="flex gap-2">
                   <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                    <span className="text-slate-500">경도(Lng)</span>
-                    <input type="number" step="0.000001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
+                    <span className="text-ink-secondary">경도(Lng)</span>
+                    <input type="number" step="0.000001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="text-input-notion" />
                   </div>
                   <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                    <span className="text-slate-500">위도(Lat)</span>
-                    <input type="number" step="0.000001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
+                    <span className="text-ink-secondary">위도(Lat)</span>
+                    <input type="number" step="0.000001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="text-input-notion" />
                   </div>
                 </div>
               </div>
 
               <button 
                 onClick={handleHitlCommit}
-                className="w-full mt-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all cursor-pointer"
+                className="btn-primary w-full bg-amber-500 hover:bg-amber-600 text-xs py-2.5 rounded-lg"
               >
                 보정 완료 및 데이터 확정 (Commit)
               </button>
@@ -1043,12 +1071,12 @@ export default function Home() {
         {pipelineStep >= 4 ? (
           <div className="flex flex-col gap-5">
             {/* Top 1 ~ Top 3 탭 */}
-            <div className="flex bg-slate-950/60 p-1 rounded-lg border border-slate-800/80">
+            <div className="flex bg-gray-200/50 p-1 rounded-lg border border-hairline">
               {['top1', 'top2', 'top3'].map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
-                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-md' : 'text-slate-400 hover:text-slate-200'}`}
+                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all ${activeTab === tab ? 'bg-primary text-white shadow-sm' : 'text-ink-secondary hover:text-ink'}`}
                 >
                   {tab.toUpperCase()}
                 </button>
@@ -1057,21 +1085,21 @@ export default function Home() {
 
             {/* 필지 속성 카드 */}
             <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-semibold text-slate-300">Step 4. 추천지 속성 정보</h3>
-              <div className="bg-slate-950/40 p-4 rounded-xl border border-slate-800/40 flex flex-col gap-2.5">
+              <h3 className="text-xs font-semibold text-ink-secondary">Step 4. 추천지 속성 정보</h3>
+              <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-2.5">
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">지번 / 소유 구분</span>
-                  <span className="text-white font-semibold">{selectedParcel[activeTab].jibun}</span>
+                  <span className="text-ink-secondary">지번 / 소유 구분</span>
+                  <span className="text-ink font-semibold">{selectedParcel[activeTab].jibun}</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">면적(㎡)</span>
-                  <span className="font-mono text-white">{selectedParcel[activeTab].area} ㎡</span>
+                  <span className="text-ink-secondary">면적(㎡)</span>
+                  <span className="font-mono text-ink font-semibold">{selectedParcel[activeTab].area} ㎡</span>
                 </div>
                 <div className="flex justify-between text-xs">
-                  <span className="text-slate-400">공시지가</span>
-                  <span className="font-mono text-emerald-400">₩ {selectedParcel[activeTab].price.toLocaleString()} / ㎡</span>
+                  <span className="text-ink-secondary">공시지가</span>
+                  <span className="font-mono text-primary font-semibold">₩ {selectedParcel[activeTab].price.toLocaleString()} / ㎡</span>
                 </div>
-                <div className="flex justify-between text-[11px] border-t border-slate-900 pt-2 text-slate-500">
+                <div className="flex justify-between text-[11px] border-t border-hairline pt-2 text-ink-secondary">
                   <span>위도/경도 좌표</span>
                   <span className="font-mono">{selectedParcel[activeTab].lat}, {selectedParcel[activeTab].lng}</span>
                 </div>
@@ -1081,17 +1109,17 @@ export default function Home() {
             {/* 갈등 민감도 카드 */}
             <div className="flex flex-col gap-3">
               <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-slate-300">지역 갈등 민감도 (CSS)</span>
+                <span className="font-semibold text-ink-secondary">지역 갈등 민감도 (CSS)</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/20 text-rose-400' :
-                  selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/20 text-amber-400' :
-                  'bg-emerald-500/20 text-emerald-400'
+                  selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
+                  selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' :
+                  'bg-emerald-500/10 text-emerald-600'
                 }`}>
                   등급: {selectedParcel[activeTab].cssGrade} ({selectedParcel[activeTab].css}점)
                 </span>
               </div>
 
-              <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+              <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
                 <div className={`h-full transition-all duration-500 ${
                   selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
                   selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500' :
@@ -1101,14 +1129,14 @@ export default function Home() {
             </div>
 
             {/* [Step 5] AI 모의 토론 및 WeasyPrint PDF 발급 */}
-            <div className="border-t border-slate-800/80 pt-4 flex flex-col gap-2">
-              <span className="text-xs font-semibold text-slate-300">Step 5. 의사결정 시뮬레이션</span>
+            <div className="border-t border-hairline pt-4 flex flex-col gap-2">
+              <span className="text-xs font-semibold text-ink-secondary">Step 5. 의사결정 시뮬레이션</span>
               <button 
                 onClick={() => {
                   setPipelineStep(5);
                   runSimulation();
                 }}
-                className="w-full bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs py-3 rounded-xl transition-all cursor-pointer shadow-lg shadow-rose-900/30"
+                className="w-full btn-primary text-xs py-3 rounded-xl shadow-md"
               >
                 {activeTab.toUpperCase()} 갈등 심의 시뮬레이터 실행 (GPT-4o)
               </button>
@@ -1116,7 +1144,7 @@ export default function Home() {
           </div>
         ) : (
           pipelineStep !== 2 && (
-            <div className="text-center py-20 text-slate-500 text-xs">
+            <div className="text-center py-20 text-ink-secondary text-xs">
               [Step 1] 데이터 적재 및 <br />
               [Step 3] AHP 가중치 잠금을 진행하시면<br />
               이곳에 공간 차집합 추천 결과가 출력됩니다.
@@ -1127,57 +1155,57 @@ export default function Home() {
 
       {/* AI 시뮬레이션 모달 팝업 */}
       {showSimModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="w-[800px] h-[550px] glass-panel p-6 flex flex-col justify-between">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-glass-crisp">
+          <div className="w-[800px] h-[550px] glass-panel-deep p-6 flex flex-col justify-between rounded-2xl">
+            <div className="flex justify-between items-center border-b border-hairline pb-3">
               <div>
-                <h3 className="text-sm font-semibold text-slate-300">OMS-01-03-001 | AI 에이전트 실시간 모의 심의 토론</h3>
-                <p className="text-[10px] text-slate-500">Target PNU: {selectedParcel[activeTab].pnu}</p>
+                <h3 className="text-sm font-semibold text-ink">OMS-01-03-001 | AI 에이전트 실시간 모의 심의 토론</h3>
+                <p className="text-[10px] text-ink-secondary">Target PNU: {selectedParcel[activeTab].pnu}</p>
               </div>
               <button 
                 onClick={() => setShowSimModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+                className="text-ink-secondary hover:text-ink text-lg font-bold cursor-pointer"
               >
                 &times;
               </button>
             </div>
 
-            {/* 터미널 대화 스크롤 */}
-            <div className="flex-1 my-4 bg-slate-950/70 rounded-xl p-4 overflow-y-auto font-mono text-xs flex flex-col gap-3 border border-slate-900/80">
+            {/* 터미널 대화 스크롤 - Deep Indigo (#213183) 밤하늘 테마 */}
+            <div className="flex-1 my-4 bg-secondary rounded-xl p-4 overflow-y-auto font-mono text-xs flex flex-col gap-3 border border-indigo-950 shadow-inner text-white">
               {simLogs.map((log, index) => (
                 <div key={index} className="flex gap-2">
                   <span className={`font-semibold shrink-0 ${
-                    log.sender.startsWith('시스템') ? 'text-blue-400' :
-                    log.sender.includes('반대') ? 'text-rose-400' :
-                    log.sender.includes('찬성') ? 'text-emerald-400' : 'text-slate-300'
+                    log.sender.startsWith('시스템') ? 'text-cyan-300' :
+                    log.sender.includes('반대') ? 'text-rose-300' :
+                    log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
                   }`}>
                     [{log.sender}]
                   </span>
-                  <span className="text-slate-200">{log.text}</span>
+                  <span className="text-gray-100">{log.text}</span>
                 </div>
               ))}
               {isSimulating && (
-                <div className="text-slate-500 animate-pulse">... 에이전트 심의 분석 진행 중 ...</div>
+                <div className="text-indigo-200 animate-pulse">... 에이전트 심의 분석 진행 중 ...</div>
               )}
               <div ref={simEndRef} />
             </div>
 
             {/* 하단 제어 바 (보고서 다운로드 포함) */}
-            <div className="flex justify-between items-center border-t border-slate-800 pt-3">
-              <span className="text-[10px] text-slate-500">
+            <div className="flex justify-between items-center border-t border-hairline pt-3">
+              <span className="text-[10px] text-ink-secondary">
                 도로점용료 예상액: ₩ {Math.round(selectedParcel[activeTab].area * selectedParcel[activeTab].price * 0.02 * (365/365)).toLocaleString()} / 년
               </span>
               <div className="flex gap-3">
                 <button
                   onClick={handleDownloadPdf}
                   disabled={isSimulating}
-                  className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+                  className="btn-primary bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-all"
                 >
                   📝 WeasyPrint PDF 보고서 다운로드
                 </button>
                 <button
                   onClick={() => setShowSimModal(false)}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2.5 rounded-lg transition-all cursor-pointer"
+                  className="btn-secondary text-xs px-4 py-2.5"
                 >
                   닫기
                 </button>
@@ -1189,10 +1217,10 @@ export default function Home() {
 
       {/* 공무원 로그인 & 회원가입 통합 인증 모달 */}
       {showLoginModal && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="w-[400px] glass-panel p-6 flex flex-col gap-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h3 className="text-sm font-semibold text-slate-300">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-glass-crisp">
+          <div className="w-[400px] glass-panel-deep p-6 flex flex-col gap-4 rounded-2xl">
+            <div className="flex justify-between items-center border-b border-hairline pb-3">
+              <h3 className="text-sm font-semibold text-ink">
                 {authMode === 'login' ? '🔑 도시행정망 실무자 인증' : '📝 신규 실무자 계정 등록'}
               </h3>
               <button 
@@ -1202,24 +1230,24 @@ export default function Home() {
                   setPassword('');
                   setUsername('');
                 }} 
-                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+                className="text-ink-secondary hover:text-ink text-lg font-bold cursor-pointer"
               >
                 &times;
               </button>
             </div>
 
             {/* 로그인 / 회원가입 전환 탭 */}
-            <div className="flex gap-2 border-b border-slate-800 pb-3">
+            <div className="flex gap-2 border-b border-hairline pb-3">
               <button
                 type="button"
                 onClick={() => {
                   setAuthMode('login');
                   setPassword('');
                 }}
-                className={`flex-1 text-[11px] py-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`flex-1 text-[11px] py-2 rounded-lg font-semibold transition-all cursor-pointer border ${
                   authMode === 'login' 
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40' 
-                    : 'bg-transparent text-slate-400 hover:text-slate-200 border border-transparent'
+                    ? 'bg-primary/10 text-primary border-primary/20' 
+                    : 'bg-transparent text-ink-secondary hover:text-ink border-transparent'
                 }`}
               >
                 로그인 모드
@@ -1230,10 +1258,10 @@ export default function Home() {
                   setAuthMode('register');
                   setPassword('');
                 }}
-                className={`flex-1 text-[11px] py-2 rounded-lg font-semibold transition-all cursor-pointer ${
+                className={`flex-1 text-[11px] py-2 rounded-lg font-semibold transition-all cursor-pointer border ${
                   authMode === 'register' 
-                    ? 'bg-blue-600/20 text-blue-400 border border-blue-500/40' 
-                    : 'bg-transparent text-slate-400 hover:text-slate-200 border border-transparent'
+                    ? 'bg-primary/10 text-primary border-primary/20' 
+                    : 'bg-transparent text-ink-secondary hover:text-ink border-transparent'
                 }`}
               >
                 회원가입 모드
@@ -1242,11 +1270,11 @@ export default function Home() {
 
             <form onSubmit={authMode === 'login' ? handleLogin : handleRegister} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400">소속 자치구 / 부서</span>
+                <span className="text-ink-secondary">소속 자치구 / 부서</span>
                 <select 
                   value={department} 
                   onChange={(e) => setDepartment(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+                  className="text-input-notion w-full"
                 >
                   <option value="용산구 스마트도시과">용산구 스마트도시과</option>
                   <option value="용산구 도시계획과">용산구 도시계획과</option>
@@ -1256,42 +1284,42 @@ export default function Home() {
 
               {authMode === 'register' && (
                 <div className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-400">실무자 이름</span>
+                  <span className="text-ink-secondary">실무자 이름</span>
                   <input 
                     type="text" 
                     placeholder="홍길동 주무관"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+                    className="text-input-notion"
                   />
                 </div>
               )}
 
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400">행정 이메일</span>
+                <span className="text-ink-secondary">행정 이메일</span>
                 <input 
                   type="email" 
                   placeholder="admin@yongsan.go.kr"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+                  className="text-input-notion"
                 />
               </div>
 
               <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400">행정망 비밀번호</span>
+                <span className="text-ink-secondary">행정망 비밀번호</span>
                 <input 
                   type="password" 
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-white outline-none focus:border-blue-500"
+                  className="text-input-notion"
                 />
               </div>
 
               <button
                 type="submit"
-                className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all cursor-pointer"
+                className="btn-primary w-full text-xs py-2.5"
               >
                 {authMode === 'login' ? '행정망 접속 승인' : '신규 실무자 등록 신청'}
               </button>
@@ -1302,28 +1330,28 @@ export default function Home() {
 
       {/* 조례 RAG 관리 모달 */}
       {showRegulationModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-md z-50 flex items-center justify-center p-6">
-          <div className="w-[550px] glass-panel p-6 flex flex-col gap-5 border border-slate-800">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-glass-crisp">
+          <div className="w-[550px] glass-panel-deep p-6 flex flex-col gap-5 border border-hairline rounded-2xl">
+            <div className="flex justify-between items-center border-b border-hairline pb-3">
               <div>
-                <h3 className="text-sm font-semibold text-white">⚖️ 법규 RAG 지식베이스 관리</h3>
-                <p className="text-[10px] text-slate-400 mt-0.5">RAG에 활용될 조례 PDF 목록을 관리하고 다중 업로드합니다.</p>
+                <h3 className="text-sm font-semibold text-ink">⚖️ 법규 RAG 지식베이스 관리</h3>
+                <p className="text-[10px] text-ink-secondary mt-0.5">RAG에 활용될 조례 PDF 목록을 관리하고 다중 업로드합니다.</p>
               </div>
               <button 
                 onClick={() => setShowRegulationModal(false)} 
-                className="text-slate-400 hover:text-white text-xl font-bold cursor-pointer"
+                className="text-ink-secondary hover:text-ink text-xl font-bold cursor-pointer"
               >
                 &times;
               </button>
             </div>
 
             {/* 다중 파일 드롭존 / 업로드 영역 */}
-            <div className="bg-slate-950/40 border border-slate-800/80 p-4 rounded-xl flex flex-col gap-3">
+            <div className="bg-white/50 border border-hairline p-4 rounded-xl flex flex-col gap-3">
               <div className="flex justify-between items-center">
-                <span className="text-[11px] font-semibold text-slate-300">조례 PDF 다중 업로드</span>
-                <span className="text-[10px] text-slate-500 font-mono">PDF 파일만 허용</span>
+                <span className="text-[11px] font-semibold text-ink-secondary">조례 PDF 다중 업로드</span>
+                <span className="text-[10px] text-ink-secondary font-mono">PDF 파일만 허용</span>
               </div>
-              <div className="relative border-2 border-dashed border-slate-700 hover:border-blue-500 rounded-lg p-5 text-center cursor-pointer transition-all bg-slate-900/40">
+              <div className="relative border-2 border-dashed border-hairline hover:border-primary rounded-lg p-5 text-center cursor-pointer transition-all bg-white/40">
                 <input 
                   type="file" 
                   multiple 
@@ -1331,22 +1359,22 @@ export default function Home() {
                   onChange={handleRegulationUpload}
                   className="absolute inset-0 opacity-0 cursor-pointer" 
                 />
-                <p className="text-xs text-slate-300 font-medium">📁 PDF 파일 일괄 드래그 또는 클릭</p>
-                <p className="text-[10px] text-slate-500 mt-1">동일 파일명 업로드 시 중복 방지 가드가 작동합니다.</p>
+                <p className="text-xs text-ink font-medium">📁 PDF 파일 일괄 드래그 또는 클릭</p>
+                <p className="text-[10px] text-ink-secondary mt-1">동일 파일명 업로드 시 중복 방지 가드가 작동합니다.</p>
               </div>
-              {isUploading && <p className="text-[10px] text-blue-400 animate-pulse text-center">조례 분석 및 RAG 임베딩 텍스트 파싱 중...</p>}
+              {isUploading && <p className="text-[10px] text-primary animate-pulse text-center">조례 분석 및 RAG 임베딩 텍스트 파싱 중...</p>}
             </div>
 
             {/* 조례 리스트 테이블 */}
             <div className="flex flex-col gap-2">
-              <span className="text-[11px] font-semibold text-slate-300">📋 적재된 조례 목록 ({regulationsList.length}건)</span>
-              <div className="max-h-[220px] overflow-y-auto bg-slate-950/60 rounded-xl border border-slate-800/80 p-2">
+              <span className="text-[11px] font-semibold text-ink-secondary">📋 적재된 조례 목록 ({regulationsList.length}건)</span>
+              <div className="max-h-[220px] overflow-y-auto bg-white/50 rounded-xl border border-hairline p-2">
                 {regulationsList.length === 0 ? (
-                  <p className="text-center text-xs text-slate-500 py-6">적재된 조례 문서가 없습니다.</p>
+                  <p className="text-center text-xs text-ink-secondary py-6">적재된 조례 문서가 없습니다.</p>
                 ) : (
                   <table className="w-full text-[11px] text-left border-collapse">
                     <thead>
-                      <tr className="border-b border-slate-800 text-slate-400 font-medium">
+                      <tr className="border-b border-hairline text-ink-secondary font-medium">
                         <th className="pb-2 pl-2">파일명</th>
                         <th className="pb-2">크기 (KB)</th>
                         <th className="pb-2 text-right pr-2">작업</th>
@@ -1354,13 +1382,13 @@ export default function Home() {
                     </thead>
                     <tbody>
                       {regulationsList.map((item, idx) => (
-                        <tr key={idx} className="border-b border-slate-900/50 hover:bg-slate-900/30 text-slate-300">
+                        <tr key={idx} className="border-b border-hairline hover:bg-gray-100 text-ink">
                           <td className="py-2 pl-2 max-w-[280px] truncate" title={item.filename}>{item.filename}</td>
                           <td className="py-2">{(item.size / 1024).toFixed(1)} KB</td>
                           <td className="py-2 text-right pr-2">
                             <button 
                               onClick={() => handleRegulationDelete(item.filename)}
-                              className="text-rose-400 hover:text-rose-500 font-bold hover:scale-110 transition-all cursor-pointer"
+                              className="text-rose-500 hover:text-rose-600 font-bold hover:scale-110 transition-all cursor-pointer"
                               title="조례 및 RAG 캐시 삭제"
                             >
                               🗑️

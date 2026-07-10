@@ -21,6 +21,7 @@ export default function Dashboard() {
   // 과거 이력 상세 모달 상태
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   // 파일 업로드 및 분석 시뮬레이션
   const handleAuditUpload = (e) => {
@@ -191,22 +192,49 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="relative min-h-screen bg-slate-950 text-slate-100 font-sans pt-20">
+    <div className="relative min-h-screen bg-canvas-soft text-ink font-sans pt-20 text-glass-crisp">
       
       {/* 1. 상단 글로벌 네비게이션 헤더 */}
-      <header className="absolute top-0 left-0 right-0 h-16 glass-panel rounded-none border-t-0 border-x-0 z-45 px-8 flex justify-between items-center">
+      <header className="absolute top-0 left-0 right-0 h-16 glass-panel rounded-none border-t-0 border-x-0 border-b border-hairline z-50 px-8 flex justify-between items-center text-glass-crisp">
         <div className="flex items-center gap-3">
-          <span className="text-xl font-bold tracking-tight text-white">OmniSite</span>
-          <span className="text-[10px] bg-blue-500/20 text-blue-400 px-2 py-0.5 rounded border border-blue-500/30">B2G SDSS v1.0</span>
+          <button 
+            onClick={() => setIsSidebarOpen(prev => !prev)}
+            className="text-ink hover:text-primary text-xl font-bold cursor-pointer p-1 transition-colors mr-1"
+            title="메뉴 토글"
+          >
+            ☰
+          </button>
+          <span className="text-xl font-bold tracking-tight text-primary">OmniSite</span>
+          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-medium">B2G SDSS v1.0</span>
         </div>
-        <nav className="flex items-center gap-8 text-xs font-semibold">
-          <Link href="/" className="text-slate-400 hover:text-white transition-all pb-1">입지분석 메인 (Map)</Link>
-          <Link href="/dashboard" className="text-white border-b-2 border-blue-500 pb-1">이력 대시보드 (Analytics)</Link>
-        </nav>
-        <div className="text-xs text-slate-400">
+        <div className="text-xs text-ink-secondary font-medium">
           행정망 인증 토큰 활성화됨
         </div>
       </header>
+
+      {/* 1-1. 왼쪽 사이드바 (Toggleable Left Sidebar) */}
+      <aside className={`fixed top-0 left-0 h-full w-64 glass-panel rounded-none border-y-0 border-l-0 border-r border-hairline z-48 p-6 flex flex-col gap-6 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} text-glass-crisp pt-20 bg-white/70`}>
+        <div className="flex justify-between items-center border-b border-hairline pb-4">
+          <span className="text-xs font-bold text-ink-secondary">행정 시스템 메뉴</span>
+          <button 
+            onClick={() => setIsSidebarOpen(false)}
+            className="text-ink-secondary hover:text-ink text-sm font-bold cursor-pointer"
+          >
+            ✕
+          </button>
+        </div>
+        <nav className="flex flex-col gap-2.5 text-xs font-semibold">
+          <Link href="/" className="text-ink hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5">
+            🗺️ 입지분석 메인 (Map)
+          </Link>
+          <Link href="/dashboard" className="text-primary hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5 border border-primary/10 bg-primary/5">
+            📊 이력 대시보드 (Analytics)
+          </Link>
+          <Link href="/" className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5">
+            ⚖️ 법규 RAG 관리
+          </Link>
+        </nav>
+      </aside>
 
       {/* 2. 대시보드 레이아웃 본문 */}
       <main className="max-w-7xl mx-auto p-8 flex flex-col gap-8">
@@ -214,19 +242,19 @@ export default function Dashboard() {
         {/* 상단 3대 지표 분석 요약 카드 (크레딧 항목 제거 및 행정 지표 대체) */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="glass-panel p-6 flex flex-col gap-2">
-            <span className="text-xs text-slate-400 font-semibold">종합 입지 의사결정 수립 건수</span>
-            <span className="text-3xl font-bold text-white font-mono">18 건</span>
-            <p className="text-[10px] text-emerald-400 mt-1">▲ 전월 대비 12% 상승 (용산구 최다 수립)</p>
+            <span className="text-xs text-ink-secondary font-semibold">종합 입지 의사결정 수립 건수</span>
+            <span className="text-3xl font-bold text-ink font-mono">18 건</span>
+            <p className="text-[10px] text-emerald-600 mt-1">▲ 전월 대비 12% 상승 (용산구 최다 수립)</p>
           </div>
           <div className="glass-panel p-6 flex flex-col gap-2">
-            <span className="text-xs text-slate-400 font-semibold">평균 갈등 타결 신뢰도</span>
-            <span className="text-3xl font-bold text-blue-400 font-mono">87.5 %</span>
-            <p className="text-[10px] text-slate-500 mt-1">LangGraph 예측 시나리오 매핑 만족 수준</p>
+            <span className="text-xs text-ink-secondary font-semibold">평균 갈등 타결 신뢰도</span>
+            <span className="text-3xl font-bold text-primary font-mono">87.5 %</span>
+            <p className="text-[10px] text-ink-secondary mt-1">LangGraph 예측 시나리오 매핑 만족 수준</p>
           </div>
           <div className="glass-panel p-6 flex flex-col gap-2">
-            <span className="text-xs text-slate-400 font-semibold">RAG 축적 검증사례 수</span>
-            <span className="text-3xl font-bold text-emerald-400 font-mono">12 건</span>
-            <p className="text-[10px] text-slate-500 mt-1">실제 이행 공문 분석 RAG 격리 세그먼트 적재량</p>
+            <span className="text-xs text-ink-secondary font-semibold">RAG 축적 검증사례 수</span>
+            <span className="text-3xl font-bold text-emerald-600 font-mono">12 건</span>
+            <p className="text-[10px] text-ink-secondary mt-1">실제 이행 공문 분석 RAG 격리 세그먼트 적재량</p>
           </div>
         </section>
 
@@ -235,15 +263,15 @@ export default function Dashboard() {
           
           {/* 좌측 2칸: 과거 이력 테이블 */}
           <div className="lg:col-span-2 glass-panel p-6 flex flex-col gap-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
-              <h2 className="text-sm font-bold text-white">행정 의사결정 이력 목록 (OMS-01-04-001)</h2>
-              <span className="text-[10px] text-slate-500">지적 필지 및 갈등 시뮬레이션 이력 아카이브</span>
+            <div className="flex justify-between items-center border-b border-hairline pb-3">
+              <h2 className="text-sm font-bold text-ink">행정 의사결정 이력 목록 (OMS-01-04-001)</h2>
+              <span className="text-[10px] text-ink-secondary font-medium">지적 필지 및 갈등 시뮬레이션 이력 아카이브</span>
             </div>
 
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-slate-800 text-slate-400 font-semibold bg-slate-900/30">
+                  <tr className="border-b border-hairline text-ink-secondary font-semibold bg-gray-200/50">
                     <th className="py-3 px-4">의사결정 ID</th>
                     <th className="py-3 px-4">일자</th>
                     <th className="py-3 px-4">대상 지역</th>
@@ -256,22 +284,22 @@ export default function Dashboard() {
                 </thead>
                 <tbody>
                   {historyList.map(item => (
-                    <tr key={item.id} className="border-b border-slate-900 hover:bg-slate-900/30 transition-all">
-                      <td className="py-3.5 px-4 font-mono text-slate-300">#{item.id}</td>
-                      <td className="py-3.5 px-4 text-slate-400">{item.date}</td>
-                      <td className="py-3.5 px-4 font-medium text-white">{item.region}</td>
-                      <td className="py-3.5 px-4 text-slate-300">{item.infra}</td>
+                    <tr key={item.id} className="border-b border-hairline hover:bg-gray-100/50 transition-all text-ink">
+                      <td className="py-3.5 px-4 font-mono text-ink font-semibold">#{item.id}</td>
+                      <td className="py-3.5 px-4 text-ink-secondary">{item.date}</td>
+                      <td className="py-3.5 px-4 font-semibold text-ink">{item.region}</td>
+                      <td className="py-3.5 px-4 text-ink">{item.infra}</td>
                       <td className="py-3.5 px-4">
                         <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.status === '행정 종결' ? 'bg-emerald-500/20 text-emerald-400' : 'bg-amber-500/20 text-amber-400'
+                          item.status === '행정 종결' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
                         }`}>
                           {item.status}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
                         <span className={`text-[10px] font-semibold ${
-                          item.auditState === '검증 완료' ? 'text-emerald-400' :
-                          item.auditState === '대기 중' ? 'text-slate-500 animate-pulse' : 'text-rose-400'
+                          item.auditState === '검증 완료' ? 'text-emerald-600' :
+                          item.auditState === '대기 중' ? 'text-ink-secondary animate-pulse' : 'text-rose-600'
                         }`}>
                           {item.auditState}
                         </span>
@@ -279,7 +307,7 @@ export default function Dashboard() {
                       <td className="py-3.5 px-4 text-center">
                         <button
                           onClick={() => openHistoryDetails(item)}
-                          className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold px-2 py-1 rounded cursor-pointer transition-all border border-slate-700"
+                          className="btn-secondary text-[10px] px-2 py-1 font-bold rounded"
                         >
                           상세 조회
                         </button>
@@ -292,7 +320,7 @@ export default function Dashboard() {
                             setAuditResult(null);
                           }}
                           disabled={item.status !== '행정 종결'}
-                          className="bg-blue-600 hover:bg-blue-700 disabled:opacity-30 disabled:pointer-events-none text-white text-[10px] font-bold px-2 py-1 rounded cursor-pointer transition-all"
+                          className="btn-primary text-[10px] px-2 py-1 font-bold rounded disabled:opacity-30 disabled:pointer-events-none"
                         >
                           검증 선택
                         </button>
@@ -306,69 +334,69 @@ export default function Dashboard() {
 
           {/* 우측 1칸: 선택된 이력의 Audit AI 사후 검증 모듈 */}
           <div className="glass-panel p-6 flex flex-col gap-4">
-            <div className="border-b border-slate-800 pb-3">
-              <h2 className="text-sm font-bold text-white">사후 Audit AI 검증 패널</h2>
-              <p className="text-[10px] text-slate-500">선택된 이력의 실제 공문서 검증 피드백 루프</p>
+            <div className="border-b border-hairline pb-3">
+              <h2 className="text-sm font-bold text-ink">사후 Audit AI 검증 패널</h2>
+              <p className="text-[10px] text-ink-secondary">선택된 이력의 실제 공문서 검증 피드백 루프</p>
             </div>
 
             {activeHistoryId ? (
               <div className="flex flex-col gap-4">
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
-                  <span className="font-semibold text-slate-300">선택된 이력 ID:</span>
-                  <span className="font-mono text-blue-400 font-bold">#{activeHistoryId}</span>
+                <div className="bg-white/50 p-4 rounded-xl border border-hairline flex justify-between items-center text-xs">
+                  <span className="font-semibold text-ink-secondary">선택된 이력 ID:</span>
+                  <span className="font-mono text-primary font-bold">#{activeHistoryId}</span>
                 </div>
 
                 {/* 결재 공문 업로드존 */}
                 <div className="flex flex-col gap-2">
-                  <label className="text-xs text-slate-400">행정 종결 고시 공문 (PDF)</label>
-                  <div className="border-2 border-dashed border-slate-700 hover:border-emerald-500 rounded-xl p-5 text-center cursor-pointer transition-all bg-slate-950/40 relative">
+                  <label className="text-xs text-ink-secondary font-medium">행정 종결 고시 공문 (PDF)</label>
+                  <div className="border-2 border-dashed border-hairline hover:border-emerald-500 rounded-xl p-5 text-center cursor-pointer transition-all bg-white/40 relative">
                     <input 
                       type="file" 
                       accept=".pdf" 
                       onChange={handleAuditUpload} 
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
-                    <p className="text-xs text-slate-300 font-medium">
+                    <p className="text-xs text-ink font-medium">
                       {auditFile ? auditFile.name : '준공/고시 공문 드롭존'}
                     </p>
-                    <p className="text-[9px] text-slate-600 mt-1">드래그앤드롭하여 분석 개시</p>
+                    <p className="text-[9px] text-ink-secondary mt-1">드래그앤드롭하여 분석 개시</p>
                   </div>
                 </div>
 
                 {/* 파싱 중 인디케이터 */}
                 {isParsing && (
-                  <div className="text-xs text-blue-400 animate-pulse text-center my-4 font-mono">
+                  <div className="text-xs text-primary animate-pulse text-center my-4 font-mono">
                     📄 OCR 추출 및 시나리오 1:1 매핑 연산 중...
                   </div>
                 )}
 
                 {/* 분석 완료 리포트 */}
                 {auditResult && !isParsing && (
-                  <div className="bg-slate-950/60 p-4 rounded-xl border border-emerald-500/30 flex flex-col gap-3 text-xs text-slate-300 leading-relaxed">
-                    <div className="flex justify-between border-b border-slate-900 pb-1.5 text-emerald-400 font-semibold">
+                  <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-3 text-xs text-ink leading-relaxed">
+                    <div className="flex justify-between border-b border-hairline pb-1.5 text-emerald-600 font-semibold">
                       <span>도달 시나리오</span>
                       <span>{auditResult.mappedScenario}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block mb-0.5">매칭 유사 신뢰도</span>
-                      <span className="text-white font-mono font-bold">{auditResult.matchScore}% 적합</span>
+                      <span className="text-ink-secondary block mb-0.5">매칭 유사 신뢰도</span>
+                      <span className="text-ink font-mono font-bold">{auditResult.matchScore}% 적합</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block mb-0.5">판독 공문</span>
-                      <span className="text-slate-300 font-medium">{auditResult.title}</span>
+                      <span className="text-ink-secondary block mb-0.5">판독 공문</span>
+                      <span className="text-ink font-medium">{auditResult.title}</span>
                     </div>
                     <div>
-                      <span className="text-slate-500 block mb-0.5">주요 요약 결과</span>
-                      <p className="text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 text-[11px]">{auditResult.summary}</p>
+                      <span className="text-ink-secondary block mb-0.5">주요 요약 결과</span>
+                      <p className="text-ink-secondary bg-white/40 p-2.5 rounded border border-hairline text-[11px]">{auditResult.summary}</p>
                     </div>
-                    <div className="text-[10px] text-emerald-400 font-bold border-t border-slate-900 pt-2 text-right">
+                    <div className="text-[10px] text-emerald-600 font-bold border-t border-hairline pt-2 text-right">
                       ✓ RAG 격리 세그먼트 적재 및 요약 완료
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <div className="text-center py-20 text-slate-500 text-xs">
+              <div className="text-center py-20 text-ink-secondary text-xs">
                 의사결정 이력 테이블에서<br />[검증 선택] 버튼을 클릭하면<br />사후 검증 드롭존이 활성화됩니다.
               </div>
             )}
@@ -379,54 +407,54 @@ export default function Dashboard() {
 
       {/* 과거 이력 상세 모달 팝업 (찬반 토론 및 결과서 다운로드 조회용) */}
       {showDetailModal && selectedHistory && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-6">
-          <div className="w-[750px] h-[500px] glass-panel p-6 flex flex-col justify-between">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-3">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-glass-crisp">
+          <div className="w-[750px] h-[500px] glass-panel-deep p-6 flex flex-col justify-between rounded-2xl">
+            <div className="flex justify-between items-center border-b border-hairline pb-3">
               <div>
-                <h3 className="text-sm font-bold text-white">행정 심의 의사결정 상세 기록 조회</h3>
-                <p className="text-[10px] text-slate-400">의사결정 ID: #{selectedHistory.id} | 지역: {selectedHistory.region}</p>
+                <h3 className="text-sm font-bold text-ink">행정 심의 의사결정 상세 기록 조회</h3>
+                <p className="text-[10px] text-ink-secondary">의사결정 ID: #{selectedHistory.id} | 지역: {selectedHistory.region}</p>
               </div>
               <button 
                 onClick={() => setShowDetailModal(false)}
-                className="text-slate-400 hover:text-white text-lg font-bold cursor-pointer"
+                className="text-ink-secondary hover:text-ink text-lg font-bold cursor-pointer"
               >
                 &times;
               </button>
             </div>
 
-            {/* 토론 이력 스크롤 */}
-            <div className="flex-1 my-4 bg-slate-950/70 rounded-xl p-4 overflow-y-auto font-mono text-xs flex flex-col gap-3 border border-slate-900/80">
-              <div className="text-[11px] text-blue-400 font-bold border-b border-slate-900 pb-1.5">
+            {/* 토론 이력 스크롤 - Deep Indigo (#213183) 밤하늘 테마 */}
+            <div className="flex-1 my-4 bg-secondary rounded-xl p-4 overflow-y-auto font-mono text-xs flex flex-col gap-3 border border-indigo-950 shadow-inner text-white">
+              <div className="text-[11px] text-cyan-300 font-bold border-b border-indigo-900 pb-1.5">
                 ⚡ [AI 모의 심의 토론 아카이브]
               </div>
               {getMockDebateLogs(selectedHistory.infra).map((log, index) => (
                 <div key={index} className="flex gap-2 leading-relaxed">
                   <span className={`font-semibold shrink-0 ${
-                    log.sender.includes('반대') ? 'text-rose-400' :
-                    log.sender.includes('찬성') ? 'text-emerald-400' : 'text-slate-300'
+                    log.sender.includes('반대') ? 'text-rose-300' :
+                    log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
                   }`}>
                     [{log.sender}]
                   </span>
-                  <span className="text-slate-200">{log.text}</span>
+                  <span className="text-gray-100">{log.text}</span>
                 </div>
               ))}
             </div>
 
             {/* 하단 버튼 및 정보 */}
-            <div className="flex justify-between items-center border-t border-slate-800 pt-3">
-              <div className="text-[11px] text-slate-400">
-                <span className="font-semibold text-slate-300">선택된 인프라:</span> {selectedHistory.infra} ({selectedHistory.pnuCount}개 후보 필지 중 최종 결정)
+            <div className="flex justify-between items-center border-t border-hairline pt-3">
+              <div className="text-[11px] text-ink-secondary">
+                <span className="font-semibold text-ink">선택된 인프라:</span> {selectedHistory.infra} ({selectedHistory.pnuCount}개 후보 필지 중 최종 결정)
               </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => downloadReportHTML(selectedHistory)}
-                  className="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs px-4 py-2 rounded-lg transition-all cursor-pointer"
+                  className="btn-primary text-xs px-4 py-2"
                 >
                   📝 최종 행정 결과서 다운로드
                 </button>
                 <button
                   onClick={() => setShowDetailModal(false)}
-                  className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs px-4 py-2 rounded-lg cursor-pointer"
+                  className="btn-secondary text-xs px-4 py-2"
                 >
                   닫기
                 </button>
