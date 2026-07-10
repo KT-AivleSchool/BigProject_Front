@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import Dashboard from './dashboard/page';
 
 export default function Home() {
   // 플랫폼 단계별 상태 제어 (Pipeline Wizard Steps)
@@ -57,6 +58,7 @@ export default function Home() {
   const [regulationsList, setRegulationsList] = useState([]);
   const [isUploading, setIsUploading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [activeView, setActiveView] = useState('map'); // 'map' | 'dashboard'
   const simEndRef = useRef(null);
 
   // 조례 목록 비동기 동기화 조회
@@ -885,18 +887,30 @@ export default function Home() {
           </button>
         </div>
         <nav className="flex flex-col gap-2.5 text-xs font-semibold">
-          <Link href="/" className="text-primary hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5 border border-primary/10 bg-primary/5">
+          <button 
+            onClick={() => {
+              setActiveView('map');
+              setIsSidebarOpen(false);
+            }} 
+            className={`w-full text-left p-3 rounded-lg transition-all flex items-center gap-2.5 cursor-pointer border ${activeView === 'map' ? 'text-primary bg-primary/5 border-primary/10' : 'text-ink border-transparent hover:bg-primary/5'}`}
+          >
             🗺️ 입지분석 메인 (Map)
-          </Link>
-          <Link href="/dashboard" className="text-ink hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5">
+          </button>
+          <button 
+            onClick={() => {
+              setActiveView('dashboard');
+              setIsSidebarOpen(false);
+            }} 
+            className={`w-full text-left p-3 rounded-lg transition-all flex items-center gap-2.5 cursor-pointer border ${activeView === 'dashboard' ? 'text-primary bg-primary/5 border-primary/10' : 'text-ink border-transparent hover:bg-primary/5'}`}
+          >
             📊 이력 대시보드 (Analytics)
-          </Link>
+          </button>
           <button 
             onClick={() => {
               setShowRegulationModal(true);
               setIsSidebarOpen(false); // 모달 오픈 시 사이드바 닫기
             }} 
-            className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5"
+            className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5 border border-transparent"
           >
             ⚖️ 법규 RAG 관리
           </button>
@@ -904,10 +918,10 @@ export default function Home() {
       </aside>
 
       {/* 2. 인터랙티브 Leaflet GIS 3D 맵 공간 영역 (Map Container) */}
-      <div id="interactive-map" className="map-container w-full h-full" />
+      <div id="interactive-map" className={`map-container w-full h-full ${activeView === 'map' ? '' : 'hidden'}`} />
 
       {/* 3. 좌측 플로팅 패널: 일괄 업로드 및 AHP 가중치 제어 (Upload & AHP Control Panel) */}
-      <div className={`floating-overlay top-20 w-96 glass-panel p-6 flex flex-col gap-6 max-h-[82vh] overflow-y-auto text-glass-crisp transition-all duration-300 ${isSidebarOpen ? 'left-[280px]' : 'left-6'}`}>
+      <div className={`floating-overlay top-20 w-96 glass-panel p-6 flex flex-col gap-6 max-h-[82vh] overflow-y-auto text-glass-crisp transition-all duration-300 ${activeView === 'map' ? (isSidebarOpen ? 'left-[280px]' : 'left-6') : 'hidden'}`}>
         <div className="flex justify-between items-center">
           <div>
             <h2 className="text-sm font-bold text-ink mb-0.5">입지선정 기준 설정</h2>
@@ -1008,7 +1022,7 @@ export default function Home() {
       </div>
 
       {/* 4. 우측 플로팅 패널: 후보지 탭 및 속성 정보 카드 (Information & HITL Panel) */}
-      <div className="floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto text-glass-crisp">
+      <div className={`floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto text-glass-crisp ${activeView === 'map' ? '' : 'hidden'}`}>
         
         {/* [Step 2] 하이브리드 HITL: 탐색 의도 및 물리 좌표 동시 보정 영역 */}
         {pipelineStep === 2 && (
@@ -1151,6 +1165,11 @@ export default function Home() {
             </div>
           )
         )}
+      </div>
+
+      {/* 5. 비동기식 이력 대시보드 뷰 영역 (Dashboard Subview Container) */}
+      <div className={activeView === 'dashboard' ? 'block pt-16 min-h-screen bg-canvas-soft' : 'hidden'}>
+        <Dashboard isSubView={true} />
       </div>
 
       {/* AI 시뮬레이션 모달 팝업 */}

@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 
-export default function Dashboard() {
+export default function Dashboard({ isSubView = false }) {
   // 가상의 과거 의사결정 이력 데이터 (크레딧 필드 제거)
   const [historyList, setHistoryList] = useState([
     { id: 104, date: '2026-06-28', region: '서울시 용산구 한강로동', infra: '스마트 쉼터형 부스', pnuCount: 3, status: '행정 종결', auditState: '검증 완료' },
@@ -192,53 +192,57 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="relative min-h-screen bg-canvas-soft text-ink font-sans pt-20 text-glass-crisp">
-      
-      {/* 1. 상단 글로벌 네비게이션 헤더 */}
-      <header className="absolute top-0 left-0 right-0 h-16 glass-panel rounded-none border-t-0 border-x-0 border-b border-hairline z-50 px-8 flex justify-between items-center text-glass-crisp">
-        <div className="flex items-center gap-3">
-          <button 
-            onClick={() => setIsSidebarOpen(prev => !prev)}
-            className="text-ink hover:text-primary text-xl font-bold cursor-pointer p-1 transition-colors mr-1"
-            title="메뉴 토글"
-          >
-            ☰
-          </button>
-          <span className="text-xl font-bold tracking-tight text-primary">OmniSite</span>
-          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-medium">B2G SDSS v1.0</span>
-        </div>
-        <div className="text-xs text-ink-secondary font-medium">
-          행정망 인증 토큰 활성화됨
-        </div>
-      </header>
+    <div className={isSubView ? "text-glass-crisp" : "relative min-h-screen bg-canvas-soft text-ink font-sans pt-20 text-glass-crisp"}>
 
-      {/* 1-1. 왼쪽 사이드바 (Toggleable Left Sidebar) */}
-      <aside className={`fixed top-0 left-0 h-full w-64 glass-panel rounded-none border-y-0 border-l-0 border-r border-hairline z-48 p-6 flex flex-col gap-6 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} text-glass-crisp pt-20 bg-white/70`}>
-        <div className="flex justify-between items-center border-b border-hairline pb-4">
-          <span className="text-xs font-bold text-ink-secondary">행정 시스템 메뉴</span>
-          <button 
-            onClick={() => setIsSidebarOpen(false)}
-            className="text-ink-secondary hover:text-ink text-sm font-bold cursor-pointer"
-          >
-            ✕
-          </button>
-        </div>
-        <nav className="flex flex-col gap-2.5 text-xs font-semibold">
-          <Link href="/" className="text-ink hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5">
-            🗺️ 입지분석 메인 (Map)
-          </Link>
-          <Link href="/dashboard" className="text-primary hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5 border border-primary/10 bg-primary/5">
-            📊 이력 대시보드 (Analytics)
-          </Link>
-          <Link href="/" className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5">
-            ⚖️ 법규 RAG 관리
-          </Link>
-        </nav>
-      </aside>
+      {!isSubView && (
+        <>
+          {/* 1. 상단 글로벌 네비게이션 헤더 */}
+          <header className="absolute top-0 left-0 right-0 h-16 glass-panel rounded-none border-t-0 border-x-0 border-b border-hairline z-50 px-8 flex justify-between items-center text-glass-crisp">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setIsSidebarOpen(prev => !prev)}
+                className="text-ink hover:text-primary text-xl font-bold cursor-pointer p-1 transition-colors mr-1"
+                title="메뉴 토글"
+              >
+                ☰
+              </button>
+              <span className="text-xl font-bold tracking-tight text-primary">OmniSite</span>
+              <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-medium">B2G SDSS v1.0</span>
+            </div>
+            <div className="text-xs text-ink-secondary font-medium">
+              행정망 인증 토큰 활성화됨
+            </div>
+          </header>
+
+          {/* 1-1. 왼쪽 사이드바 (Toggleable Left Sidebar) */}
+          <aside className={`fixed top-0 left-0 h-full w-64 glass-panel rounded-none border-y-0 border-l-0 border-r border-hairline z-48 p-6 flex flex-col gap-6 transform transition-transform duration-300 ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} text-glass-crisp pt-20 bg-white/70`}>
+            <div className="flex justify-between items-center border-b border-hairline pb-4">
+              <span className="text-xs font-bold text-ink-secondary">행정 시스템 메뉴</span>
+              <button
+                onClick={() => setIsSidebarOpen(false)}
+                className="text-ink-secondary hover:text-ink text-sm font-bold cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+            <nav className="flex flex-col gap-2.5 text-xs font-semibold">
+              <Link href="/" className="text-ink hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5">
+                입지분석 메인 (Map)
+              </Link>
+              <Link href="/dashboard" className="text-primary hover:bg-primary/5 p-3 rounded-lg transition-all flex items-center gap-2.5 border border-primary/10 bg-primary/5">
+                이력 대시보드 (Analytics)
+              </Link>
+              <Link href="/" className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5">
+                법규 RAG 관리
+              </Link>
+            </nav>
+          </aside>
+        </>
+      )}
 
       {/* 2. 대시보드 레이아웃 본문 */}
       <main className="max-w-7xl mx-auto p-8 flex flex-col gap-8">
-        
+
         {/* 상단 3대 지표 분석 요약 카드 (크레딧 항목 제거 및 행정 지표 대체) */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="glass-panel p-6 flex flex-col gap-2">
@@ -260,7 +264,7 @@ export default function Dashboard() {
 
         {/* 메인 이력 테이블 및 Audit AI 영역 (2단 분할) */}
         <section className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          
+
           {/* 좌측 2칸: 과거 이력 테이블 */}
           <div className="lg:col-span-2 glass-panel p-6 flex flex-col gap-4">
             <div className="flex justify-between items-center border-b border-hairline pb-3">
@@ -290,17 +294,15 @@ export default function Dashboard() {
                       <td className="py-3.5 px-4 font-semibold text-ink">{item.region}</td>
                       <td className="py-3.5 px-4 text-ink">{item.infra}</td>
                       <td className="py-3.5 px-4">
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          item.status === '행정 종결' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
-                        }`}>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${item.status === '행정 종결' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-amber-500/10 text-amber-600'
+                          }`}>
                           {item.status}
                         </span>
                       </td>
                       <td className="py-3.5 px-4">
-                        <span className={`text-[10px] font-semibold ${
-                          item.auditState === '검증 완료' ? 'text-emerald-600' :
-                          item.auditState === '대기 중' ? 'text-ink-secondary animate-pulse' : 'text-rose-600'
-                        }`}>
+                        <span className={`text-[10px] font-semibold ${item.auditState === '검증 완료' ? 'text-emerald-600' :
+                            item.auditState === '대기 중' ? 'text-ink-secondary animate-pulse' : 'text-rose-600'
+                          }`}>
                           {item.auditState}
                         </span>
                       </td>
@@ -350,10 +352,10 @@ export default function Dashboard() {
                 <div className="flex flex-col gap-2">
                   <label className="text-xs text-ink-secondary font-medium">행정 종결 고시 공문 (PDF)</label>
                   <div className="border-2 border-dashed border-hairline hover:border-emerald-500 rounded-xl p-5 text-center cursor-pointer transition-all bg-white/40 relative">
-                    <input 
-                      type="file" 
-                      accept=".pdf" 
-                      onChange={handleAuditUpload} 
+                    <input
+                      type="file"
+                      accept=".pdf"
+                      onChange={handleAuditUpload}
                       className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                     <p className="text-xs text-ink font-medium">
@@ -414,7 +416,7 @@ export default function Dashboard() {
                 <h3 className="text-sm font-bold text-ink">행정 심의 의사결정 상세 기록 조회</h3>
                 <p className="text-[10px] text-ink-secondary">의사결정 ID: #{selectedHistory.id} | 지역: {selectedHistory.region}</p>
               </div>
-              <button 
+              <button
                 onClick={() => setShowDetailModal(false)}
                 className="text-ink-secondary hover:text-ink text-lg font-bold cursor-pointer"
               >
@@ -429,10 +431,9 @@ export default function Dashboard() {
               </div>
               {getMockDebateLogs(selectedHistory.infra).map((log, index) => (
                 <div key={index} className="flex gap-2 leading-relaxed">
-                  <span className={`font-semibold shrink-0 ${
-                    log.sender.includes('반대') ? 'text-rose-300' :
-                    log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
-                  }`}>
+                  <span className={`font-semibold shrink-0 ${log.sender.includes('반대') ? 'text-rose-300' :
+                      log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
+                    }`}>
                     [{log.sender}]
                   </span>
                   <span className="text-gray-100">{log.text}</span>
