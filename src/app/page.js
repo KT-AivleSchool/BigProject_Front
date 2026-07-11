@@ -717,9 +717,9 @@ export default function Home() {
     const parcelId = activeParcel.id;
     
     try {
-      const res = await fetch(`http://localhost:8000/api/v1/simulation/report/${parcelId}`);
+      const res = await fetch(`http://localhost:8000/api/v1/simulations/results/${parcelId}/pdf`);
       if (!res.ok) {
-        alert("PDF 리포트 생성에 실패했습니다. (백엔드 4주차 모듈 미완성)");
+        alert("PDF 리포트 생성에 실패했습니다. 해당 입지의 모의 심의 토론 이력이 있는지 확인해 주세요.");
         return;
       }
       
