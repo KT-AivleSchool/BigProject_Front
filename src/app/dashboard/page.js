@@ -22,22 +22,44 @@ export default function Dashboard() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
 
-  // 파일 업로드 및 분석 시뮬레이션
-  const handleAuditUpload = (e) => {
+  // 파일 업로드 및 분석 시뮬레이션 (이슈 #13 E2E 실 연동)
+  const handleAuditUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !activeHistoryId) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert("오직 PDF 형식의 공문서만 업로드할 수 있습니다.");
+      return;
+    }
 
     setAuditFile(file);
     setIsParsing(true);
     setAuditResult(null);
 
-    setTimeout(() => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("simulation_id", activeHistoryId);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/audit/verify", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "PDF 분석 중 오류가 발생했습니다.");
+      }
+
+      const data = await res.json();
+      
       setIsParsing(false);
       setAuditResult({
-        title: '서울시 용산구 한강로동 스마트쉼터 설치 준공 고시 공문',
-        mappedScenario: '시나리오 A (일반적 우호 타결)',
-        matchScore: 94,
-        summary: '부스 여과 필터링 시간(08시~22시) 및 인근 3.0m 소방 통로 준수 규정이 1단계 AHP 의사결정 모델 설계 가이드라인에 94% 부합하여 행정 종결 승인 완료.'
+        title: file.name,
+        mappedScenario: `시나리오 ${data.matched_scenario}`,
+        matchScore: Math.round(data.similarity_score * 100),
+        summary: data.extracted_text_snippet,
+        classificationStatus: data.classification_status
       });
 
       // 해당 역사 행의 검증 상태 업데이트
@@ -47,7 +69,11 @@ export default function Dashboard() {
         }
         return item;
       }));
-    }, 2000);
+    } catch (err) {
+      console.error("공문서 검증 통신 실패:", err);
+      alert(err.message || "서버 연결에 실패했습니다.");
+      setIsParsing(false);
+    }
   };
 
   // 과거 토론 로그 목업 조회
