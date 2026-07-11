@@ -138,7 +138,83 @@ export default function Home() {
   // Leaflet 지도 인스턴스 참조
   const mapRef = useRef(null);
   const markersRef = useRef({});
+  const geojsonLayerRef = useRef(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
+
+  // PostGIS 지적도 가용지 Bounds Bounding Box 동적 페이징 조회 및 지도 투영 (이슈 #10 E2E)
+  const fetchScreenedLands = async (districtId = 1) => {
+    const L = window.L;
+    const map = mapRef.current;
+    if (!L || !map) return;
+
+    try {
+      // 1. 백엔드 규제 차집합 배제 필지 스크리닝 API 호출
+      const res = await fetch(`http://localhost:8000/api/v1/lands/screen-candidate?district_id=${districtId}&exclusion_meters=10.0`);
+      if (!res.ok) {
+        console.error("지적도 가용 필지 스크리닝 로드 실패");
+        return;
+      }
+      const data = await res.json();
+      const candidates = data.candidates || [];
+
+      // 2. 기존의 지적도 폴리곤 레이어가 지도 상에 존재한다면 메모리 누수 방지를 위해 물리 청소
+      if (geojsonLayerRef.current) {
+        map.removeLayer(geojsonLayerRef.current);
+      }
+
+      // 3. 지도의 현재 화면 Bounding Box 범위 가져오기
+      const bounds = map.getBounds();
+      
+      // 4. Bounding Box 내에 위치한 후보 가용지들만 필터링하여 GeoJSON 다각형 레이어 생성
+      const geojsonFeatures = candidates
+        .filter(c => {
+          if (!c.usable_geometry) return false;
+          // 뷰포트 Bounds 필터링 (가용지의 좌표 중 하나라도 화면 내에 있는지 검증)
+          if (c.usable_geometry.type === "Polygon") {
+            const coords = c.usable_geometry.coordinates[0][0];
+            if (coords && coords.length >= 2) {
+              const latLng = L.latLng(coords[1], coords[0]);
+              return bounds.contains(latLng);
+            }
+          }
+          return true; // 기본적으로 화면 내 필터링 폴백 허용
+        })
+        .map(c => ({
+          type: "Feature",
+          properties: {
+            land_id: c.land_id,
+            pnu: c.pnu,
+            jibun: c.jibun,
+            original_area: c.original_area_m2
+          },
+          geometry: c.usable_geometry
+        }));
+
+      // 5. Leaflet 지적도 레이어 덧칠 및 스타일링
+      const geojsonLayer = L.geoJSON(geojsonFeatures, {
+        style: {
+          color: "hsl(28, 91%, 54%)",
+          weight: 1.5,
+          fillColor: "hsl(28, 91%, 54%)",
+          fillOpacity: 0.15,
+          dashArray: "3"
+        },
+        onEachFeature: (feature, layer) => {
+          layer.bindPopup(`
+            <div style="font-size:11px; padding:2px; color:#111;">
+              <strong>지번:</strong> ${feature.properties.jibun}<br/>
+              <strong>PNU:</strong> ${feature.properties.pnu}<br/>
+              <strong>면적:</strong> ${feature.properties.original_area} ㎡
+            </div>
+          `);
+        }
+      }).addTo(map);
+
+      geojsonLayerRef.current = geojsonLayer;
+    } catch (err) {
+      console.error("지적도 데이터 페이징 렌더링 에러:", err);
+    }
+  };
 
   // 위경도 결측치(Null/Zero)에 기반한 군부대/보안시설 우회 예외처리 함수
   const isValidCoordinate = (lat, lng) => {
@@ -198,6 +274,14 @@ export default function Home() {
       }).addTo(map);
 
       mapRef.current = map;
+
+      // 지도의 moveend / zoomend 이벤트 시 동적 Bounding Box 페이징 기동
+      map.on('moveend', () => {
+        fetchScreenedLands(1);
+      });
+      
+      // 최초 맵 초기화 완료 시 가용 지적도 1회 자동 로딩
+      fetchScreenedLands(1);
     }
 
     const map = mapRef.current;
