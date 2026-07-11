@@ -17,28 +17,55 @@ export default function Dashboard() {
   const [auditFile, setAuditFile] = useState(null);
   const [auditResult, setAuditResult] = useState(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [rawText, setRawText] = useState('');
+  const [documentNo, setDocumentNo] = useState('');
 
   // 과거 이력 상세 모달 상태
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
 
-  // 파일 업로드 및 분석 시뮬레이션
-  const handleAuditUpload = (e) => {
+  // 파일 업로드 및 분석 시뮬레이션 (이슈 #13 E2E 실 연동)
+  const handleAuditUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !activeHistoryId) return;
+
+    if (!file.name.toLowerCase().endsWith('.pdf')) {
+      alert("오직 PDF 형식의 공문서만 업로드할 수 있습니다.");
+      return;
+    }
 
     setAuditFile(file);
     setIsParsing(true);
     setAuditResult(null);
+    setIsSaved(false);
 
-    setTimeout(() => {
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("simulation_id", activeHistoryId);
+
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/audit/verify", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json();
+        throw new Error(errData.detail || "PDF 분석 중 오류가 발생했습니다.");
+      }
+
+      const data = await res.json();
+      
       setIsParsing(false);
       setAuditResult({
-        title: '서울시 용산구 한강로동 스마트쉼터 설치 준공 고시 공문',
-        mappedScenario: '시나리오 A (일반적 우호 타결)',
-        matchScore: 94,
-        summary: '부스 여과 필터링 시간(08시~22시) 및 인근 3.0m 소방 통로 준수 규정이 1단계 AHP 의사결정 모델 설계 가이드라인에 94% 부합하여 행정 종결 승인 완료.'
+        title: file.name,
+        mappedScenario: `시나리오 ${data.matched_scenario}`,
+        matchScore: Math.round(data.similarity_score * 100),
+        summary: data.extracted_text_snippet,
+        classificationStatus: data.classification_status
       });
+      setRawText(data.extracted_text_snippet);
 
       // 해당 역사 행의 검증 상태 업데이트
       setHistoryList(prev => prev.map(item => {
@@ -47,7 +74,45 @@ export default function Dashboard() {
         }
         return item;
       }));
-    }, 2000);
+    } catch (err) {
+      console.error("공문서 검증 통신 실패:", err);
+      alert(err.message || "서버 연결에 실패했습니다.");
+      setIsParsing(false);
+    }
+  };
+
+  // RAG 격리 세그먼트 저장 확정 핸들러 (이슈 #20 E2E 완수)
+  const handleSaveAuditFeedback = async () => {
+    if (!activeHistoryId || !auditResult) return;
+
+    const formData = new FormData();
+    formData.append("simulation_id", activeHistoryId.toString());
+    formData.append("matched_scenario", auditResult.mappedScenario.replace("시나리오", "").trim());
+    formData.append("similarity_score", (auditResult.matchScore / 100).toString());
+    formData.append("classification_status", auditResult.classificationStatus);
+    formData.append("extracted_text", rawText);
+    if (documentNo) {
+      formData.append("document_no", documentNo);
+    }
+
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/audit/save", {
+        method: "POST",
+        body: formData,
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setIsSaved(true);
+        alert(`실증 이행 사례가 DB 격리 세그먼트에 성공적으로 저장되었습니다! (Audit ID: #${data.audit_id})`);
+      } else {
+        const errData = await res.json();
+        alert(`저장 실패: ${errData.detail || '알 수 없는 오류'}`);
+      }
+    } catch (err) {
+      console.error("RAG 저장 통신 실패:", err);
+      alert("서버 연결에 실패했습니다.");
+    }
   };
 
   // 과거 토론 로그 목업 조회
@@ -361,9 +426,18 @@ export default function Dashboard() {
                       <span className="text-slate-500 block mb-0.5">주요 요약 결과</span>
                       <p className="text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 text-[11px]">{auditResult.summary}</p>
                     </div>
-                    <div className="text-[10px] text-emerald-400 font-bold border-t border-slate-900 pt-2 text-right">
-                      ✓ RAG 격리 세그먼트 적재 및 요약 완료
-                    </div>
+                    {!isSaved ? (
+                      <button
+                        onClick={handleSaveAuditFeedback}
+                        className="w-full mt-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs py-2 rounded-lg transition-all cursor-pointer"
+                      >
+                        💾 RAG 격리 세그먼트 저장 확정
+                      </button>
+                    ) : (
+                      <div className="text-[10px] text-emerald-400 font-bold border-t border-slate-900 pt-2 text-right">
+                        ✓ RAG 격리 세그먼트 적재 및 요약 완료
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
