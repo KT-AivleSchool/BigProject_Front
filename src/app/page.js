@@ -211,6 +211,13 @@ export default function Home() {
       if (map.scrollWheelZoom) map.scrollWheelZoom.enable();
       if (map.boxZoom) map.boxZoom.enable();
       if (map.keyboard) map.keyboard.enable();
+      
+      // [invalidateSize 해결책] 지도가 다시 활성화될 때 레이아웃 정정을 위해 강제 invalidateSize 호출
+      if (activeView === 'map') {
+        setTimeout(() => {
+          map.invalidateSize();
+        }, 50);
+      }
     }
 
     // 기존 맵 레이어/마커 일괄 청소 및 수거
@@ -439,7 +446,7 @@ export default function Home() {
         map.panTo([activeParcel.lat, activeParcel.lng]);
       }
     }
-  }, [leafletLoaded, pipelineStep]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [leafletLoaded, pipelineStep, activeView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // 마커 속성 및 지도 동기화 효과 (드래그 스냅 보정)
   useEffect(() => {
@@ -947,15 +954,6 @@ export default function Home() {
             className={`w-full text-left p-3 rounded-lg transition-all flex items-center gap-2.5 cursor-pointer border ${activeView === 'dashboard' ? 'text-primary bg-primary/5 border-primary/10' : 'text-ink border-transparent hover:bg-primary/5'}`}
           >
             📊 이력 대시보드 (Analytics)
-          </button>
-          <button 
-            onClick={() => {
-              setShowRegulationModal(true);
-              setIsSidebarOpen(false); // 모달 오픈 시 사이드바 닫기
-            }} 
-            className="text-left text-ink hover:bg-primary/5 p-3 rounded-lg transition-all cursor-pointer flex items-center gap-2.5 border border-transparent"
-          >
-            ⚖️ 법규 RAG 관리
           </button>
         </nav>
       </aside>
