@@ -1132,56 +1132,66 @@ export default function Home() {
                   ))}
                 </div>
 
-                <div className={pipelineStep >= 4 ? "flex flex-col gap-3" : "grid grid-cols-2 gap-4"}>
-                  {/* Left Column: Properties */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[11px] font-semibold text-ink-secondary">추천지 속성 정보</span>
-                    <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-2 h-[135px] justify-between">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-ink-secondary">지번 / 소유 구분</span>
-                        <span className="text-ink font-semibold truncate max-w-[180px]">{selectedParcel[activeTab].jibun}</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-ink-secondary">면적(㎡)</span>
-                        <span className="font-mono text-ink font-semibold">{selectedParcel[activeTab].area} ㎡</span>
-                      </div>
-                      <div className="flex justify-between text-xs">
-                        <span className="text-ink-secondary">공시지가</span>
-                        <span className="font-mono text-primary font-semibold">₩ {selectedParcel[activeTab].price.toLocaleString()} / ㎡</span>
-                      </div>
-                      <div className="flex justify-between text-[10px] border-t border-hairline pt-1.5 text-ink-secondary font-mono">
-                        <span>좌표: {selectedParcel[activeTab].lat}, {selectedParcel[activeTab].lng}</span>
+                {pipelineStep === 5 ? (
+                  <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200/50 flex flex-col gap-3 h-[286px] justify-center items-center text-center text-xs text-ink leading-relaxed">
+                    <span className="text-3xl animate-bounce">📄</span>
+                    <span className="text-emerald-700 font-bold text-[13px]">AI 모의 심의 최종 합의 완료</span>
+                    <p className="text-ink-secondary text-[11px] max-w-[280px] leading-relaxed">
+                      {activeTab.toUpperCase()} 후보지에 대한 AI 주무관 에이전트 간 합의 및 타당성 검토가 종결되었습니다. 아래 다운로드 버튼을 통해 최종 행정 보고서를 PDF로 발급받으십시오.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-3 animate-fadeIn">
+                    {/* Left Column: Properties */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-semibold text-ink-secondary">추천지 속성 정보</span>
+                      <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-2 h-[135px] justify-between">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-ink-secondary">지번 / 소유 구분</span>
+                          <span className="text-ink font-semibold truncate max-w-[180px]">{selectedParcel[activeTab].jibun}</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-ink-secondary">면적(㎡)</span>
+                          <span className="font-mono text-ink font-semibold">{selectedParcel[activeTab].area} ㎡</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-ink-secondary">공시지가</span>
+                          <span className="font-mono text-primary font-semibold">₩ {selectedParcel[activeTab].price.toLocaleString()} / ㎡</span>
+                        </div>
+                        <div className="flex justify-between text-[10px] border-t border-hairline pt-1.5 text-ink-secondary font-mono">
+                          <span>좌표: {selectedParcel[activeTab].lat}, {selectedParcel[activeTab].lng}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
 
-                  {/* Right Column: Conflict */}
-                  <div className="flex flex-col gap-1.5">
-                    <span className="text-[11px] font-semibold text-ink-secondary">지역 갈등 민감도 (CSS)</span>
-                    <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-3 h-[135px] justify-center">
-                      <div className="flex justify-between items-center text-xs">
-                        <span className="font-semibold text-ink-secondary">갈등 지수</span>
-                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                          selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
-                          selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' :
-                          'bg-emerald-500/10 text-emerald-600'
-                        }`}>
-                          등급: {selectedParcel[activeTab].cssGrade} ({selectedParcel[activeTab].css}점)
-                        </span>
+                    {/* Right Column: Conflict */}
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[11px] font-semibold text-ink-secondary">지역 갈등 민감도 (CSS)</span>
+                      <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-3 h-[135px] justify-center">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="font-semibold text-ink-secondary">갈등 지수</span>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                            selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
+                            selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' :
+                            'bg-emerald-500/10 text-emerald-600'
+                          }`}>
+                            등급: {selectedParcel[activeTab].cssGrade} ({selectedParcel[activeTab].css}점)
+                          </span>
+                        </div>
+                        <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                          <div className={`h-full transition-all duration-500 ${
+                            selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
+                            selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500' :
+                            'bg-emerald-500'
+                          }`} style={{ width: `${selectedParcel[activeTab].css}%` }} />
+                        </div>
+                        <p className="text-[9px] text-ink-secondary mt-1 leading-relaxed">
+                          * 주민 민원 가능성 및 교육/의료시설 반경 인접도를 수치화한 갈등 지표입니다.
+                        </p>
                       </div>
-                      <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                        <div className={`h-full transition-all duration-500 ${
-                          selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
-                          selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500' :
-                          'bg-emerald-500'
-                        }`} style={{ width: `${selectedParcel[activeTab].css}%` }} />
-                      </div>
-                      <p className="text-[9px] text-ink-secondary mt-1 leading-relaxed">
-                        * 주민 민원 가능성 및 교육/의료시설 반경 인접도를 수치화한 갈등 지표입니다.
-                      </p>
                     </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
           </div>
@@ -1234,13 +1244,22 @@ export default function Home() {
                   )}
                 </div>
               )}
-              {pipelineStep >= 4 && (
+              {pipelineStep === 4 && (
                 <button 
                   onClick={runSimulation}
                   className="btn-primary text-[11px] py-1.5 px-3.5 rounded-lg font-semibold shadow-md truncate"
                   title="갈등 심의 시뮬레이터 실행 (GPT-4o)"
                 >
                   {activeTab.toUpperCase()} 심의 실행
+                </button>
+              )}
+              {pipelineStep === 5 && (
+                <button 
+                  onClick={handleDownloadPdf}
+                  className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-[11px] py-1.5 px-3.5 rounded-lg font-semibold shadow-md truncate"
+                  title="WeasyPrint PDF 보고서 다운로드"
+                >
+                  📝 PDF 보고서 다운로드
                 </button>
               )}
             </div>
@@ -1319,17 +1338,14 @@ export default function Home() {
               </span>
               <div className="flex gap-3">
                 <button
-                  onClick={handleDownloadPdf}
+                  onClick={() => {
+                    setShowSimModal(false);
+                    setPipelineStep(5); // 심의 완료 후 Step 5로 즉시 자동 이동
+                  }}
                   disabled={isSimulating}
-                  className="btn-primary bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 text-white font-semibold text-xs px-4 py-2.5 rounded-lg transition-all"
+                  className="btn-primary text-xs px-6 py-2.5 disabled:opacity-40"
                 >
-                  📝 WeasyPrint PDF 보고서 다운로드
-                </button>
-                <button
-                  onClick={() => setShowSimModal(false)}
-                  className="btn-secondary text-xs px-4 py-2.5"
-                >
-                  닫기
+                  확인
                 </button>
               </div>
             </div>
