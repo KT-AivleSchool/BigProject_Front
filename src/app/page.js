@@ -16,6 +16,7 @@ export default function Home() {
   // Step 1 AI 감리 및 실무자 의도 매핑 검증 상태
   const [isAuditComplete, setIsAuditComplete] = useState(false);
   const [auditMetadata, setAuditMetadata] = useState(null);
+  const [uploadedFiles, setUploadedFiles] = useState([]);
 
   // 1. AHP 가중치 입력 상태
   const [ahpWeights, setAhpWeights] = useState({});
