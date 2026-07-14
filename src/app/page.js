@@ -890,6 +890,25 @@ export default function Home() {
     }
   };
 
+  // 로컬 테스트용 목업 데이터 주입 엔진 (가드레일 시연용)
+  const injectMockData = () => {
+    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+    setAhpWeights({
+      "대중교통 접근성": 7,
+      "소방 통로 확보": 5,
+      "생활인구 밀집도": 8,
+      "민원 발생 빈도": 4
+    });
+    setUploadedFiles([
+      { name: '용산구_유동인구_데이터셋.csv', type: 'CSV' },
+      { name: '서울시_쉼터인프라_안전규정.pdf', type: 'PDF' }
+    ]);
+    setIsAuditComplete(true);
+    setPipelineStep(2);
+    alert('🎉 로컬 목업 데이터 주입 완료! 자동으로 Step 2로 이동합니다.');
+  };
+
   // Step 1 다중 파일 드롭 모사 및 AI 통합 사전 감리 수행 (실물 다중 CSV API 연동)
   const triggerFileAudit = () => {
     const input = document.createElement('input');
@@ -1096,12 +1115,20 @@ export default function Home() {
                   <span className="text-[10px] text-primary font-mono font-medium">CSV 및 PDF 파일 통합 지원</span>
                 </div>
                 {!isAuditComplete ? (
-                  <div 
-                    onClick={triggerFileAudit}
-                    className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-8 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
-                  >
-                    <p className="text-xs text-ink font-semibold">📁 분석 CSV 및 RAG 법규 PDF 파일 일괄 드래그앤드롭</p>
-                    <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 법률 규제 인코딩 일괄 수행</p>
+                  <div className="flex flex-col gap-2">
+                    <div 
+                      onClick={triggerFileAudit}
+                      className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-8 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
+                    >
+                      <p className="text-xs text-ink font-semibold">📁 분석 CSV 및 RAG 법규 PDF 파일 일괄 드래그앤드롭</p>
+                      <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 법률 규제 인코딩 일괄 수행</p>
+                    </div>
+                    <button
+                      onClick={injectMockData}
+                      className="text-[10px] text-primary hover:underline font-semibold text-center py-1 cursor-pointer"
+                    >
+                      💡 테스트용 목업 데이터 원클릭 주입하기
+                    </button>
                   </div>
                 ) : (
                   <div className="bg-white/50 p-4 rounded-xl border border-hairline grid grid-cols-2 gap-4 h-[160px] items-center">
