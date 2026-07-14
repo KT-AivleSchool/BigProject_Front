@@ -975,7 +975,7 @@ export default function Home() {
         <div 
           className={`fixed z-40 rounded-2xl text-glass-crisp shadow-2xl glass-panel-deep p-6 flex flex-col justify-between transition-all duration-700 ease-in-out ${
             pipelineStep >= 4
-              ? 'top-20 left-[calc(100%-404px)] translate-x-0 translate-y-0 w-[380px] h-[calc(100vh-110px)] max-h-[85vh]'
+              ? 'top-20 left-[calc(100%-504px)] translate-x-0 translate-y-0 w-[480px] h-[calc(100vh-110px)] max-h-[85vh]'
               : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[820px] max-w-[95vw] h-[480px]'
           }`} 
           style={{ background: 'rgba(255, 255, 255, 0.94)' }}
