@@ -1193,146 +1193,104 @@ export default function Home() {
             )}
           </div>
 
-          {/* 하단 내비게이션 컨트롤 */}
-          {/* 하단 내비게이션 컨트롤 */}
-          {pipelineStep >= 2 ? (
-            <div className="flex flex-col gap-2.5 border-t border-hairline pt-3 mt-1 flex-none">
-              {/* Row 1: Main Action Button */}
-              <div className="w-full flex justify-center">
-                {pipelineStep === 2 && (
-                  <button 
-                    onClick={handleHitlCommit}
-                    className="w-full btn-primary bg-amber-500 hover:bg-amber-600 text-xs py-2 rounded-lg font-semibold"
+          {/* 하단 내비게이션 컨트롤 (모든 단계 단일 행 배치) */}
+          <div className="flex justify-between items-center border-t border-hairline pt-3 mt-1 flex-none">
+            {/* 1. 이전 단계 이동 버튼 - 1단계가 아닐 때만 노출하며 고정 크기 스페이스 제공 */}
+            {pipelineStep > 1 ? (
+              <button 
+                onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
+                className="btn-secondary text-xs py-1.5 w-[58px] text-center shrink-0"
+              >
+                ◀ 이전
+              </button>
+            ) : (
+              <div className="w-[58px] shrink-0" /> /* 정렬 균형용 투명 스페이서 */
+            )}
+
+            {/* 2. 프로세스별 핵심 확인 및 실행 액션 영역 */}
+            <div className="flex-1 flex justify-center px-2">
+              {pipelineStep === 1 && (
+                <span className="text-[10px] text-ink-secondary font-bold">
+                  CSV 파일을 업로드한 뒤 다음 단계로 이동하세요
+                </span>
+              )}
+              {pipelineStep === 2 && (
+                <button 
+                  onClick={handleHitlCommit}
+                  className="btn-primary bg-amber-500 hover:bg-amber-600 text-xs py-1.5 px-4 rounded-lg font-semibold truncate"
+                >
+                  데이터 확정
+                </button>
+              )}
+              {pipelineStep === 3 && (
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={handleAhpLock}
+                    disabled={crValue >= 0.1 || Object.keys(ahpWeights).length === 0}
+                    className="btn-primary text-xs py-1.5 px-3.5 font-semibold disabled:opacity-30 rounded-lg truncate"
                   >
-                    보정 완료 및 데이터 확정 (Commit)
+                    🔒 가중치 확정
                   </button>
-                )}
-                {pipelineStep === 3 && (
-                  <div className="w-full flex gap-2">
+                  {isAhpLocked && (
                     <button
-                      onClick={handleAhpLock}
-                      disabled={crValue >= 0.1 || Object.keys(ahpWeights).length === 0}
-                      className="flex-1 btn-primary text-xs py-2 font-semibold disabled:opacity-30 rounded-lg"
+                      onClick={() => {
+                        setIsAhpLocked(false);
+                        setPipelineStep(3);
+                        alert("AHP 가중치 잠금이 해제되었습니다.");
+                      }}
+                      className="btn-secondary text-[11px] py-1.5 px-2 rounded-lg"
                     >
-                      🔒 AHP 가중치 확정 및 추천 입지 연산 (Lock)
+                      🔓 해제
                     </button>
-                    {isAhpLocked && (
-                      <button
-                        onClick={() => {
-                          setIsAhpLocked(false);
-                          setPipelineStep(3);
-                          alert("AHP 가중치 잠금이 해제되었습니다.");
-                        }}
-                        className="btn-secondary text-[11px] py-2 px-3 rounded-lg"
-                      >
-                        🔓 잠금 해제
-                      </button>
-                    )}
-                  </div>
-                )}
-                {pipelineStep === 4 && (
-                  <button 
-                    onClick={runSimulation}
-                    className="w-full btn-primary text-xs py-2 rounded-lg font-semibold shadow-md"
-                  >
-                    {activeTab.toUpperCase()} 갈등 심의 시뮬레이터 실행 (GPT-4o)
-                  </button>
-                )}
-                {pipelineStep === 5 && (
-                  <button 
-                    onClick={handleDownloadPdf}
-                    className="w-full btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs py-2 rounded-lg font-semibold shadow-md"
-                  >
-                    📝 WeasyPrint PDF 보고서 다운로드
-                  </button>
-                )}
-              </div>
-              {/* Row 2: Prev & Next Navigation */}
-              <div className="flex justify-between items-center">
-                {pipelineStep > 1 ? (
-                  <button 
-                    onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
-                    className="btn-secondary text-xs py-1.5 w-[84px] text-center"
-                  >
-                    ◀ 이전 단계
-                  </button>
-                ) : (
-                  <div className="w-[84px]" />
-                )}
-                {pipelineStep < 5 ? (
-                  <button 
-                    onClick={() => {
-                      // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
-                      if (pipelineStep === 1 && !isAuditComplete) {
-                        setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
-                        setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
-                        setAhpWeights({
-                          "대중교통 접근성": 7,
-                          "소방 통로 확보": 5,
-                          "생활인구 밀집도": 8,
-                          "민원 발생 빈도": 4
-                        });
-                        setIsAuditComplete(true);
-                      }
-                      setPipelineStep(prev => Math.min(5, prev + 1));
-                    }}
-                    className="btn-primary text-xs py-1.5 w-[84px] text-center"
-                  >
-                    다음 단계 ▶
-                  </button>
-                ) : (
-                  <div className="w-[84px]" />
-                )}
-              </div>
-            </div>
-          ) : (
-            <div className="flex justify-between items-center border-t border-hairline pt-3 mt-1 flex-none">
-              {pipelineStep > 1 ? (
-                <button 
-                  onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
-                  className="btn-secondary text-xs px-3.5 py-1.5"
-                >
-                  ◀ 이전 단계
-                </button>
-              ) : (
-                <div className="w-[76px]" />
+                  )}
+                </div>
               )}
-
-              {/* 프로세스별 핵심 확인/확정 액션 버튼 영역 */}
-              <div className="flex-1 flex justify-center px-4">
-                {pipelineStep === 1 && (
-                  <span className="text-[10px] text-ink-secondary font-bold">
-                    CSV 파일을 업로드한 뒤 다음 단계로 이동하세요
-                  </span>
-                )}
-              </div>
-
-              {pipelineStep < 5 ? (
+              {pipelineStep === 4 && (
                 <button 
-                  onClick={() => {
-                    // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
-                    if (pipelineStep === 1 && !isAuditComplete) {
-                      setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
-                      setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
-                      setAhpWeights({
-                        "대중교통 접근성": 7,
-                        "소방 통로 확보": 5,
-                        "생활인구 밀집도": 8,
-                        "민원 발생 빈도": 4
-                      });
-                      setIsAuditComplete(true);
-                    }
-                    setPipelineStep(prev => Math.min(5, prev + 1));
-                  }}
-                  className="btn-primary text-xs px-3.5 py-1.5"
+                  onClick={runSimulation}
+                  className="btn-primary text-xs py-1.5 px-4 rounded-lg font-semibold shadow-md truncate"
+                  title="갈등 심의 시뮬레이터 실행 (GPT-4o)"
                 >
-                  다음 단계 ▶
+                  {activeTab.toUpperCase()} 심의 실행
                 </button>
-              ) : (
-                <div className="w-[76px]" />
+              )}
+              {pipelineStep === 5 && (
+                <button 
+                  onClick={handleDownloadPdf}
+                  className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs py-1.5 px-4 rounded-lg font-semibold shadow-md truncate"
+                  title="WeasyPrint PDF 보고서 다운로드"
+                >
+                  📝 PDF 다운로드
+                </button>
               )}
             </div>
-          )}
+
+            {/* 3. 다음 단계 이동 버튼 - 5단계가 아닐 때만 노출하며 고정 크기 스페이스 제공 */}
+            {pipelineStep < 5 ? (
+              <button 
+                onClick={() => {
+                  // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
+                  if (pipelineStep === 1 && !isAuditComplete) {
+                    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+                    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+                    setAhpWeights({
+                      "대중교통 접근성": 7,
+                      "소방 통로 확보": 5,
+                      "생활인구 밀집도": 8,
+                      "민원 발생 빈도": 4
+                    });
+                    setIsAuditComplete(true);
+                  }
+                  setPipelineStep(prev => Math.min(5, prev + 1));
+                }}
+                className="btn-primary text-xs py-1.5 w-[58px] text-center shrink-0"
+              >
+                다음 ▶
+              </button>
+            ) : (
+              <div className="w-[58px] shrink-0" /> /* 정렬 균형용 투명 스페이서 */
+            )}
+          </div>
         </div>
       )}
 
