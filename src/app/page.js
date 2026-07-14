@@ -1195,16 +1195,16 @@ export default function Home() {
 
           {/* 하단 내비게이션 컨트롤 (모든 단계 단일 행 배치) */}
           <div className="flex justify-between items-center border-t border-hairline pt-3 mt-1 flex-none">
-            {/* 1. 이전 단계 이동 버튼 - 1단계가 아닐 때만 노출하며 고정 크기 스페이스 제공 */}
+            {/* 1. 이전 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
             {pipelineStep > 1 ? (
               <button 
                 onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
-                className="btn-secondary text-xs py-1.5 w-[58px] text-center shrink-0"
+                className="btn-secondary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
               >
                 ◀ 이전
               </button>
             ) : (
-              <div className="w-[58px] shrink-0" /> /* 정렬 균형용 투명 스페이서 */
+              <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
             )}
 
             {/* 2. 프로세스별 핵심 확인 및 실행 액션 영역 */}
@@ -1265,7 +1265,7 @@ export default function Home() {
               )}
             </div>
 
-            {/* 3. 다음 단계 이동 버튼 - 5단계가 아닐 때만 노출하며 고정 크기 스페이스 제공 */}
+            {/* 3. 다음 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
             {pipelineStep < 5 ? (
               <button 
                 onClick={() => {
@@ -1283,12 +1283,12 @@ export default function Home() {
                   }
                   setPipelineStep(prev => Math.min(5, prev + 1));
                 }}
-                className="btn-primary text-xs py-1.5 w-[58px] text-center shrink-0"
+                className="btn-primary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
               >
                 다음 ▶
               </button>
             ) : (
-              <div className="w-[58px] shrink-0" /> /* 정렬 균형용 투명 스페이서 */
+              <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
             )}
           </div>
         </div>
