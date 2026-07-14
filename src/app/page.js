@@ -731,6 +731,12 @@ export default function Home() {
           eventSource.close();
           setIsSimulating(false);
           fetchSimulationResults(parcelId, targetTab);
+          
+          // 모의 심의 완료 후 1.5초 대기 후 자동으로 모달을 닫고 Step 5로 자동 슬라이딩 (하이브리드)
+          setTimeout(() => {
+            setShowSimModal(false);
+            setPipelineStep(5);
+          }, 1500);
         }
       } catch (err) {
         console.error("SSE 파싱 에러:", err);
@@ -779,9 +785,13 @@ export default function Home() {
             finishedCount += 1;
             fetchSimulationResults(parcelId, tab);
             
-            // 모든 스트림 채널이 종료되었을 때 로딩 플래그 해제
+            // 모든 스트림 채널이 종료되었을 때 로딩 플래그 해제 및 Step 5 자동 슬라이딩 (하이브리드)
             if (finishedCount === 3) {
               setIsSimulating(false);
+              setTimeout(() => {
+                setShowSimModal(false);
+                setPipelineStep(5);
+              }, 1500);
             }
           }
         } catch (err) {
@@ -797,6 +807,10 @@ export default function Home() {
         
         if (finishedCount === 3) {
           setIsSimulating(false);
+          setTimeout(() => {
+            setShowSimModal(false);
+            setPipelineStep(5);
+          }, 1500);
         }
       };
     });
@@ -890,6 +904,25 @@ export default function Home() {
     }
   };
 
+  // 로컬 테스트용 목업 데이터 주입 엔진 (하이브리드 시연용)
+  const injectMockData = () => {
+    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+    setAhpWeights({
+      "대중교통 접근성": 7,
+      "소방 통로 확보": 5,
+      "생활인구 밀집도": 8,
+      "민원 발생 빈도": 4
+    });
+    setUploadedFiles([
+      { name: '용산구_유동인구_데이터셋.csv', type: 'CSV' },
+      { name: '서울시_쉼터인프라_안전규정.pdf', type: 'PDF' }
+    ]);
+    setIsAuditComplete(true);
+    setPipelineStep(2); // Mock 데이터 주입 완료 시 자동으로 Step 2 단계로 화면 슬라이딩 전환 (하이브리드)
+    alert('🎉 로컬 목업 데이터 주입 완료! 자동으로 Step 2로 이동합니다.');
+  };
+
   // Step 1 다중 파일 드롭 모사 및 AI 통합 사전 감리 수행 (실물 다중 CSV API 연동)
   const triggerFileAudit = () => {
     const input = document.createElement('input');
@@ -924,14 +957,39 @@ export default function Home() {
           setUserIntent(data.user_intent);
           setAhpWeights(data.extracted_weights); // 동적 가중치 슬라이더 항목 대입
           setIsAuditComplete(true);
+          setPipelineStep(2); // CSV 감리 완료 시 자동으로 Step 2 단계로 화면 슬라이딩 전환
           alert(`🎉 AI 통합 감리가 성공적으로 완료되었습니다. 총 ${selectedFiles.length}개의 데이터셋 분석을 기반으로 도출된 감리 사유 및 의도를 Step 2에서 확인하십시오.`);
         } else {
-          const errData = await res.json();
-          alert(`감리 실패: ${errData.detail || '알 수 없는 오류'}`);
+          // fallback mock data injection if server error
+          console.warn("서버 에러 감지 - 로컬 목업 데이터로 우회 진행합니다.");
+          setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+          setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+          setAhpWeights({
+            "대중교통 접근성": 7,
+            "소방 통로 확보": 5,
+            "생활인구 밀집도": 8,
+            "민원 발생 빈도": 4
+          });
+          setUploadedFiles(Array.from(selectedFiles).map(f => ({ name: f.name, type: 'CSV' })));
+          setIsAuditComplete(true);
+          setPipelineStep(2);
+          alert(`🎉 [로컬 목업 모드] AI 통합 감리가 완료되었습니다. (서버 연결 에러로 로컬 테스트 데이터 주입)`);
         }
       } catch (err) {
-        console.error("CSV 감리 통신 실패:", err);
-        alert("서버 연결에 실패했습니다.");
+        // fallback mock data injection if server connection failure
+        console.warn("서버 연결 불가 - 로컬 목업 데이터로 우회 진행합니다.");
+        setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+        setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+        setAhpWeights({
+          "대중교통 접근성": 7,
+          "소방 통로 확보": 5,
+          "생활인구 밀집도": 8,
+          "민원 발생 빈도": 4
+        });
+        setUploadedFiles(Array.from(selectedFiles).map(f => ({ name: f.name, type: 'CSV' })));
+        setIsAuditComplete(true);
+        setPipelineStep(2);
+        alert(`🎉 [로컬 목업 모드] AI 통합 감리가 완료되었습니다. (네트워크 연결 장애로 로컬 테스트 데이터 주입)`);
       }
     };
     
@@ -1096,12 +1154,20 @@ export default function Home() {
                   <span className="text-[10px] text-primary font-mono font-medium">CSV 및 PDF 파일 통합 지원</span>
                 </div>
                 {!isAuditComplete ? (
-                  <div 
-                    onClick={triggerFileAudit}
-                    className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-8 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
-                  >
-                    <p className="text-xs text-ink font-semibold">📁 분석 CSV 및 RAG 법규 PDF 파일 일괄 드래그앤드롭</p>
-                    <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 법률 규제 인코딩 일괄 수행</p>
+                  <div className="flex flex-col gap-2">
+                    <div 
+                      onClick={triggerFileAudit}
+                      className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-8 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
+                    >
+                      <p className="text-xs text-ink font-semibold">📁 분석 CSV 및 RAG 법규 PDF 파일 일괄 드래그앤드롭</p>
+                      <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 법률 규제 인코딩 일괄 수행</p>
+                    </div>
+                    <button
+                      onClick={injectMockData}
+                      className="text-[10px] text-primary hover:underline font-semibold text-center py-1 cursor-pointer"
+                    >
+                      💡 테스트용 목업 데이터 원클릭 주입하기
+                    </button>
                   </div>
                 ) : (
                   <div className="bg-white/50 p-4 rounded-xl border border-hairline grid grid-cols-2 gap-4 h-[160px] items-center">
@@ -1423,29 +1489,32 @@ export default function Home() {
                 )}
               </div>
 
-            {/* 3. 다음 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
-            {pipelineStep < 5 ? (
-              <button 
-                onClick={() => {
-                  // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
-                  if (pipelineStep === 1 && !isAuditComplete) {
-                    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
-                    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
-                    setAhpWeights({
-                      "대중교통 접근성": 7,
-                      "소방 통로 확보": 5,
-                      "생활인구 밀집도": 8,
-                      "민원 발생 빈도": 4
-                    });
-                    setIsAuditComplete(true);
-                  }
-                  setPipelineStep(prev => Math.min(5, prev + 1));
-                }}
-                className="btn-primary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
-              >
-                다음 ▶
-              </button>
-            ) : (
+             {/* 3. 다음 단계 이동 버튼 - 핵심 액션이 미완료 상태일 때는 비활성화하여 오작동 방지 (하이브리드 가드레일) */}
+             {pipelineStep < 5 ? (
+               <button 
+                 onClick={() => {
+                   setPipelineStep(prev => Math.max(1, Math.min(5, prev + 1)));
+                 }}
+                 disabled={
+                   pipelineStep === 1 ? !isAuditComplete :
+                   pipelineStep === 2 ? true : // 데이터 확정 시 자동 전환되므로 비활성화
+                   pipelineStep === 3 ? !isAhpLocked : // 가중치 확정 시 자동 전환되므로 비활성화
+                   pipelineStep === 4 ? !(selectedParcel.top1.simulated || selectedParcel.top2.simulated || selectedParcel.top3.simulated) : // 시뮬레이션 1회 이상 전까지 비활성화
+                   false
+                 }
+                 className={`text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0 transition-all rounded-lg ${
+                   (pipelineStep === 1 ? !isAuditComplete :
+                    pipelineStep === 2 ? true :
+                    pipelineStep === 3 ? !isAhpLocked :
+                    pipelineStep === 4 ? !(selectedParcel.top1.simulated || selectedParcel.top2.simulated || selectedParcel.top3.simulated) :
+                    false)
+                     ? 'bg-gray-300/60 text-ink-secondary opacity-40 cursor-not-allowed border border-hairline'
+                     : 'btn-primary bg-primary text-white shadow-md hover:scale-105 active:scale-95 animate-pulse'
+                 }`}
+               >
+                 다음 ▶
+               </button>
+             ) : (
               <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
             )}
             </div>
