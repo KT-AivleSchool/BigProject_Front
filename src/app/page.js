@@ -1219,24 +1219,6 @@ export default function Home() {
                   ))}
                 </div>
 
-                {/* 개별 후보지별 1:1 심의 실행 버튼 패널 (Step 4에서만 신설 노출) */}
-                {pipelineStep === 4 && (
-                  <div className="flex gap-1.5 mb-0.5 flex-none">
-                    {['top1', 'top2', 'top3'].map(tab => (
-                      <button
-                        key={tab}
-                        onClick={() => runSingleSimulation(tab)}
-                        className="flex-1 btn-secondary text-[10px] py-1.5 font-bold border border-primary/20 hover:border-primary text-primary bg-primary/5 rounded-lg transition-all flex items-center justify-center gap-1 truncate"
-                        title={`${tab.toUpperCase()} 후보지 맞춤형 AI 토론 개별 실행`}
-                      >
-                        {tab.toUpperCase()} 개별 심의
-                        {selectedParcel[tab].simulated && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
 
                 {pipelineStep === 5 ? (
                   <div className="flex flex-col gap-2.5 animate-fadeIn">
@@ -1348,77 +1330,98 @@ export default function Home() {
             )}
           </div>
 
-          {/* 하단 내비게이션 컨트롤 (모든 단계 단일 행 배치) */}
-          <div className="flex justify-between items-center border-t border-hairline pt-3 mt-1 flex-none">
-            {/* 1. 이전 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
-            {pipelineStep > 1 ? (
-              <button 
-                onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
-                className="btn-secondary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
-              >
-                ◀ 이전
-              </button>
-            ) : (
-              <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
+          {/* 하단 내비게이션 컨트롤 (개별 심의와 일괄 심의를 하단 조작계 영역으로 통합) */}
+          <div className="flex flex-col border-t border-hairline pt-3 mt-1 flex-none">
+            {/* Step 4인 경우, 모든 조건 심의 실행 바로 위에 파란색 개별 심의 버튼 세 개 렌더링 */}
+            {pipelineStep === 4 && (
+              <div className="flex gap-2 w-full justify-center mb-2.5">
+                {['top1', 'top2', 'top3'].map(tab => (
+                  <button
+                    key={tab}
+                    onClick={() => runSingleSimulation(tab)}
+                    className="flex-1 bg-primary/10 hover:bg-primary/20 text-primary border border-primary/30 text-[10px] py-1.5 font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 truncate cursor-pointer"
+                    title={`${tab.toUpperCase()} 후보지 개별 심의 실행`}
+                  >
+                    {tab.toUpperCase()} 개별 심의
+                    {selectedParcel[tab].simulated && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                    )}
+                  </button>
+                ))}
+              </div>
             )}
 
-            {/* 2. 프로세스별 핵심 확인 및 실행 액션 영역 */}
-            <div className="flex-1 flex justify-center px-2">
-              {pipelineStep === 1 && (
-                <span className="text-[10px] text-ink-secondary font-bold">
-                  CSV 파일을 업로드한 뒤 다음 단계로 이동하세요
-                </span>
-              )}
-              {pipelineStep === 2 && (
+            {/* 메인 네비게이션 및 중앙 제어 1행 정렬바 */}
+            <div className="flex justify-between items-center w-full">
+              {/* 1. 이전 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
+              {pipelineStep > 1 ? (
                 <button 
-                  onClick={handleHitlCommit}
-                  className="btn-primary bg-amber-500 hover:bg-amber-600 text-xs py-1.5 px-4 rounded-lg font-semibold truncate"
+                  onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
+                  className="btn-secondary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
                 >
-                  데이터 확정
+                  ◀ 이전
                 </button>
+              ) : (
+                <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
               )}
-              {pipelineStep === 3 && (
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={handleAhpLock}
-                    disabled={crValue >= 0.1 || Object.keys(ahpWeights).length === 0}
-                    className="btn-primary text-xs py-1.5 px-3.5 font-semibold disabled:opacity-30 rounded-lg truncate"
+
+              {/* 2. 프로세스별 핵심 확인 및 실행 액션 영역 */}
+              <div className="flex-1 flex justify-center px-2">
+                {pipelineStep === 1 && (
+                  <span className="text-[10px] text-ink-secondary font-bold">
+                    CSV 파일을 업로드한 뒤 다음 단계로 이동하세요
+                  </span>
+                )}
+                {pipelineStep === 2 && (
+                  <button 
+                    onClick={handleHitlCommit}
+                    className="btn-primary bg-amber-500 hover:bg-amber-600 text-xs py-1.5 w-[170px] rounded-lg font-semibold truncate"
                   >
-                    🔒 가중치 확정
+                    데이터 확정
                   </button>
-                  {isAhpLocked && (
+                )}
+                {pipelineStep === 3 && (
+                  <div className="flex gap-1.5">
                     <button
-                      onClick={() => {
-                        setIsAhpLocked(false);
-                        setPipelineStep(3);
-                        alert("AHP 가중치 잠금이 해제되었습니다.");
-                      }}
-                      className="btn-secondary text-[11px] py-1.5 px-2 rounded-lg"
+                      onClick={handleAhpLock}
+                      disabled={crValue >= 0.1 || Object.keys(ahpWeights).length === 0}
+                      className="btn-primary text-xs py-1.5 w-[170px] font-semibold disabled:opacity-30 rounded-lg truncate"
                     >
-                      🔓 해제
+                      🔒 가중치 확정
                     </button>
-                  )}
-                </div>
-              )}
-              {pipelineStep === 4 && (
-                <button 
-                  onClick={runAllSimulation}
-                  className="btn-primary text-xs py-1.5 px-4 rounded-lg font-semibold shadow-md truncate"
-                  title="3개 추천 후보지 일괄 시뮬레이션 동시 실행"
-                >
-                  모든 조건 심의 실행
-                </button>
-              )}
-              {pipelineStep === 5 && (
-                <button 
-                  onClick={handleDownloadPdf}
-                  className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs py-1.5 px-4 rounded-lg font-semibold shadow-md truncate"
-                  title="WeasyPrint PDF 보고서 다운로드"
-                >
-                  📝 PDF 다운로드
-                </button>
-              )}
-            </div>
+                    {isAhpLocked && (
+                      <button
+                        onClick={() => {
+                          setIsAhpLocked(false);
+                          setPipelineStep(3);
+                          alert("AHP 가중치 잠금이 해제되었습니다.");
+                        }}
+                        className="btn-secondary text-[11px] py-1.5 px-2 rounded-lg"
+                      >
+                        🔓 해제
+                      </button>
+                    )}
+                  </div>
+                )}
+                {pipelineStep === 4 && (
+                  <button 
+                    onClick={runAllSimulation}
+                    className="btn-primary text-xs py-1.5 w-[170px] rounded-lg font-semibold shadow-md truncate"
+                    title="3개 추천 후보지 일괄 시뮬레이션 동시 실행"
+                  >
+                    모든 조건 심의 실행
+                  </button>
+                )}
+                {pipelineStep === 5 && (
+                  <button 
+                    onClick={handleDownloadPdf}
+                    className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs py-1.5 w-[170px] rounded-lg font-semibold shadow-md truncate"
+                    title="WeasyPrint PDF 보고서 다운로드"
+                  >
+                    📝 PDF 다운로드
+                  </button>
+                )}
+              </div>
 
             {/* 3. 다음 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
             {pipelineStep < 5 ? (
@@ -1445,6 +1448,7 @@ export default function Home() {
             ) : (
               <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
             )}
+            </div>
           </div>
         </div>
       )}
