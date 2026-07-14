@@ -1423,25 +1423,28 @@ export default function Home() {
                 )}
               </div>
 
-            {/* 3. 다음 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
+            {/* 3. 다음 단계 이동 버튼 - 각 단계의 핵심 액션이 완료될 때까지 비활성화 처리 (가드레일 1안) */}
             {pipelineStep < 5 ? (
               <button 
                 onClick={() => {
-                  // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
-                  if (pipelineStep === 1 && !isAuditComplete) {
-                    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
-                    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
-                    setAhpWeights({
-                      "대중교통 접근성": 7,
-                      "소방 통로 확보": 5,
-                      "생활인구 밀집도": 8,
-                      "민원 발생 빈도": 4
-                    });
-                    setIsAuditComplete(true);
-                  }
-                  setPipelineStep(prev => Math.min(5, prev + 1));
+                  setPipelineStep(prev => Math.max(1, Math.min(5, prev + 1)));
                 }}
-                className="btn-primary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
+                disabled={
+                  pipelineStep === 1 ? !isAuditComplete :
+                  pipelineStep === 2 ? true : // 데이터 확정 단추를 누르면 자동 이동하므로 다음 단추 비활성화
+                  pipelineStep === 3 ? !isAhpLocked : // 가중치 락 완료 전까지 비활성화
+                  pipelineStep === 4 ? !(selectedParcel.top1.simulated || selectedParcel.top2.simulated || selectedParcel.top3.simulated) : // 최소 1회 이상 심의 수행 전까지 비활성화
+                  false
+                }
+                className={`text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0 transition-all rounded-lg ${
+                  (pipelineStep === 1 ? !isAuditComplete :
+                   pipelineStep === 2 ? true :
+                   pipelineStep === 3 ? !isAhpLocked :
+                   pipelineStep === 4 ? !(selectedParcel.top1.simulated || selectedParcel.top2.simulated || selectedParcel.top3.simulated) :
+                   false)
+                    ? 'bg-gray-300/60 text-ink-secondary opacity-40 cursor-not-allowed border border-hairline'
+                    : 'btn-primary bg-primary text-white shadow-md hover:scale-105 active:scale-95 animate-pulse'
+                }`}
               >
                 다음 ▶
               </button>
