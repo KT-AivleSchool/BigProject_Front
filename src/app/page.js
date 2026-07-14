@@ -959,7 +959,15 @@ export default function Home() {
       </aside>
 
       {/* 2. 인터랙티브 Leaflet GIS 3D 맵 공간 영역 (Map Container) */}
-      <div id="interactive-map" className={`map-container w-full h-full ${activeView === 'map' ? '' : 'hidden'}`} />
+      <div 
+        id="interactive-map" 
+        className="map-container w-full h-full transition-opacity duration-300" 
+        style={{ 
+          opacity: activeView === 'map' ? 1 : 0, 
+          pointerEvents: activeView === 'map' ? 'auto' : 'none', 
+          zIndex: activeView === 'map' ? 1 : -1 
+        }} 
+      />
 
       {/* 3. 중앙 집중형 플로팅 위저드 패널 (Centered Workflow Wizard Panel) */}
       {activeView === 'map' && (
