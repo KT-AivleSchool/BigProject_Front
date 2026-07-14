@@ -38,11 +38,17 @@ export default function Home() {
   const [hitlLng, setHitlLng] = useState(126.9724);
   const [hitlLat, setHitlLat] = useState(37.5302);
 
-  // 4. AI 시뮬레이션 상태
+  // 4. AI 시뮬레이션 상태 (개별 및 일괄 실행 대응을 위해 객체/상태 세분화)
   const [showSimModal, setShowSimModal] = useState(false);
   const [simStep, setSimStep] = useState(0);
-  const [simLogs, setSimLogs] = useState([]);
   const [isSimulating, setIsSimulating] = useState(false);
+  const [simMode, setSimMode] = useState('single'); // 'single' (개별) | 'all' (일괄)
+  const [simTarget, setSimTarget] = useState('top1'); // 개별 심의 대상 ('top1' | 'top2' | 'top3')
+  const [simLogs, setSimLogs] = useState({ // 후보지별 독립 토론 로그 기록
+    top1: [],
+    top2: [],
+    top3: []
+  });
 
   // 5. 로그인 및 회원가입 인증 상태 (백엔드 auth API 실물 동기화 연동)
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -60,7 +66,11 @@ export default function Home() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [activeView, setActiveView] = useState('map'); // 'map' | 'dashboard'
-  const simEndRef = useRef(null);
+  
+  // 개별 터미널들의 자동 스크롤 제어용 Refs
+  const simEndRefTop1 = useRef(null);
+  const simEndRefTop2 = useRef(null);
+  const simEndRefTop3 = useRef(null);
 
   // 조례 목록 비동기 동기화 조회
   const fetchRegulations = async () => {
@@ -652,8 +662,8 @@ export default function Home() {
     }
   };
 
-  // 최종 시뮬레이션 결과 단독 로드 API
-  const fetchSimulationResults = async (parcelId) => {
+  // 최종 시뮬레이션 결과 단독 로드 API (지정한 targetTab 후보지를 대상으로 결과 업데이트)
+  const fetchSimulationResults = async (parcelId, targetTab) => {
     try {
       const res = await fetch(`http://localhost:8000/api/v1/simulation/results/${parcelId}`);
       if (res.ok) {
@@ -661,8 +671,8 @@ export default function Home() {
         // 백엔드 통계 데이터로 해당 필지 상태 갱신
         setSelectedParcel(prev => ({
           ...prev,
-          [activeTab]: {
-            ...prev[activeTab],
+          [targetTab]: {
+            ...prev[targetTab],
             css: data.conflict_sensitivity_score,
             cssGrade: data.conflict_sensitivity_score >= 7.0 ? '상' : data.conflict_sensitivity_score >= 4.0 ? '중' : '하',
             simulated: true
@@ -674,39 +684,53 @@ export default function Home() {
     }
   };
 
-  // AI 모의 심의 대사 인입 시 터미널 스크롤 최하단 자동 갱신
+  // AI 모의 심의 대사 인입 시 터미널 스크롤 최하단 자동 갱신 (TOP1, TOP2, TOP3 채널별 독립 모니터링)
   useEffect(() => {
-    if (simEndRef.current) {
-      simEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [simLogs]);
+    if (simEndRefTop1.current) simEndRefTop1.current.scrollIntoView({ behavior: 'smooth' });
+  }, [simLogs.top1]);
 
-  // AI 시뮬레이션 개시 (EventSource SSE 실시간 연동)
-  const runSimulation = () => {
+  useEffect(() => {
+    if (simEndRefTop2.current) simEndRefTop2.current.scrollIntoView({ behavior: 'smooth' });
+  }, [simLogs.top2]);
+
+  useEffect(() => {
+    if (simEndRefTop3.current) simEndRefTop3.current.scrollIntoView({ behavior: 'smooth' });
+  }, [simLogs.top3]);
+
+  // 개별 시뮬레이션 실행 (지정한 단일 후보지를 대상으로 SSE 통신 개시)
+  const runSingleSimulation = (targetTab) => {
     setShowSimModal(true);
-    setSimStep(0);
-    setSimLogs([]);
+    setSimMode('single');
+    setSimTarget(targetTab);
     setIsSimulating(true);
+    
+    // 대상 후보지 로그만 초기화
+    setSimLogs(prev => ({
+      ...prev,
+      [targetTab]: []
+    }));
 
-    const activeParcel = selectedParcel[activeTab];
+    const activeParcel = selectedParcel[targetTab];
     const parcelId = activeParcel.id;
 
-    // EventSource 커넥션 생성
+    // EventSource 커넥션 생성 및 백엔드 SSE 스트림 연동
     const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
 
     eventSource.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         
-        // 실시간 대사 누적 및 스텝 갱신
-        setSimLogs(prev => [...prev, { sender: data.sender, text: data.text }]);
-        setSimStep(prev => prev + 1);
+        // 실시간 대사 누적
+        setSimLogs(prev => ({
+          ...prev,
+          [targetTab]: [...(prev[targetTab] || []), { sender: data.sender, text: data.text }]
+        }));
 
         // 마지막 패킷 수신 시 연결 종료 및 최종 결과 로드
         if (data.is_finished) {
           eventSource.close();
           setIsSimulating(false);
-          fetchSimulationResults(parcelId);
+          fetchSimulationResults(parcelId, targetTab);
         }
       } catch (err) {
         console.error("SSE 파싱 에러:", err);
@@ -717,9 +741,70 @@ export default function Home() {
       console.error("SSE 통신 에러 (서버 연결 실패 또는 종료):", err);
       eventSource.close();
       setIsSimulating(false);
-      // 에러 시 폴백 시뮬레이션 결과라도 갱신
-      fetchSimulationResults(parcelId);
+      fetchSimulationResults(parcelId, targetTab);
     };
+  };
+
+  // 모든 조건 일괄 시뮬레이션 실행 (3개 후보지 동시 병렬 SSE 통신 개시)
+  const runAllSimulation = () => {
+    setShowSimModal(true);
+    setSimMode('all');
+    setIsSimulating(true);
+    
+    // 모든 로그 데이터셋 초기화
+    setSimLogs({
+      top1: [],
+      top2: [],
+      top3: []
+    });
+
+    let finishedCount = 0;
+
+    ['top1', 'top2', 'top3'].forEach(tab => {
+      const activeParcel = selectedParcel[tab];
+      const parcelId = activeParcel.id;
+      const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
+
+      eventSource.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          
+          setSimLogs(prev => ({
+            ...prev,
+            [tab]: [...(prev[tab] || []), { sender: data.sender, text: data.text }]
+          }));
+
+          if (data.is_finished) {
+            eventSource.close();
+            finishedCount += 1;
+            fetchSimulationResults(parcelId, tab);
+            
+            // 모든 스트림 채널이 종료되었을 때 로딩 플래그 해제
+            if (finishedCount === 3) {
+              setIsSimulating(false);
+            }
+          }
+        } catch (err) {
+          console.error("SSE 파싱 에러:", err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error(`SSE 통신 에러 (tab: ${tab}):`, err);
+        eventSource.close();
+        finishedCount += 1;
+        fetchSimulationResults(parcelId, tab);
+        
+        if (finishedCount === 3) {
+          setIsSimulating(false);
+        }
+      };
+    });
+  };
+
+  // 기존 runSimulation 트리거 핸들러와 하방 호환 연계
+  const runSimulation = () => {
+    runAllSimulation();
   };
 
   // WeasyPrint 타당성 PDF 보고서 실물 다운로드 연동
@@ -1113,29 +1198,99 @@ export default function Home() {
               </div>
             )}
 
-            {/* Step 4 & 5 내용 */}
+            {/* Step 4 & 5 내용 (의사결정 보조 및 토론/보고서 영역) */}
             {pipelineStep >= 4 && (
               <div className="flex flex-col gap-3">
-                {/* Top 1 ~ Top 3 탭 */}
+                {/* Top 1 ~ Top 3 탭 (각 후보지의 실시간 심의 상태 배지 추가) */}
                 <div className="flex bg-gray-200/50 p-1 rounded-lg border border-hairline flex-none">
                   {['top1', 'top2', 'top3'].map(tab => (
                     <button
                       key={tab}
                       onClick={() => setActiveTab(tab)}
-                      className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all ${activeTab === tab ? 'bg-primary text-white shadow-sm' : 'text-ink-secondary hover:text-ink'}`}
+                      className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all flex items-center justify-center gap-1 ${activeTab === tab ? 'bg-primary text-white shadow-sm' : 'text-ink-secondary hover:text-ink'}`}
                     >
                       {tab.toUpperCase()}
+                      {selectedParcel[tab].simulated ? (
+                        <span className="text-[8px] px-1 py-0.2 rounded-full font-bold bg-emerald-500/20 text-emerald-700">완료</span>
+                      ) : (
+                        <span className="text-[8px] px-1 py-0.2 rounded-full font-bold bg-gray-300/40 text-ink-secondary">대기</span>
+                      )}
                     </button>
                   ))}
                 </div>
 
+                {/* 개별 후보지별 1:1 심의 실행 버튼 패널 (Step 4에서만 신설 노출) */}
+                {pipelineStep === 4 && (
+                  <div className="flex gap-1.5 mb-0.5 flex-none">
+                    {['top1', 'top2', 'top3'].map(tab => (
+                      <button
+                        key={tab}
+                        onClick={() => runSingleSimulation(tab)}
+                        className="flex-1 btn-secondary text-[10px] py-1.5 font-bold border border-primary/20 hover:border-primary text-primary bg-primary/5 rounded-lg transition-all flex items-center justify-center gap-1 truncate"
+                        title={`${tab.toUpperCase()} 후보지 맞춤형 AI 토론 개별 실행`}
+                      >
+                        {tab.toUpperCase()} 개별 심의
+                        {selectedParcel[tab].simulated && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 {pipelineStep === 5 ? (
-                  <div className="bg-emerald-50/60 p-4 rounded-xl border border-emerald-200/50 flex flex-col gap-3 h-[286px] justify-center items-center text-center text-xs text-ink leading-relaxed">
-                    <span className="text-3xl animate-bounce">📄</span>
-                    <span className="text-emerald-700 font-bold text-[13px]">AI 모의 심의 최종 합의 완료</span>
-                    <p className="text-ink-secondary text-[11px] max-w-[280px] leading-relaxed">
-                      {activeTab.toUpperCase()} 후보지에 대한 AI 주무관 에이전트 간 합의 및 타당성 검토가 종결되었습니다. 아래 다운로드 버튼을 통해 최종 행정 보고서를 PDF로 발급받으십시오.
-                    </p>
+                  <div className="flex flex-col gap-2.5 animate-fadeIn">
+                    {/* 최종 단계 심의 합의 안내 카드 */}
+                    <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/50 flex items-center gap-2 text-xs text-emerald-800">
+                      <span className="text-base">📄</span>
+                      <div className="flex flex-col">
+                        <span className="font-bold text-[11px]">AI 모의 심의 타당성 검토 완료</span>
+                        <p className="text-[9px] text-emerald-700 leading-normal">
+                          아래 종합 비교 대조표를 확인하고 필요한 후보지의 행정용 PDF 보고서를 다운로드 하십시오.
+                        </p>
+                      </div>
+                    </div>
+                    {/* 종합 비교 대조표 (3개 후보지의 면적, CSS, 심의여부 등 한눈에 비교 가능) */}
+                    <div className="bg-white/50 border border-hairline rounded-xl overflow-hidden flex flex-col">
+                      <table className="w-full text-left border-collapse text-[10px]">
+                        <thead>
+                          <tr className="bg-gray-100/80 text-ink-secondary border-b border-hairline font-bold">
+                            <th className="p-2">후보지</th>
+                            <th className="p-2">소유/지번</th>
+                            <th className="p-2 text-right">면적(㎡)</th>
+                            <th className="p-2 text-center">갈등지수(CSS)</th>
+                            <th className="p-2 text-center">심의결과</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {['top1', 'top2', 'top3'].map(tab => {
+                            const p = selectedParcel[tab];
+                            return (
+                              <tr key={tab} className={`border-b border-hairline/50 hover:bg-gray-50/50 transition-colors ${activeTab === tab ? 'bg-primary/5 font-semibold' : ''}`}>
+                                <td className="p-2 font-bold text-primary">{tab.toUpperCase()}</td>
+                                <td className="p-2 truncate max-w-[120px]" title={p.jibun}>{p.jibun}</td>
+                                <td className="p-2 text-right font-mono">{p.area} ㎡</td>
+                                <td className="p-2 text-center">
+                                  <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                                    p.cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
+                                    p.cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'
+                                  }`}>
+                                    {p.cssGrade} ({p.css}점)
+                                  </span>
+                                </td>
+                                <td className="p-2 text-center">
+                                  {p.simulated ? (
+                                    <span className="text-emerald-600 font-bold">합의 완료</span>
+                                  ) : (
+                                    <span className="text-gray-400">미진행</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 ) : (
                   <div className="flex flex-col gap-3 animate-fadeIn">
@@ -1247,11 +1402,11 @@ export default function Home() {
               )}
               {pipelineStep === 4 && (
                 <button 
-                  onClick={runSimulation}
+                  onClick={runAllSimulation}
                   className="btn-primary text-xs py-1.5 px-4 rounded-lg font-semibold shadow-md truncate"
-                  title="갈등 심의 시뮬레이터 실행 (GPT-4o)"
+                  title="3개 추천 후보지 일괄 시뮬레이션 동시 실행"
                 >
-                  {activeTab.toUpperCase()} 심의 실행
+                  모든 조건 심의 실행
                 </button>
               )}
               {pipelineStep === 5 && (
@@ -1299,14 +1454,17 @@ export default function Home() {
         <Dashboard isSubView={true} />
       </div>
 
-      {/* AI 시뮬레이션 모달 팝업 */}
+      {/* AI 시뮬레이션 모달 팝업 (실시간 모의 심의 토론 - 일괄/개별 대응 및 삼분할 뷰 포트 구성) */}
       {showSimModal && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-glass-crisp">
-          <div className="w-[800px] h-[550px] glass-panel-deep p-6 flex flex-col justify-between rounded-2xl">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-6 text-glass-crisp animate-fadeIn">
+          <div className={`${simMode === 'all' ? 'w-[1180px]' : 'w-[800px]'} h-[580px] glass-panel-deep p-6 flex flex-col justify-between rounded-2xl transition-all duration-500`}>
+            {/* 모달 상단 헤더 영역 */}
             <div className="flex justify-between items-center border-b border-hairline pb-3">
               <div>
                 <h3 className="text-sm font-semibold text-ink">OMS-01-03-001 | AI 에이전트 실시간 모의 심의 토론</h3>
-                <p className="text-[10px] text-ink-secondary">Target PNU: {selectedParcel[activeTab].pnu}</p>
+                <p className="text-[10px] text-ink-secondary">
+                  {simMode === 'all' ? "3개 추천 후보지 동시 일괄 시뮬레이션 실행" : `Target PNU: ${selectedParcel[simTarget].pnu}`}
+                </p>
               </div>
               <button 
                 onClick={() => setShowSimModal(false)}
@@ -1316,36 +1474,76 @@ export default function Home() {
               </button>
             </div>
 
-            {/* 터미널 대화 스크롤 - Deep Indigo (#213183) 밤하늘 테마 */}
-            <div className="flex-1 my-4 bg-secondary rounded-xl p-4 overflow-y-auto font-mono text-xs flex flex-col gap-3 border border-indigo-950 shadow-inner text-white">
-              {simLogs.map((log, index) => (
-                <div key={index} className="flex gap-2">
-                  <span className={`font-semibold shrink-0 ${
-                    log.sender.startsWith('시스템') ? 'text-cyan-300' :
-                    log.sender.includes('반대') ? 'text-rose-300' :
-                    log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
-                  }`}>
-                    [{log.sender}]
+            {/* 터미널 영역 - 일괄(3분할 세로 터미널)과 개별(단일 터미널) 렌더링 분기 */}
+            <div className="flex-1 my-4 flex gap-4 overflow-hidden h-[380px]">
+              {simMode === 'all' ? (
+                // 1) 모든 조건 일괄 심의 모드 (삼분할 세로 터미널 스택 구조)
+                ['top1', 'top2', 'top3'].map(tab => (
+                  <div key={tab} className="flex-1 flex flex-col gap-1.5 h-full">
+                    <span className="text-[10px] font-bold text-ink-secondary truncate">
+                      [{tab.toUpperCase()}] {selectedParcel[tab].jibun.split(' ')[0]} ...
+                    </span>
+                    <div className="flex-1 bg-secondary rounded-xl p-3 overflow-y-auto font-mono text-[10px] flex flex-col gap-2.5 border border-indigo-950 shadow-inner text-white">
+                      {simLogs[tab].map((log, index) => (
+                        <div key={index} className="flex flex-col gap-0.5 border-b border-white/5 pb-1">
+                          <span className={`font-semibold shrink-0 ${
+                            log.sender.startsWith('시스템') ? 'text-cyan-300' :
+                            log.sender.includes('반대') ? 'text-rose-300' :
+                            log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
+                          }`}>
+                            [{log.sender}]
+                          </span>
+                          <span className="text-gray-200 leading-relaxed">{log.text}</span>
+                        </div>
+                      ))}
+                      {isSimulating && simLogs[tab].length === 0 && (
+                        <div className="text-indigo-300 animate-pulse">심의 연결 대기 중...</div>
+                      )}
+                      {isSimulating && simLogs[tab].length > 0 && (
+                        <div className="text-indigo-200 animate-pulse text-[9px]">● 에이전트 분석 진행 중...</div>
+                      )}
+                      <div ref={tab === 'top1' ? simEndRefTop1 : tab === 'top2' ? simEndRefTop2 : simEndRefTop3} />
+                    </div>
+                  </div>
+                ))
+              ) : (
+                // 2) 개별 심의 모드 (단일 넓은 터미널 뷰 구조)
+                <div className="flex-1 flex flex-col gap-1.5 h-full">
+                  <span className="text-[10px] font-bold text-ink-secondary">
+                    [{simTarget.toUpperCase()}] {selectedParcel[simTarget].jibun}
                   </span>
-                  <span className="text-gray-100">{log.text}</span>
+                  <div className="flex-1 bg-secondary rounded-xl p-4 overflow-y-auto font-mono text-xs flex flex-col gap-3 border border-indigo-950 shadow-inner text-white">
+                    {simLogs[simTarget].map((log, index) => (
+                      <div key={index} className="flex gap-2">
+                        <span className={`font-semibold shrink-0 ${
+                          log.sender.startsWith('시스템') ? 'text-cyan-300' :
+                          log.sender.includes('반대') ? 'text-rose-300' :
+                          log.sender.includes('찬성') ? 'text-emerald-300' : 'text-indigo-200'
+                        }`}>
+                          [{log.sender}]
+                        </span>
+                        <span className="text-gray-100">{log.text}</span>
+                      </div>
+                    ))}
+                    {isSimulating && (
+                      <div className="text-indigo-200 animate-pulse">... 에이전트 심의 분석 진행 중 ...</div>
+                    )}
+                    <div ref={simTarget === 'top1' ? simEndRefTop1 : simTarget === 'top2' ? simEndRefTop2 : simEndRefTop3} />
+                  </div>
                 </div>
-              ))}
-              {isSimulating && (
-                <div className="text-indigo-200 animate-pulse">... 에이전트 심의 분석 진행 중 ...</div>
               )}
-              <div ref={simEndRef} />
             </div>
 
-            {/* 하단 제어 바 (보고서 다운로드 포함) */}
+            {/* 하단 제어 바 영역 */}
             <div className="flex justify-between items-center border-t border-hairline pt-3">
               <span className="text-[10px] text-ink-secondary">
-                도로점용료 예상액: ₩ {Math.round(selectedParcel[activeTab].area * selectedParcel[activeTab].price * 0.02 * (365/365)).toLocaleString()} / 년
+                {simMode === 'all' ? "* 모든 후보지의 모의 토론이 독립 채널을 통해 동시 진행됩니다." : `도로점용료 예상액: ₩ ${Math.round(selectedParcel[simTarget].area * selectedParcel[simTarget].price * 0.02 * (365/365)).toLocaleString()} / 년`}
               </span>
               <div className="flex gap-3">
                 <button
                   onClick={() => {
                     setShowSimModal(false);
-                    setPipelineStep(5); // 심의 완료 후 Step 5로 즉시 자동 이동
+                    setPipelineStep(5); // 심의 완료 후 Step 5 최종 보고서 탭으로 즉시 자동 이동
                   }}
                   disabled={isSimulating}
                   className="btn-primary text-xs px-6 py-2.5 disabled:opacity-40"
