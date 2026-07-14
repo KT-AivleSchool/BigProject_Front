@@ -731,6 +731,12 @@ export default function Home() {
           eventSource.close();
           setIsSimulating(false);
           fetchSimulationResults(parcelId, targetTab);
+          
+          // 모의 심의 종료 후 1.5초 뒤 모달 자동 폐쇄 및 Step 5로 자동 슬라이딩 (Option 2)
+          setTimeout(() => {
+            setShowSimModal(false);
+            setPipelineStep(5);
+          }, 1500);
         }
       } catch (err) {
         console.error("SSE 파싱 에러:", err);
@@ -779,9 +785,13 @@ export default function Home() {
             finishedCount += 1;
             fetchSimulationResults(parcelId, tab);
             
-            // 모든 스트림 채널이 종료되었을 때 로딩 플래그 해제
+            // 모든 스트림 채널이 종료되었을 때 로딩 플래그 해제 및 Step 5 자동 슬라이딩 (Option 2)
             if (finishedCount === 3) {
               setIsSimulating(false);
+              setTimeout(() => {
+                setShowSimModal(false);
+                setPipelineStep(5);
+              }, 1500);
             }
           }
         } catch (err) {
@@ -797,6 +807,10 @@ export default function Home() {
         
         if (finishedCount === 3) {
           setIsSimulating(false);
+          setTimeout(() => {
+            setShowSimModal(false);
+            setPipelineStep(5);
+          }, 1500);
         }
       };
     });
@@ -924,6 +938,7 @@ export default function Home() {
           setUserIntent(data.user_intent);
           setAhpWeights(data.extracted_weights); // 동적 가중치 슬라이더 항목 대입
           setIsAuditComplete(true);
+          setPipelineStep(2); // CSV 감리 완료 시 자동으로 Step 2 단계로 화면 슬라이딩 전환 (Option 2)
           alert(`🎉 AI 통합 감리가 성공적으로 완료되었습니다. 총 ${selectedFiles.length}개의 데이터셋 분석을 기반으로 도출된 감리 사유 및 의도를 Step 2에서 확인하십시오.`);
         } else {
           const errData = await res.json();
@@ -1423,31 +1438,8 @@ export default function Home() {
                 )}
               </div>
 
-            {/* 3. 다음 단계 이동 버튼 - 글자 줄 바꿈 방지를 위해 whitespace-nowrap 및 가로폭을 w-[70px]로 확장 */}
-            {pipelineStep < 5 ? (
-              <button 
-                onClick={() => {
-                  // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
-                  if (pipelineStep === 1 && !isAuditComplete) {
-                    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
-                    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
-                    setAhpWeights({
-                      "대중교통 접근성": 7,
-                      "소방 통로 확보": 5,
-                      "생활인구 밀집도": 8,
-                      "민원 발생 빈도": 4
-                    });
-                    setIsAuditComplete(true);
-                  }
-                  setPipelineStep(prev => Math.min(5, prev + 1));
-                }}
-                className="btn-primary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
-              >
-                다음 ▶
-              </button>
-            ) : (
-              <div className="w-[70px] shrink-0" /> /* 단일 행 정렬 균형 유지를 위한 고정폭 투명 스페이스 */
-            )}
+            {/* 3. 다음 단계 이동 버튼 생략 (자동 슬라이딩 전환 모드 - Option 2) */}
+            <div className="w-[70px] shrink-0" />
             </div>
           </div>
         </div>
