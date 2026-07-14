@@ -1198,13 +1198,16 @@ export default function Home() {
 
           {/* 하단 내비게이션 컨트롤 */}
           <div className="flex justify-between items-center border-t border-hairline pt-3 mt-1 flex-none">
-            <button 
-              onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
-              disabled={pipelineStep === 1}
-              className="btn-secondary text-xs px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              ◀ 이전 단계
-            </button>
+            {pipelineStep > 1 ? (
+              <button 
+                onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
+                className="btn-secondary text-xs px-3.5 py-1.5"
+              >
+                ◀ 이전 단계
+              </button>
+            ) : (
+              <div className="w-[76px]" />
+            )}
 
             {/* 프로세스별 핵심 확인/확정 액션 버튼 영역 */}
             <div className="flex-1 flex justify-center px-4">
@@ -1264,27 +1267,30 @@ export default function Home() {
               )}
             </div>
 
-            <button 
-              onClick={() => {
-                // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
-                if (pipelineStep === 1 && !isAuditComplete) {
-                  setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
-                  setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
-                  setAhpWeights({
-                    "대중교통 접근성": 7,
-                    "소방 통로 확보": 5,
-                    "생활인구 밀집도": 8,
-                    "민원 발생 빈도": 4
-                  });
-                  setIsAuditComplete(true);
-                }
-                setPipelineStep(prev => Math.min(5, prev + 1));
-              }}
-              disabled={pipelineStep === 5}
-              className="btn-primary text-xs px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              다음 단계 ▶
-            </button>
+            {pipelineStep < 5 ? (
+              <button 
+                onClick={() => {
+                  // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
+                  if (pipelineStep === 1 && !isAuditComplete) {
+                    setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+                    setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+                    setAhpWeights({
+                      "대중교통 접근성": 7,
+                      "소방 통로 확보": 5,
+                      "생활인구 밀집도": 8,
+                      "민원 발생 빈도": 4
+                    });
+                    setIsAuditComplete(true);
+                  }
+                  setPipelineStep(prev => Math.min(5, prev + 1));
+                }}
+                className="btn-primary text-xs px-3.5 py-1.5"
+              >
+                다음 단계 ▶
+              </button>
+            ) : (
+              <div className="w-[76px]" />
+            )}
           </div>
         </div>
       )}
