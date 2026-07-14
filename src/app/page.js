@@ -972,7 +972,14 @@ export default function Home() {
 
       {/* 3. 중앙 집중형 플로팅 위저드 패널 (Centered Workflow Wizard Panel) */}
       {activeView === 'map' && (
-        <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[820px] max-w-[95vw] h-[480px] glass-panel-deep p-6 flex flex-col justify-between z-40 rounded-2xl text-glass-crisp shadow-2xl`} style={{ background: 'rgba(255, 255, 255, 0.94)' }}>
+        <div 
+          className={`fixed z-40 rounded-2xl text-glass-crisp shadow-2xl glass-panel-deep p-6 flex flex-col justify-between transition-all duration-700 ease-in-out ${
+            pipelineStep >= 4
+              ? 'top-20 left-[calc(100%-404px)] translate-x-0 translate-y-0 w-[380px] h-[calc(100vh-110px)] max-h-[85vh]'
+              : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[820px] max-w-[95vw] h-[480px]'
+          }`} 
+          style={{ background: 'rgba(255, 255, 255, 0.94)' }}
+        >
           <div className="flex justify-between items-start border-b border-hairline pb-3 flex-none">
             <div>
               <h2 className="text-sm font-bold text-ink mb-0.5">
@@ -1125,7 +1132,7 @@ export default function Home() {
                   ))}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className={pipelineStep >= 4 ? "flex flex-col gap-3" : "grid grid-cols-2 gap-4"}>
                   {/* Left Column: Properties */}
                   <div className="flex flex-col gap-1.5">
                     <span className="text-[11px] font-semibold text-ink-secondary">추천지 속성 정보</span>
@@ -1230,9 +1237,10 @@ export default function Home() {
               {pipelineStep >= 4 && (
                 <button 
                   onClick={runSimulation}
-                  className="btn-primary text-xs py-1.5 px-6 rounded-lg font-semibold shadow-md"
+                  className="btn-primary text-[11px] py-1.5 px-3.5 rounded-lg font-semibold shadow-md truncate"
+                  title="갈등 심의 시뮬레이터 실행 (GPT-4o)"
                 >
-                  {activeTab.toUpperCase()} 갈등 심의 시뮬레이터 실행 (GPT-4o)
+                  {activeTab.toUpperCase()} 심의 실행
                 </button>
               )}
             </div>
