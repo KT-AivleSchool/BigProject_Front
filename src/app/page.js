@@ -858,8 +858,17 @@ export default function Home() {
           >
             ☰
           </button>
-          <span className="text-xl font-bold tracking-tight text-primary">OmniSite</span>
-          <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-medium">B2G SDSS v1.0</span>
+          <div 
+            onClick={() => {
+              setActiveView('map');
+              setPipelineStep(1);
+            }}
+            className="flex items-center gap-2 cursor-pointer hover:opacity-85 transition-all"
+            title="홈 화면으로 이동"
+          >
+            <span className="text-xl font-bold tracking-tight text-primary">OmniSite</span>
+            <span className="text-[10px] bg-primary/10 text-primary px-2 py-0.5 rounded border border-primary/20 font-medium">B2G SDSS v1.0</span>
+          </div>
         </div>
 
         {/* 5단계 프로세스 시각화 (Header Steps Indicator) */}
@@ -903,7 +912,7 @@ export default function Home() {
               onClick={() => setShowLoginModal(true)}
               className="btn-primary text-xs px-4 py-1.5 font-semibold"
             >
-              공무원 로그인
+              로그인
             </button>
           )}
         </div>
@@ -954,252 +963,297 @@ export default function Home() {
       {/* 2. 인터랙티브 Leaflet GIS 3D 맵 공간 영역 (Map Container) */}
       <div id="interactive-map" className={`map-container w-full h-full ${activeView === 'map' ? '' : 'hidden'}`} />
 
-      {/* 3. 좌측 플로팅 패널: 일괄 업로드 및 AHP 가중치 제어 (Upload & AHP Control Panel) */}
-      <div className={`floating-overlay top-20 w-96 glass-panel p-6 flex flex-col gap-6 max-h-[82vh] overflow-y-auto text-glass-crisp transition-all duration-300 ${activeView === 'map' ? (isSidebarOpen ? 'left-[280px]' : 'left-6') : 'hidden'}`}>
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-sm font-bold text-ink mb-0.5">입지선정 기준 설정</h2>
-            <p className="text-[10px] text-ink-secondary">데이터 적재 및 가중치 의사결정 수립</p>
-          </div>
-          <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold">
-            Step {pipelineStep} / 5
-          </span>
-        </div>
-
-        {/* [Step 1] 데이터 일괄 업로드 및 AI 감리 의도 검증 */}
-        <div className={`flex flex-col gap-3 transition-all duration-300 ${pipelineStep !== 1 ? 'opacity-40 pointer-events-none' : ''}`}>
-          <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold text-ink-secondary">Step 1. CSV 수집 & AI 감리</label>
-            <span className="text-[10px] text-primary font-mono font-medium">CSV 파일 전용</span>
-          </div>
-
-          {!isAuditComplete ? (
-            <div 
-              onClick={triggerFileAudit}
-              className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-5 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
-            >
-              <p className="text-xs text-ink font-semibold">📁 CSV 파일 일괄 드래그앤드롭</p>
-              <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 가중치 추출 개시</p>
+      {/* 3. 중앙 집중형 플로팅 위저드 패널 (Centered Workflow Wizard Panel) */}
+      {activeView === 'map' && (
+        <div className={`fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[820px] max-w-[95vw] h-[480px] glass-panel-deep p-6 flex flex-col justify-between z-40 rounded-2xl text-glass-crisp shadow-2xl`} style={{ background: 'rgba(255, 255, 255, 0.94)' }}>
+          <div className="flex justify-between items-start border-b border-hairline pb-3 flex-none">
+            <div>
+              <h2 className="text-sm font-bold text-ink mb-0.5">
+                {pipelineStep === 1 && "Step 1. 파일 업로드"}
+                {pipelineStep === 2 && "Step 2. 데이터 승인"}
+                {pipelineStep === 3 && "Step 3. AHP 가중치 락"}
+                {pipelineStep === 4 && "Step 4. AI 토론"}
+                {pipelineStep === 5 && "Step 5. 보고서 발급"}
+              </h2>
+              <p className="text-[10px] text-ink-secondary">
+                {pipelineStep === 1 && "CSV 데이터셋 파일을 업로드하고 AI 감리를 진행합니다."}
+                {pipelineStep === 2 && "공간 위치와 의사결정 탐색 의도를 보정하고 최종 승인합니다."}
+                {pipelineStep === 3 && "AHP 쌍대비교 상대 가중치를 조정하고 확정합니다."}
+                {pipelineStep === 4 && "추천 후보지의 분석 내용과 대중교통 영향 및 갈등 지수를 검토합니다."}
+                {pipelineStep === 5 && "AI 주무관 에이전트 간의 갈등 조정 토론을 실시하고 타당성 보고서를 발급받습니다."}
+              </p>
             </div>
-          ) : (
-            /* AI 감리 결과 판독 및 실무자 의도 승인 루프 */
-            <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-3">
-              <div className="flex justify-between items-center border-b border-hairline pb-1.5">
-                <span className="text-[11px] text-primary font-bold">✓ AI 사전 감리 완료</span>
-                <span className="text-[10px] text-ink-secondary">LLM 의도 매핑 성공</span>
-              </div>
-              <div className="text-[11px] flex flex-col gap-2 text-ink leading-relaxed">
-                <p><strong className="text-ink-secondary">감리 사유:</strong> {auditReason}</p>
-                <p><strong className="text-ink-secondary">추출된 의도:</strong> {userIntent}</p>
-              </div>
-              <button
-                onClick={() => setPipelineStep(2)}
-                className="btn-primary w-full text-[11px]"
-              >
-                추출 의도 확인 및 검증 단계 진입 (Approve)
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* [Step 3] AHP 슬라이더 컨트롤러 */}
-        <div className={`flex flex-col gap-4 border-t border-hairline pt-4 transition-all duration-300 ${pipelineStep < 3 ? 'opacity-20 pointer-events-none' : ''} ${pipelineStep > 3 ? 'opacity-40 pointer-events-none' : ''}`}>
-          <div className="flex justify-between items-center">
-            <label className="text-xs font-semibold text-ink-secondary">Step 3. AHP 인자별 상대 가중치</label>
-            <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${Object.keys(ahpWeights).length === 0 ? 'bg-ink-secondary/10 text-ink-secondary' : crValue < 0.1 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
-              C.R. = {Object.keys(ahpWeights).length === 0 ? '-' : crValue} ({Object.keys(ahpWeights).length === 0 ? '대기' : crValue < 0.1 ? '만족' : '위배'})
+            <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold shrink-0">
+              Step {pipelineStep} / 5
             </span>
           </div>
 
-          <div className="flex flex-col gap-3">
-            {Object.keys(ahpWeights).map(key => (
-              <div key={key} className="flex flex-col gap-1">
-                <div className="flex justify-between text-[11px] text-ink-secondary">
-                  <span>{key}</span>
-                  <span className="font-mono text-ink font-semibold">{ahpWeights[key]}</span>
+          <div className="flex-1 py-2 my-1 flex flex-col gap-4">
+            {/* Step 1 내용 */}
+            {pipelineStep === 1 && (
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-semibold text-ink-secondary">CSV 데이터셋 & RAG 법규 PDF 수집</label>
+                  <span className="text-[10px] text-primary font-mono font-medium">CSV 및 PDF 파일 통합 지원</span>
                 </div>
-                <input
-                  type="range"
-                  min="1"
-                  max="9"
-                  disabled={isAhpLocked || pipelineStep !== 3}
-                  value={ahpWeights[key]}
-                  onChange={(e) => handleSliderChange(key, e.target.value)}
-                  className="w-full accent-primary cursor-pointer h-1 bg-gray-200 rounded-lg appearance-none"
-                />
+                {!isAuditComplete ? (
+                  <div 
+                    onClick={triggerFileAudit}
+                    className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-8 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
+                  >
+                    <p className="text-xs text-ink font-semibold">📁 분석 CSV 및 RAG 법규 PDF 파일 일괄 드래그앤드롭</p>
+                    <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 법률 규제 인코딩 일괄 수행</p>
+                  </div>
+                ) : (
+                  <div className="bg-white/50 p-4 rounded-xl border border-hairline grid grid-cols-2 gap-4 h-[160px] items-center">
+                    <div className="text-[11px] flex flex-col gap-1.5 text-ink leading-relaxed border-r border-hairline pr-3 max-h-[140px] overflow-y-auto">
+                      <span className="text-primary font-bold">✓ 업로드된 파일 ({uploadedFiles.length}개)</span>
+                      <div className="flex flex-col gap-1 mt-1 pr-1">
+                        {uploadedFiles.map((file, idx) => (
+                          <div key={idx} className="flex justify-between items-center bg-gray-100 p-1 px-2 rounded border border-hairline text-[9px]">
+                            <span className="truncate max-w-[170px] font-medium">{file.name}</span>
+                            <span className={`text-[8px] px-1 rounded font-mono font-bold ${file.type === 'CSV' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>{file.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="text-[11px] flex flex-col gap-1 text-ink leading-relaxed pl-1 max-h-[140px] overflow-y-auto pr-1">
+                      <span className="text-primary font-bold">✓ AI 통합 사전 감리 결과</span>
+                      <p className="text-[10px] leading-relaxed"><strong className="text-ink-secondary">감리 사유:</strong> {auditReason}</p>
+                      <p className="text-[10px] leading-relaxed"><strong className="text-ink-secondary">추출 의도:</strong> {userIntent}</p>
+                    </div>
+                  </div>
+                )}
               </div>
-            ))}
+            )}
+
+            {/* Step 2 내용 */}
+            {pipelineStep === 2 && (
+              <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-3">
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Left Column: Intent Correction */}
+                  <div className="flex flex-col gap-1 text-xs justify-between">
+                    <div className="flex flex-col gap-1">
+                      <span className="text-ink-secondary font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
+                      <textarea 
+                        rows={5}
+                        value={userIntent} 
+                        onChange={(e) => setUserIntent(e.target.value)} 
+                        className="text-input-notion resize-none leading-relaxed w-full h-[120px]"
+                      />
+                    </div>
+                    <span className="text-[9px] text-ink-secondary">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
+                  </div>
+                  {/* Right Column: Address/Coordinates */}
+                  <div className="flex flex-col gap-2.5 text-xs">
+                    <span className="text-[11px] text-ink-secondary font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-ink-secondary">지번 주소</span>
+                      <input 
+                        type="text" 
+                        value={hitlJibun} 
+                        onChange={(e) => setHitlJibun(e.target.value)} 
+                        className="text-input-notion w-full"
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-ink-secondary">경도(Lng)</span>
+                        <input type="number" step="0.000001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="text-input-notion" />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <span className="text-ink-secondary">위도(Lat)</span>
+                        <input type="number" step="0.000001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="text-input-notion" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Step 3 내용 */}
+            {pipelineStep === 3 && (
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-semibold text-ink-secondary">AHP 인자별 상대 가중치</label>
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${Object.keys(ahpWeights).length === 0 ? 'bg-ink-secondary/10 text-ink-secondary' : crValue < 0.1 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
+                    C.R. = {Object.keys(ahpWeights).length === 0 ? '-' : crValue} ({Object.keys(ahpWeights).length === 0 ? '대기' : crValue < 0.1 ? '만족' : '위배'})
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-3 bg-white/40 p-4 rounded-xl border border-hairline">
+                  {Object.keys(ahpWeights).map(key => (
+                    <div key={key} className="flex flex-col gap-1">
+                      <div className="flex justify-between text-[11px] text-ink-secondary">
+                        <span className="font-medium">{key}</span>
+                        <span className="font-mono text-ink font-semibold">{ahpWeights[key]}</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="1"
+                        max="9"
+                        disabled={isAhpLocked || pipelineStep !== 3}
+                        value={ahpWeights[key]}
+                        onChange={(e) => handleSliderChange(key, e.target.value)}
+                        className="w-full accent-primary cursor-pointer h-1 bg-gray-200 rounded-lg appearance-none"
+                      />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Step 4 & 5 내용 */}
+            {pipelineStep >= 4 && (
+              <div className="flex flex-col gap-3">
+                {/* Top 1 ~ Top 3 탭 */}
+                <div className="flex bg-gray-200/50 p-1 rounded-lg border border-hairline flex-none">
+                  {['top1', 'top2', 'top3'].map(tab => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab)}
+                      className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all ${activeTab === tab ? 'bg-primary text-white shadow-sm' : 'text-ink-secondary hover:text-ink'}`}
+                    >
+                      {tab.toUpperCase()}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  {/* Left Column: Properties */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] font-semibold text-ink-secondary">추천지 속성 정보</span>
+                    <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-2 h-[135px] justify-between">
+                      <div className="flex justify-between text-xs">
+                        <span className="text-ink-secondary">지번 / 소유 구분</span>
+                        <span className="text-ink font-semibold truncate max-w-[180px]">{selectedParcel[activeTab].jibun}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-ink-secondary">면적(㎡)</span>
+                        <span className="font-mono text-ink font-semibold">{selectedParcel[activeTab].area} ㎡</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-ink-secondary">공시지가</span>
+                        <span className="font-mono text-primary font-semibold">₩ {selectedParcel[activeTab].price.toLocaleString()} / ㎡</span>
+                      </div>
+                      <div className="flex justify-between text-[10px] border-t border-hairline pt-1.5 text-ink-secondary font-mono">
+                        <span>좌표: {selectedParcel[activeTab].lat}, {selectedParcel[activeTab].lng}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right Column: Conflict */}
+                  <div className="flex flex-col gap-1.5">
+                    <span className="text-[11px] font-semibold text-ink-secondary">지역 갈등 민감도 (CSS)</span>
+                    <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-3 h-[135px] justify-center">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="font-semibold text-ink-secondary">갈등 지수</span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                          selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
+                          selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' :
+                          'bg-emerald-500/10 text-emerald-600'
+                        }`}>
+                          등급: {selectedParcel[activeTab].cssGrade} ({selectedParcel[activeTab].css}점)
+                        </span>
+                      </div>
+                      <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
+                        <div className={`h-full transition-all duration-500 ${
+                          selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
+                          selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500' :
+                          'bg-emerald-500'
+                        }`} style={{ width: `${selectedParcel[activeTab].css}%` }} />
+                      </div>
+                      <p className="text-[9px] text-ink-secondary mt-1 leading-relaxed">
+                        * 주민 민원 가능성 및 교육/의료시설 반경 인접도를 수치화한 갈등 지표입니다.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* AHP 잠금 버튼 -> 입지 분석 트리거 */}
-          <button
-            onClick={handleAhpLock}
-            disabled={crValue >= 0.1 || pipelineStep !== 3 || Object.keys(ahpWeights).length === 0}
-            className="btn-primary w-full text-xs disabled:opacity-30"
-          >
-            🔒 AHP 가중치 확정 및 추천 입지 연산 (Lock)
-          </button>
-
-          {isAhpLocked && (
-            <button
-              onClick={() => {
-                setIsAhpLocked(false);
-                setPipelineStep(3);
-                alert("AHP 가중치 잠금이 해제되었습니다. 가중치를 재조정한 뒤 다시 Lock을 걸어 공간 차집합 연산을 가동하십시오.");
-              }}
-              className="btn-secondary w-full text-[11px]"
+          {/* 하단 내비게이션 컨트롤 */}
+          <div className="flex justify-between items-center border-t border-hairline pt-3 mt-1 flex-none">
+            <button 
+              onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
+              disabled={pipelineStep === 1}
+              className="btn-secondary text-xs px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              🔓 AHP 가중치 잠금 해제 (Unlock)
+              ◀ 이전 단계
             </button>
-          )}
-        </div>
-      </div>
 
-      {/* 4. 우측 플로팅 패널: 후보지 탭 및 속성 정보 카드 (Information & HITL Panel) */}
-      <div className={`floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto text-glass-crisp ${activeView === 'map' ? '' : 'hidden'}`}>
-        
-        {/* [Step 2] 하이브리드 HITL: 탐색 의도 및 물리 좌표 동시 보정 영역 */}
-        {pipelineStep === 2 && (
-          <div className="flex flex-col gap-3">
-            <div className="border-b border-hairline pb-2">
-              <h2 className="text-xs font-bold text-amber-600">Step 2. 하이브리드 공간 및 의도 보정 (HITL)</h2>
-              <p className="text-[10px] text-ink-secondary font-medium">지도의 주황색 핀을 드래그하거나 아래 폼에서 피드백을 보정하세요.</p>
-            </div>
-            
-            <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-3">
-              {/* 1. 탐색 의도 보정 */}
-              <div className="flex flex-col gap-1 text-xs">
-                <span className="text-ink-secondary font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
-                <textarea 
-                  rows={3}
-                  value={userIntent} 
-                  onChange={(e) => setUserIntent(e.target.value)} 
-                  className="text-input-notion resize-none leading-relaxed"
-                />
-                <span className="text-[9px] text-ink-secondary">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
-              </div>
-
-              {/* 2. 지번 및 위경도 보정 */}
-              <div className="flex flex-col gap-2.5 border-t border-hairline pt-2.5">
-                <span className="text-[11px] text-ink-secondary font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
-                
-                <div className="flex flex-col gap-1 text-xs">
-                  <span className="text-ink-secondary">지번 주소</span>
-                  <input 
-                    type="text" 
-                    value={hitlJibun} 
-                    onChange={(e) => setHitlJibun(e.target.value)} 
-                    className="text-input-notion"
-                  />
-                </div>
-                
-                <div className="flex gap-2">
-                  <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                    <span className="text-ink-secondary">경도(Lng)</span>
-                    <input type="number" step="0.000001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="text-input-notion" />
-                  </div>
-                  <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                    <span className="text-ink-secondary">위도(Lat)</span>
-                    <input type="number" step="0.000001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="text-input-notion" />
-                  </div>
-                </div>
-              </div>
-
-              <button 
-                onClick={handleHitlCommit}
-                className="btn-primary w-full bg-amber-500 hover:bg-amber-600 text-xs py-2.5 rounded-lg"
-              >
-                보정 완료 및 데이터 확정 (Commit)
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* [Step 4 & 5] 최적 추천 후보지 리스트 정보 */}
-        {pipelineStep >= 4 ? (
-          <div className="flex flex-col gap-5">
-            {/* Top 1 ~ Top 3 탭 */}
-            <div className="flex bg-gray-200/50 p-1 rounded-lg border border-hairline">
-              {['top1', 'top2', 'top3'].map(tab => (
-                <button
-                  key={tab}
-                  onClick={() => setActiveTab(tab)}
-                  className={`flex-1 text-center py-1.5 text-xs font-semibold rounded-md cursor-pointer transition-all ${activeTab === tab ? 'bg-primary text-white shadow-sm' : 'text-ink-secondary hover:text-ink'}`}
-                >
-                  {tab.toUpperCase()}
-                </button>
-              ))}
-            </div>
-
-            {/* 필지 속성 카드 */}
-            <div className="flex flex-col gap-2">
-              <h3 className="text-xs font-semibold text-ink-secondary">Step 4. 추천지 속성 정보</h3>
-              <div className="bg-white/50 p-4 rounded-xl border border-hairline flex flex-col gap-2.5">
-                <div className="flex justify-between text-xs">
-                  <span className="text-ink-secondary">지번 / 소유 구분</span>
-                  <span className="text-ink font-semibold">{selectedParcel[activeTab].jibun}</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-ink-secondary">면적(㎡)</span>
-                  <span className="font-mono text-ink font-semibold">{selectedParcel[activeTab].area} ㎡</span>
-                </div>
-                <div className="flex justify-between text-xs">
-                  <span className="text-ink-secondary">공시지가</span>
-                  <span className="font-mono text-primary font-semibold">₩ {selectedParcel[activeTab].price.toLocaleString()} / ㎡</span>
-                </div>
-                <div className="flex justify-between text-[11px] border-t border-hairline pt-2 text-ink-secondary">
-                  <span>위도/경도 좌표</span>
-                  <span className="font-mono">{selectedParcel[activeTab].lat}, {selectedParcel[activeTab].lng}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* 갈등 민감도 카드 */}
-            <div className="flex flex-col gap-3">
-              <div className="flex justify-between items-center text-xs">
-                <span className="font-semibold text-ink-secondary">지역 갈등 민감도 (CSS)</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                  selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
-                  selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' :
-                  'bg-emerald-500/10 text-emerald-600'
-                }`}>
-                  등급: {selectedParcel[activeTab].cssGrade} ({selectedParcel[activeTab].css}점)
+            {/* 프로세스별 핵심 확인/확정 액션 버튼 영역 */}
+            <div className="flex-1 flex justify-center px-4">
+              {pipelineStep === 1 && (
+                <span className="text-[10px] text-ink-secondary font-bold">
+                  CSV 파일을 업로드한 뒤 다음 단계로 이동하세요
                 </span>
-              </div>
-
-              <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                <div className={`h-full transition-all duration-500 ${
-                  selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
-                  selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500' :
-                  'bg-emerald-500'
-                }`} style={{ width: `${selectedParcel[activeTab].css}%` }} />
-              </div>
+              )}
+              {pipelineStep === 2 && (
+                <button 
+                  onClick={handleHitlCommit}
+                  className="btn-primary bg-amber-500 hover:bg-amber-600 text-xs py-1.5 px-6 rounded-lg font-semibold"
+                >
+                  보정 완료 및 데이터 확정 (Commit)
+                </button>
+              )}
+              {pipelineStep === 3 && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAhpLock}
+                    disabled={crValue >= 0.1 || Object.keys(ahpWeights).length === 0}
+                    className="btn-primary text-xs py-1.5 px-5 font-semibold disabled:opacity-30"
+                  >
+                    🔒 AHP 가중치 확정 및 추천 입지 연산 (Lock)
+                  </button>
+                  {isAhpLocked && (
+                    <button
+                      onClick={() => {
+                        setIsAhpLocked(false);
+                        setPipelineStep(3);
+                        alert("AHP 가중치 잠금이 해제되었습니다.");
+                      }}
+                      className="btn-secondary text-[11px] py-1.5 px-3"
+                    >
+                      🔓 잠금 해제
+                    </button>
+                  )}
+                </div>
+              )}
+              {pipelineStep >= 4 && (
+                <button 
+                  onClick={runSimulation}
+                  className="btn-primary text-xs py-1.5 px-6 rounded-lg font-semibold shadow-md"
+                >
+                  {activeTab.toUpperCase()} 갈등 심의 시뮬레이터 실행 (GPT-4o)
+                </button>
+              )}
             </div>
 
-            {/* [Step 5] AI 모의 토론 및 WeasyPrint PDF 발급 */}
-            <div className="border-t border-hairline pt-4 flex flex-col gap-2">
-              <span className="text-xs font-semibold text-ink-secondary">Step 5. 의사결정 시뮬레이션</span>
-              <button 
-                onClick={() => {
-                  setPipelineStep(5);
-                  runSimulation();
-                }}
-                className="w-full btn-primary text-xs py-3 rounded-xl shadow-md"
-              >
-                {activeTab.toUpperCase()} 갈등 심의 시뮬레이터 실행 (GPT-4o)
-              </button>
-            </div>
+            <button 
+              onClick={() => {
+                // 단계 진행 시 화면 깨짐 방지를 위해 기본 데이터 셋업
+                if (pipelineStep === 1 && !isAuditComplete) {
+                  setAuditReason("[목업] 인근 대중교통 인프라 접점 및 소방 안전 확보 규정 검토 필요");
+                  setUserIntent("[목업] 스마트 쉼터 부스 설치를 위한 유동 인구 밀집도 분석 및 적합 필지 탐색");
+                  setAhpWeights({
+                    "대중교통 접근성": 7,
+                    "소방 통로 확보": 5,
+                    "생활인구 밀집도": 8,
+                    "민원 발생 빈도": 4
+                  });
+                  setIsAuditComplete(true);
+                }
+                setPipelineStep(prev => Math.min(5, prev + 1));
+              }}
+              disabled={pipelineStep === 5}
+              className="btn-primary text-xs px-3.5 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              다음 단계 ▶
+            </button>
           </div>
-        ) : (
-          pipelineStep !== 2 && (
-            <div className="text-center py-20 text-ink-secondary text-xs">
-              [Step 1] 데이터 적재 및 <br />
-              [Step 3] AHP 가중치 잠금을 진행하시면<br />
-              이곳에 공간 차집합 추천 결과가 출력됩니다.
-            </div>
-          )
-        )}
-      </div>
+        </div>
+      )}
 
       {/* 5. 비동기식 이력 대시보드 뷰 영역 (Dashboard Subview Container) */}
       <div className={activeView === 'dashboard' ? 'block pt-16 min-h-screen bg-canvas-soft' : 'hidden'}>
