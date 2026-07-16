@@ -8,7 +8,9 @@ import Header from '../components/Header';
 import Sidebar from '../components/Sidebar';
 import MapContainer from '../components/MapContainer';
 import WizardPanel from '../components/WizardPanel';
-import { SimulationModal, LoginModal, RegulationModal } from '../components/Modals';
+import SimulationModal from '../components/SimulationModal';
+import LoginModal from '../components/LoginModal';
+import RegulationModal from '../components/RegulationModal';
 
 
 export default function Home() {
