@@ -47,7 +47,7 @@ export default function WizardPanel({
           <h2 className="text-sm font-bold text-ink mb-0.5">
             {pipelineStep === 1 && "Step 1. 파일 업로드"}
             {pipelineStep === 2 && "Step 2. 데이터 승인"}
-            {pipelineStep === 3 && "Step 3. AHP 가중치 락"}
+            {pipelineStep === 3 && "Step 3. 가점 조정"}
             {pipelineStep === 4 && "Step 4. AI 토론"}
             {pipelineStep === 5 && "Step 5. 보고서 발급"}
           </h2>
@@ -349,7 +349,7 @@ export default function WizardPanel({
           <div className="flex-1 flex justify-center px-2">
             {pipelineStep === 1 && (
               <span className="text-[10px] text-ink-secondary font-bold">
-                CSV 파일을 업로드한 뒤 다음 단계로 이동하세요
+                파일을 업로드한 뒤 다음 단계로 이동하세요
               </span>
             )}
             {pipelineStep === 2 && (
@@ -367,14 +367,14 @@ export default function WizardPanel({
                   disabled={crValue >= 0.1 || Object.keys(ahpWeights).length === 0}
                   className="btn-primary text-xs py-1.5 w-[170px] font-semibold disabled:opacity-30 rounded-lg truncate"
                 >
-                  🔒 가중치 확정
+                  🔒 가점 확정
                 </button>
                 {isAhpLocked && (
                   <button
                     onClick={() => {
                       setIsAhpLocked(false);
                       setPipelineStep(3);
-                      alert("AHP 가중치 잠금이 해제되었습니다.");
+                      alert("가점 잠금이 해제되었습니다.");
                     }}
                     className="btn-secondary text-[11px] py-1.5 px-2 rounded-lg"
                   >
@@ -396,7 +396,7 @@ export default function WizardPanel({
               <button 
                 onClick={handleDownloadPdf}
                 className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs py-1.5 w-[170px] rounded-lg font-semibold shadow-md truncate"
-                title="WeasyPrint PDF 보고서 다운로드"
+                title="보고서 다운로드"
               >
                 📝 PDF 다운로드
               </button>
