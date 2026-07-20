@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 export default function Home() {
   // 플랫폼 단계별 상태 제어 (Pipeline Wizard Steps)
@@ -15,6 +16,7 @@ export default function Home() {
   // Step 1 AI 감리 및 실무자 의도 매핑 검증 상태
   const [isAuditComplete, setIsAuditComplete] = useState(false);
   const [auditMetadata, setAuditMetadata] = useState(null);
+  const [auditResultJson, setAuditResultJson] = useState(null);
 
   // 1. AHP 가중치 입력 상태
   const [ahpWeights, setAhpWeights] = useState({});
@@ -764,35 +766,47 @@ export default function Home() {
     const activeParcel = selectedParcel[activeTab];
     const parcelId = activeParcel.id;
 
-    // EventSource 커넥션 생성
-    const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
+    // fetchEventSource 커넥션 생성 (POST 방식으로 audit_data 전송)
+    const ctrl = new AbortController();
+    
+    fetchEventSource(`http://localhost:8000/api/v1/simulations/stream`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        parcel_id: parcelId,
+        facility_type: "흡연부스", // TODO: 동적으로 받을 수 있도록 개선 필요
+        audit_data: auditResultJson
+      }),
+      signal: ctrl.signal,
+      onmessage(ev) {
+        try {
+          const data = JSON.parse(ev.data);
+          
+          // 실시간 대사 누적 및 스텝 갱신
+          setSimLogs(prev => [...prev, { sender: data.sender, text: data.text }]);
+          setSimStep(prev => prev + 1);
 
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        // 실시간 대사 누적 및 스텝 갱신
-        setSimLogs(prev => [...prev, { sender: data.sender, text: data.text }]);
-        setSimStep(prev => prev + 1);
-
-        // 마지막 패킷 수신 시 연결 종료 및 최종 결과 로드
-        if (data.is_finished) {
-          eventSource.close();
-          setIsSimulating(false);
-          fetchSimulationResults(parcelId);
+          // 마지막 패킷 수신 시 연결 종료 및 최종 결과 로드
+          if (data.is_finished) {
+            ctrl.abort(); // 커넥션 강제 종료
+            setIsSimulating(false);
+            fetchSimulationResults(parcelId);
+          }
+        } catch (err) {
+          console.error("SSE 파싱 에러:", err);
         }
-      } catch (err) {
-        console.error("SSE 파싱 에러:", err);
+      },
+      onerror(err) {
+        console.error("SSE 통신 에러 (서버 연결 실패 또는 종료):", err);
+        ctrl.abort(); // 커넥션 강제 종료
+        setIsSimulating(false);
+        // 에러 시 폴백 시뮬레이션 결과라도 갱신
+        fetchSimulationResults(parcelId);
+        throw err; // 에러를 던져야 내부적인 자동 재시도를 방지함
       }
-    };
-
-    eventSource.onerror = (err) => {
-      console.error("SSE 통신 에러 (서버 연결 실패 또는 종료):", err);
-      eventSource.close();
-      setIsSimulating(false);
-      // 에러 시 폴백 시뮬레이션 결과라도 갱신
-      fetchSimulationResults(parcelId);
-    };
+    }).catch(err => console.error("fetchEventSource catch block:", err));
   };
 
   // WeasyPrint 타당성 PDF 보고서 실물 다운로드 연동
@@ -911,6 +925,7 @@ export default function Home() {
           setAuditReason(data.audit_reason);
           setUserIntent(data.user_intent);
           setAhpWeights(data.extracted_weights); // 동적 가중치 슬라이더 항목 대입
+          setAuditResultJson(data.audit_data); // 서버에서 넘어온 전체 JSON 저장
           setIsAuditComplete(true);
           alert(`🎉 AI 통합 감리가 성공적으로 완료되었습니다. 총 ${selectedFiles.length}개의 데이터셋 분석을 기반으로 도출된 감리 사유 및 의도를 Step 2에서 확인하십시오.`);
         } else {
