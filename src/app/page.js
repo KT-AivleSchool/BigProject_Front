@@ -1159,6 +1159,15 @@ export default function Home() {
                   <span>위도/경도 좌표</span>
                   <span className="font-mono">{selectedParcel[activeTab].lat}, {selectedParcel[activeTab].lng}</span>
                 </div>
+                {/* 로드뷰 동적 생성 버튼 (Task 8) */}
+                <div className="flex justify-end gap-2 mt-1">
+                  <a href={`http://localhost:8000/api/v1/lands/roadview?lat=${selectedParcel[activeTab].lat}&lng=${selectedParcel[activeTab].lng}&provider=kakao`} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-[#FEE500] text-black text-[11px] font-bold rounded shadow hover:bg-[#e6cf00] transition-colors flex items-center gap-1">
+                    카카오 로드뷰
+                  </a>
+                  <a href={`http://localhost:8000/api/v1/lands/roadview?lat=${selectedParcel[activeTab].lat}&lng=${selectedParcel[activeTab].lng}&provider=naver`} target="_blank" rel="noopener noreferrer" className="px-3 py-1.5 bg-[#03C75A] text-white text-[11px] font-bold rounded shadow hover:bg-[#02b350] transition-colors flex items-center gap-1">
+                    네이버 로드뷰
+                  </a>
+                </div>
               </div>
             </div>
 
