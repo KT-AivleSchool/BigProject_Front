@@ -11,6 +11,7 @@ import WizardPanel from '../components/WizardPanel';
 import SimulationModal from '../components/SimulationModal';
 import LoginModal from '../components/LoginModal';
 import RegulationModal from '../components/RegulationModal';
+import { fetchEventSource } from '@microsoft/fetch-event-source';
 
 
 export default function Home() {
@@ -26,6 +27,7 @@ export default function Home() {
   const [isAuditComplete, setIsAuditComplete] = useState(false);
   const [auditMetadata, setAuditMetadata] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+  const [auditResultJson, setAuditResultJson] = useState(null);
 
   // 1. AHP 가중치 입력 상태
   const [ahpWeights, setAhpWeights] = useState({});
@@ -355,7 +357,7 @@ export default function Home() {
     setSimTarget(targetTab);
     setIsSimulating(true);
     
-    // 대상 후보지 로그만 초기화
+    // 타겟 탭의 로그만 초기화
     setSimLogs(prev => ({
       ...prev,
       [targetTab]: []
@@ -363,52 +365,56 @@ export default function Home() {
 
     const activeParcel = selectedParcel[targetTab];
     const parcelId = activeParcel.id;
-
-    // EventSource 커넥션 생성 및 백엔드 SSE 스트림 연동
-    const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
-
-    eventSource.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        // 실시간 대사 누적
-        setSimLogs(prev => ({
-          ...prev,
-          [targetTab]: [...(prev[targetTab] || []), { sender: data.sender, text: data.text }]
-        }));
-
-        // 마지막 패킷 수신 시 연결 종료 및 최종 결과 로드
-        if (data.is_finished) {
-          eventSource.close();
-          setIsSimulating(false);
-          fetchSimulationResults(parcelId, targetTab);
+    
+    const ctrl = new AbortController();
+    
+    fetchEventSource('http://localhost:8000/api/v1/simulation/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        parcel_id: parcelId,
+        audit_data: auditResultJson
+      }),
+      signal: ctrl.signal,
+      onmessage(event) {
+        try {
+          const data = JSON.parse(event.data);
           
-          // 모의 심의 완료 후 1.5초 대기 후 자동으로 모달을 닫고 Step 5로 자동 슬라이딩 (하이브리드)
-          setTimeout(() => {
-            setShowSimModal(false);
-            setPipelineStep(5);
-          }, 1500);
-        }
-      } catch (err) {
-        console.error("SSE 파싱 에러:", err);
-      }
-    };
+          setSimLogs(prev => ({
+            ...prev,
+            [targetTab]: [...(prev[targetTab] || []), { sender: data.sender, text: data.text }]
+          }));
 
-    eventSource.onerror = (err) => {
-      console.error("SSE 통신 에러 (서버 연결 실패 또는 종료):", err);
-      eventSource.close();
-      setIsSimulating(false);
-      fetchSimulationResults(parcelId, targetTab);
-    };
+          if (data.is_finished) {
+            ctrl.abort();
+            setIsSimulating(false);
+            fetchSimulationResults(parcelId, targetTab);
+            setTimeout(() => {
+              setShowSimModal(false);
+              setPipelineStep(5);
+            }, 1500);
+          }
+        } catch (err) {
+          console.error("SSE 파싱 에러:", err);
+        }
+      },
+      onerror(err) {
+        console.error("SSE 통신 에러:", err);
+        ctrl.abort();
+        setIsSimulating(false);
+        fetchSimulationResults(parcelId, targetTab);
+        throw err;
+      }
+    });
   };
 
-  // 모든 조건 일괄 시뮬레이션 실행 (3개 후보지 동시 병렬 SSE 통신 개시)
   const runAllSimulation = () => {
     setShowSimModal(true);
     setSimMode('all');
     setIsSimulating(true);
     
-    // 모든 로그 데이터셋 초기화
     setSimLogs({
       top1: [],
       top2: [],
@@ -420,50 +426,61 @@ export default function Home() {
     ['top1', 'top2', 'top3'].forEach(tab => {
       const activeParcel = selectedParcel[tab];
       const parcelId = activeParcel.id;
-      const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
+      
+      const ctrl = new AbortController();
 
-      eventSource.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data);
-          
-          setSimLogs(prev => ({
-            ...prev,
-            [tab]: [...(prev[tab] || []), { sender: data.sender, text: data.text }]
-          }));
-
-          if (data.is_finished) {
-            eventSource.close();
-            finishedCount += 1;
-            fetchSimulationResults(parcelId, tab);
+      fetchEventSource('http://localhost:8000/api/v1/simulation/stream', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          parcel_id: parcelId,
+          audit_data: auditResultJson
+        }),
+        signal: ctrl.signal,
+        onmessage(event) {
+          try {
+            const data = JSON.parse(event.data);
             
-            // 모든 스트림 채널이 종료되었을 때 로딩 플래그 해제 및 Step 5 자동 슬라이딩 (하이브리드)
-            if (finishedCount === 3) {
-              setIsSimulating(false);
-              setTimeout(() => {
-                setShowSimModal(false);
-                setPipelineStep(5);
-              }, 1500);
-            }
-          }
-        } catch (err) {
-          console.error("SSE 파싱 에러:", err);
-        }
-      };
+            setSimLogs(prev => ({
+              ...prev,
+              [tab]: [...(prev[tab] || []), { sender: data.sender, text: data.text }]
+            }));
 
-      eventSource.onerror = (err) => {
-        console.error(`SSE 통신 에러 (tab: ${tab}):`, err);
-        eventSource.close();
-        finishedCount += 1;
-        fetchSimulationResults(parcelId, tab);
-        
-        if (finishedCount === 3) {
-          setIsSimulating(false);
-          setTimeout(() => {
-            setShowSimModal(false);
-            setPipelineStep(5);
-          }, 1500);
+            if (data.is_finished) {
+              ctrl.abort();
+              finishedCount += 1;
+              fetchSimulationResults(parcelId, tab);
+              
+              if (finishedCount === 3) {
+                setIsSimulating(false);
+                setTimeout(() => {
+                  setShowSimModal(false);
+                  setPipelineStep(5);
+                }, 1500);
+              }
+            }
+          } catch (err) {
+            console.error("SSE 파싱 에러:", err);
+          }
+        },
+        onerror(err) {
+          console.error(`SSE 통신 에러 (tab: ${tab}):`, err);
+          ctrl.abort();
+          finishedCount += 1;
+          fetchSimulationResults(parcelId, tab);
+          
+          if (finishedCount === 3) {
+            setIsSimulating(false);
+            setTimeout(() => {
+              setShowSimModal(false);
+              setPipelineStep(5);
+            }, 1500);
+          }
+          throw err;
         }
-      };
+      });
     });
   };
 
