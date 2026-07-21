@@ -13,6 +13,7 @@ export default function MapContainer({
 }) {
   const mapRef = useRef(null);
   const markersRef = useRef({});
+  const geojsonLayerRef = useRef(null);
   const [leafletLoaded, setLeafletLoaded] = useState(false);
 
   const isValidCoordinate = (lat, lng) => {
@@ -20,6 +21,75 @@ export default function MapContainer({
     if (lng === null || lng === undefined || isNaN(lng) || lng === 0) return false;
     if (lat < 33.0 || lat > 39.0 || lng < 124.0 || lng > 132.0) return false;
     return true;
+  };
+
+
+  const fetchScreenedLands = async (districtId = 1) => {
+    const L = window.L;
+    const map = mapRef.current;
+    if (!L || !map) return;
+
+    try {
+      const res = await fetch(`http://localhost:8000/api/v1/lands/screen-candidate?district_id=${districtId}&exclusion_meters=10.0`);
+      if (!res.ok) {
+        console.error("지적도 가용 필지 스크리닝 로드 실패");
+        return;
+      }
+      const data = await res.json();
+      const candidates = data.candidates || [];
+
+      if (geojsonLayerRef.current) {
+        map.removeLayer(geojsonLayerRef.current);
+      }
+
+      const bounds = map.getBounds();
+      
+      const geojsonFeatures = candidates
+        .filter(c => {
+          if (!c.usable_geometry) return false;
+          if (c.usable_geometry.type === "Polygon") {
+            const coords = c.usable_geometry.coordinates[0][0];
+            if (coords && coords.length >= 2) {
+              const latLng = L.latLng(coords[1], coords[0]);
+              return bounds.contains(latLng);
+            }
+          }
+          return true;
+        })
+        .map(c => ({
+          type: "Feature",
+          properties: {
+            land_id: c.land_id,
+            pnu: c.pnu,
+            jibun: c.jibun,
+            original_area: c.original_area_m2
+          },
+          geometry: c.usable_geometry
+        }));
+
+      const geojsonLayer = L.geoJSON(geojsonFeatures, {
+        style: {
+          color: "hsl(28, 91%, 54%)",
+          weight: 1.5,
+          fillColor: "hsl(28, 91%, 54%)",
+          fillOpacity: 0.15,
+          dashArray: "3"
+        },
+        onEachFeature: (feature, layer) => {
+          layer.bindPopup(`
+            <div style="font-size:11px; padding:2px; color:#111;">
+              <strong>지번:</strong> ${feature.properties.jibun}<br/>
+              <strong>PNU:</strong> ${feature.properties.pnu}<br/>
+              <strong>면적:</strong> ${feature.properties.original_area} ㎡
+            </div>
+          `);
+        }
+      }).addTo(map);
+
+      geojsonLayerRef.current = geojsonLayer;
+    } catch (err) {
+      console.error("지적도 데이터 페이징 렌더링 에러:", err);
+    }
   };
 
   useEffect(() => {
@@ -69,6 +139,12 @@ export default function MapContainer({
       }).addTo(map);
 
       mapRef.current = map;
+      
+      map.on('moveend', () => {
+        fetchScreenedLands(1);
+      });
+      fetchScreenedLands(1);
+
     }
 
     const map = mapRef.current;
