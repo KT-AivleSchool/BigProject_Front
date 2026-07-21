@@ -1,0 +1,181 @@
+/* Design tokens for Notion-style Warm Paper & Glassmorphism */
+
+:root {
+  /* Color Palette */
+  --canvas-soft: #f6f5f4;
+  --primary: #0075de;
+  --primary-active: #005bab;
+  --secondary: #213183;
+  --ink: #191919;
+  --ink-secondary: #5a5a5a;
+  --hairline: rgba(0, 0, 0, 0.08);
+
+  /* Translucent Glass Surfaces */
+  --glass-clear: rgba(255, 255, 255, 0.45);
+  --glass-mid: rgba(255, 255, 255, 0.70);
+  --glass-edge: rgba(255, 255, 255, 0.50);
+
+  /* Motion & Easing */
+  --motion-spring-snappy: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --motion-smooth-fluid: cubic-bezier(0.25, 1, 0.5, 1);
+  --duration-instant: 120ms;
+  --duration-normal: 240ms;
+}
+
+/* Tailwind v4 Theme Configuration */
+@theme {
+  --color-canvas-soft: var(--canvas-soft);
+  --color-primary: var(--primary);
+  --color-primary-active: var(--primary-active);
+  --color-secondary: var(--secondary);
+  --color-ink: var(--ink);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-hairline: var(--hairline);
+
+  --color-glass-clear: var(--glass-clear);
+  --color-glass-mid: var(--glass-mid);
+  --color-glass-edge: var(--glass-edge);
+
+  --animate-float: float 4s ease-in-out infinite;
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-3px); }
+  }
+}
+
+/* Base text readability on Glass surfaces */
+.text-glass-crisp {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transform: translateZ(0);
+}
+
+/* Tactile Glassmorphic Container */
+.glass-panel {
+  background: var(--glass-mid);
+  backdrop-filter: blur(12px) saturate(140%);
+  -webkit-backdrop-filter: blur(12px) saturate(140%);
+  border: 1px solid var(--glass-edge);
+  box-shadow: 
+    rgba(0, 0, 0, 0.01) 0px 2px 4px, 
+    rgba(0, 0, 0, 0.02) 0px 4px 12px, 
+    rgba(255, 255, 255, 0.8) 0px 0px 0px 1px inset;
+  transition: background var(--duration-normal) var(--motion-smooth-fluid),
+              box-shadow var(--duration-normal) var(--motion-smooth-fluid),
+              transform var(--duration-normal) var(--motion-smooth-fluid);
+}
+
+/* Deep Blur Overlay Card (Modals, Dropdowns) */
+.glass-panel-deep {
+  background: var(--glass-mid);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid var(--glass-edge);
+  box-shadow: 
+    rgba(0, 0, 0, 0.03) 0px 4px 6px, 
+    rgba(0, 0, 0, 0.05) 0px 10px 20px, 
+    rgba(255, 255, 255, 0.8) 0px 0px 0px 1px inset;
+}
+
+/* Primary CTA Button style */
+.btn-primary {
+  background: linear-gradient(180deg, var(--primary) 0%, var(--primary-active) 100%);
+  color: #ffffff;
+  font-weight: 500;
+  border-radius: 6px;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  transition: transform 100ms var(--motion-spring-snappy), 
+              filter 150ms var(--motion-smooth-fluid),
+              background 100ms var(--motion-spring-snappy);
+}
+
+.btn-primary:hover {
+  transform: scale(1.03);
+  filter: brightness(1.05);
+}
+
+.btn-primary:active {
+  transform: scale(0.96);
+  background: var(--primary-active);
+}
+
+/* Secondary Glassmorphic Button style */
+.btn-secondary {
+  background: var(--glass-clear);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  color: var(--ink);
+  font-weight: 500;
+  border: 1px solid var(--glass-edge);
+  border-radius: 6px;
+  padding: 8px 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: rgba(0, 0, 0, 0.01) 0px 2px 4px;
+  transition: transform 100ms var(--motion-spring-snappy),
+              background 150ms var(--motion-smooth-fluid),
+              box-shadow 150ms var(--motion-smooth-fluid);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.9);
+  transform: scale(1.03);
+  box-shadow: rgba(0, 0, 0, 0.04) 0px 4px 8px;
+}
+
+.btn-secondary:active {
+  transform: scale(0.96);
+}
+
+/* Utility white card style button */
+.btn-utility {
+  background: #ffffff;
+  color: var(--ink);
+  font-weight: 500;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+  transition: transform 100ms var(--motion-spring-snappy),
+              box-shadow 150ms var(--motion-smooth-fluid);
+}
+
+.btn-utility:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 6px rgba(0, 0, 0, 0.06);
+}
+
+.btn-utility:active {
+  transform: scale(0.96);
+}
+
+/* Interactive Input Field style */
+.text-input-notion {
+  background: #ffffff;
+  color: var(--ink);
+  border: 1px solid var(--hairline);
+  border-radius: 6px;
+  padding: 8px 12px;
+  outline: none;
+  font-size: 14px;
+  transition: border-color var(--duration-normal) var(--motion-smooth-fluid),
+              box-shadow var(--duration-normal) var(--motion-smooth-fluid);
+}
+
+.text-input-notion:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(0, 117, 222, 0.15);
+}
