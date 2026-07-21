@@ -31,56 +31,81 @@ export default function WizardPanel({
   runAllSimulation,
   handleDownloadPdf
 }) {
+  const [isMinimized, setIsMinimized] = React.useState(false);
+
   if (activeView !== 'map') return null;
 
   return (
-    <div 
-      className={`fixed z-40 rounded-2xl text-glass-crisp shadow-2xl glass-panel-deep p-6 flex flex-col justify-between transition-all duration-700 ease-in-out ${
-        pipelineStep >= 2
-          ? 'top-20 left-[calc(100%-504px)] translate-x-0 translate-y-0 w-[480px] h-[calc(100vh-110px)] max-h-[85vh]'
-          : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[820px] max-w-[95vw] h-[480px]'
-      }`} 
-      style={{ background: 'rgba(255, 255, 255, 0.94)' }}
+    <div
+      className={`fixed z-40 text-glass-crisp shadow-2xl glass-panel-deep transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] overflow-hidden ${
+        isMinimized
+          ? 'top-20 right-6 w-[340px] h-[54px] rounded-2xl p-3 px-4 flex flex-col justify-center'
+          : (pipelineStep >= 2
+              ? 'top-20 right-6 w-[480px] h-[calc(100vh-110px)] max-h-[85vh] rounded-2xl p-6 flex flex-col justify-between'
+              : 'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[820px] max-w-[95vw] h-[480px] rounded-2xl p-6 flex flex-col justify-between')
+      }`}
+      style={{ background: 'rgba(255, 255, 255, 0.96)' }}
     >
-      <div className="flex justify-between items-start border-b border-hairline pb-3 flex-none">
-        <div>
-          <h2 className="text-sm font-bold text-ink mb-0.5">
-            {pipelineStep === 1 && "Step 1. 파일 업로드"}
-            {pipelineStep === 2 && "Step 2. 데이터 승인"}
-            {pipelineStep === 3 && "Step 3. 가점 조정"}
-            {pipelineStep === 4 && "Step 4. AI 토론"}
-            {pipelineStep === 5 && "Step 5. 보고서 발급"}
-          </h2>
-          <p className="text-[10px] text-ink-secondary">
-            {pipelineStep === 1 && "CSV 데이터셋 파일을 업로드하고 AI 감리를 진행합니다."}
-            {pipelineStep === 2 && "공간 위치와 의사결정 탐색 의도를 보정하고 최종 승인합니다."}
-            {pipelineStep === 3 && "AHP 쌍대비교 상대 가중치를 조정하고 확정합니다."}
-            {pipelineStep === 4 && "추천 후보지의 분석 내용과 대중교통 영향 및 갈등 지수를 검토합니다."}
-            {pipelineStep === 5 && "AI 주무관 에이전트 간의 갈등 조정 토론을 실시하고 타당성 보고서를 발급받습니다."}
-          </p>
+      {/* Header bar */}
+      <div className={`flex justify-between items-center ${isMinimized ? 'w-full' : 'border-b border-hairline pb-3 flex-none'}`}>
+        <div className="flex items-center gap-2 overflow-hidden">
+          <div className="flex flex-col">
+            <h2 className="text-sm font-bold text-ink mb-0.5 whitespace-nowrap">
+              {pipelineStep === 1 && "Step 1. 파일 업로드"}
+              {pipelineStep === 2 && "Step 2. 데이터 승인"}
+              {pipelineStep === 3 && "Step 3. 가중치 조정"}
+              {pipelineStep === 4 && "Step 4. 시뮬레이션"}
+              {pipelineStep === 5 && "Step 5. 결과 확인"}
+            </h2>
+            {!isMinimized && (
+              <p className="text-[10px] text-ink-secondary whitespace-nowrap">
+                {pipelineStep === 1 && "분석할 파일을 업로드 해 주세요."}
+                {pipelineStep === 2 && "데이터와 공간을 확인하고 승인해주세요."}
+                {pipelineStep === 3 && "가중치를 조정하고 확정해주세요."}
+                {pipelineStep === 4 && "시뮬레이션을 진행합니다."}
+                {pipelineStep === 5 && "보고서를 발급합니다."}
+              </p>
+            )}
+          </div>
         </div>
-        <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold shrink-0">
-          Step {pipelineStep} / 5
-        </span>
+
+        <div className="flex items-center gap-2 shrink-0 ml-2">
+          <span className="text-xs bg-primary/10 text-primary px-2.5 py-1 rounded-full font-bold whitespace-nowrap">
+            Step {pipelineStep} / 5
+          </span>
+          <button
+            onClick={() => setIsMinimized(prev => !prev)}
+            className="w-7 h-7 rounded-lg bg-primary/10 hover:bg-primary text-primary hover:text-white flex items-center justify-center transition-all cursor-pointer font-bold shrink-0 select-none"
+            title={isMinimized ? "위자드 패널 펼치기" : "위자드 패널 최소화"}
+          >
+            <span className="text-base font-bold leading-none inline-flex items-center justify-center translate-y-[-0.5px]">
+              {isMinimized ? '+' : '−'}
+            </span>
+          </button>
+        </div>
       </div>
+
+      {!isMinimized && (
+        <React.Fragment>
 
       <div className="flex-1 py-2 my-1 flex flex-col gap-4">
         {/* Step 1 내용 */}
         {pipelineStep === 1 && (
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-ink-secondary">CSV 데이터셋 & RAG 법규 PDF 수집</label>
-              <span className="text-[10px] text-primary font-mono font-medium">CSV 및 PDF 파일 통합 지원</span>
+              <label className="text-xs font-semibold text-ink-secondary">데이터 수집</label>
+              <span className="text-[10px] text-primary font-mono font-medium">파일 업로드</span>
             </div>
             {!isAuditComplete ? (
               <div className="flex flex-col gap-2">
-                <div 
+                <div
                   onClick={triggerFileAudit}
                   className="border-2 border-dashed border-hairline hover:border-primary rounded-xl p-8 text-center cursor-pointer transition-all bg-white/40 hover:bg-white/60"
                 >
-                  <p className="text-xs text-ink font-semibold">📁 분석 CSV 및 RAG 법규 PDF 파일 일괄 드래그앤드롭</p>
-                  <p className="text-[10px] text-ink-secondary mt-1">AI 감리 및 법률 규제 인코딩 일괄 수행</p>
+                  <p className="text-xs text-ink font-semibold">📁파일 업로드</p>
+                  <p className="text-[10px] text-ink-secondary mt-1">분석을 원하시는 파일을 모두 업로드해주세요.</p>
                 </div>
+                {/* [목업 데이터] 실제 파일이나 데이터를 넣지 않아도 다음 단계로 이동하여 테스트하기 위한 목업 데이터 주입 기능 */}
                 <button
                   onClick={injectMockData}
                   className="text-[10px] text-primary hover:underline font-semibold text-center py-1 cursor-pointer"
@@ -102,8 +127,8 @@ export default function WizardPanel({
                   </div>
                 </div>
                 <div className="text-[11px] flex flex-col gap-1 text-ink leading-relaxed pl-1 max-h-[140px] overflow-y-auto pr-1">
-                  <span className="text-primary font-bold">✓ AI 통합 사전 감리 결과</span>
-                  <p className="text-[10px] leading-relaxed"><strong className="text-ink-secondary">감리 사유:</strong> {auditReason}</p>
+                  <span className="text-primary font-bold">✓ 데이터 분석결과</span>
+                  <p className="text-[10px] leading-relaxed"><strong className="text-ink-secondary">분석 사유:</strong> {auditReason}</p>
                   <p className="text-[10px] leading-relaxed"><strong className="text-ink-secondary">추출 의도:</strong> {userIntent}</p>
                 </div>
               </div>
@@ -117,23 +142,23 @@ export default function WizardPanel({
               {/* Left Column: Intent Correction */}
               <div className="flex flex-col gap-1 text-xs">
                 <span className="text-ink-secondary font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
-                <textarea 
+                <textarea
                   rows={3}
-                  value={userIntent} 
-                  onChange={(e) => setUserIntent(e.target.value)} 
+                  value={userIntent}
+                  onChange={(e) => setUserIntent(e.target.value)}
                   className="text-input-notion resize-none leading-relaxed w-full h-[75px]"
                 />
-                <span className="text-[9px] text-ink-secondary">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
+                <span className="text-[9px] text-ink-secondary"></span>
               </div>
               {/* Right Column: Address/Coordinates */}
               <div className="flex flex-col gap-2 text-xs border-t border-hairline pt-2.5">
                 <span className="text-[11px] text-ink-secondary font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
                 <div className="flex flex-col gap-1">
                   <span className="text-ink-secondary">지번 주소</span>
-                  <input 
-                    type="text" 
-                    value={hitlJibun} 
-                    onChange={(e) => setHitlJibun(e.target.value)} 
+                  <input
+                    type="text"
+                    value={hitlJibun}
+                    onChange={(e) => setHitlJibun(e.target.value)}
                     className="text-input-notion w-full"
                   />
                 </div>
@@ -156,7 +181,7 @@ export default function WizardPanel({
         {pipelineStep === 3 && (
           <div className="flex flex-col gap-3">
             <div className="flex justify-between items-center">
-              <label className="text-xs font-semibold text-ink-secondary">AHP 인자별 상대 가중치</label>
+              <label className="text-xs font-semibold text-ink-secondary">가중치 설정</label>
               <span className={`text-[10px] px-2 py-0.5 rounded-full font-mono font-semibold transition-all ${Object.keys(ahpWeights).length === 0 ? 'bg-ink-secondary/10 text-ink-secondary' : crValue < 0.1 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-rose-500/10 text-rose-600'}`}>
                 C.R. = {Object.keys(ahpWeights).length === 0 ? '-' : crValue} ({Object.keys(ahpWeights).length === 0 ? '대기' : crValue < 0.1 ? '만족' : '위배'})
               </span>
@@ -210,9 +235,9 @@ export default function WizardPanel({
                 <div className="bg-emerald-50/60 p-3 rounded-xl border border-emerald-200/50 flex items-center gap-2 text-xs text-emerald-800">
                   <span className="text-base">📄</span>
                   <div className="flex flex-col">
-                    <span className="font-bold text-[11px]">AI 모의 심의 타당성 검토 완료</span>
+                    <span className="font-bold text-[11px]">데이터 취합 완료</span>
                     <p className="text-[9px] text-emerald-700 leading-normal">
-                      아래 종합 비교 대조표를 확인하고 필요한 후보지의 행정용 PDF 보고서를 다운로드 하십시오.
+                      종합 비교 대조표가 완성되었습니다. 보고서를 다운로드해 주세요.
                     </p>
                   </div>
                 </div>
@@ -237,10 +262,9 @@ export default function WizardPanel({
                             <td className="p-2 truncate max-w-[120px]" title={p.jibun}>{p.jibun}</td>
                             <td className="p-2 text-right font-mono">{p.area} ㎡</td>
                             <td className="p-2 text-center">
-                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
-                                p.cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
+                              <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${p.cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
                                 p.cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' : 'bg-emerald-500/10 text-emerald-600'
-                              }`}>
+                                }`}>
                                 {p.cssGrade} ({p.css}점)
                               </span>
                             </td>
@@ -288,23 +312,21 @@ export default function WizardPanel({
                   <div className="bg-white/50 p-3 rounded-xl border border-hairline flex flex-col gap-3 h-[135px] justify-center">
                     <div className="flex justify-between items-center text-xs">
                       <span className="font-semibold text-ink-secondary">갈등 지수</span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                        selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500/10 text-rose-600' :
                         selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500/10 text-amber-600' :
-                        'bg-emerald-500/10 text-emerald-600'
-                      }`}>
+                          'bg-emerald-500/10 text-emerald-600'
+                        }`}>
                         등급: {selectedParcel[activeTab].cssGrade} ({selectedParcel[activeTab].css}점)
                       </span>
                     </div>
                     <div className="w-full bg-gray-200 h-2 rounded-full overflow-hidden">
-                      <div className={`h-full transition-all duration-500 ${
-                        selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
+                      <div className={`h-full transition-all duration-500 ${selectedParcel[activeTab].cssGrade === '상' ? 'bg-rose-500' :
                         selectedParcel[activeTab].cssGrade === '중' ? 'bg-amber-500' :
-                        'bg-emerald-500'
-                      }`} style={{ width: `${selectedParcel[activeTab].css}%` }} />
+                          'bg-emerald-500'
+                        }`} style={{ width: `${selectedParcel[activeTab].css}%` }} />
                     </div>
                     <p className="text-[9px] text-ink-secondary mt-1 leading-relaxed">
-                      * 주민 민원 가능성 및 교육/의료시설 반경 인접도를 수치화한 갈등 지표입니다.
+                      * 주민 민원 가능성 및 인프라 인접도를 수치화한 갈등 지표입니다.
                     </p>
                   </div>
                 </div>
@@ -336,7 +358,7 @@ export default function WizardPanel({
 
         <div className="flex justify-between items-center w-full">
           {pipelineStep > 1 ? (
-            <button 
+            <button
               onClick={() => setPipelineStep(prev => Math.max(1, prev - 1))}
               className="btn-secondary text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0"
             >
@@ -353,7 +375,7 @@ export default function WizardPanel({
               </span>
             )}
             {pipelineStep === 2 && (
-              <button 
+              <button
                 onClick={handleHitlCommit}
                 className="btn-primary bg-amber-500 hover:bg-amber-600 text-xs py-1.5 w-[170px] rounded-lg font-semibold truncate"
               >
@@ -384,7 +406,7 @@ export default function WizardPanel({
               </div>
             )}
             {pipelineStep === 4 && (
-              <button 
+              <button
                 onClick={runAllSimulation}
                 className="btn-primary text-xs py-1.5 w-[170px] rounded-lg font-semibold shadow-md truncate"
                 title="3개 추천 후보지 일괄 시뮬레이션 동시 실행"
@@ -393,28 +415,30 @@ export default function WizardPanel({
               </button>
             )}
             {pipelineStep === 5 && (
-              <button 
+              <button
                 onClick={handleDownloadPdf}
                 className="btn-primary bg-emerald-600 hover:bg-emerald-700 text-xs py-1.5 w-[170px] rounded-lg font-semibold shadow-md truncate"
                 title="보고서 다운로드"
               >
-                📝 PDF 다운로드
+                보고서 출력[PDF]
               </button>
             )}
           </div>
 
-         {pipelineStep < 5 ? (
-           <button 
-             onClick={() => setPipelineStep(prev => Math.max(1, Math.min(5, prev + 1)))}
-             className="text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0 transition-all rounded-lg btn-primary bg-primary text-white shadow-md hover:scale-105 active:scale-95 animate-pulse"
-           >
-             다음 ▶
-           </button>
-         ) : (
-          <div className="w-[70px] shrink-0" />
-        )}
+          {pipelineStep < 5 ? (
+            <button
+              onClick={() => setPipelineStep(prev => Math.max(1, Math.min(5, prev + 1)))}
+              className="text-xs py-1.5 w-[70px] text-center whitespace-nowrap shrink-0 transition-all rounded-lg btn-primary bg-primary text-white shadow-md hover:scale-105 active:scale-95 animate-pulse"
+            >
+              다음 ▶
+            </button>
+          ) : (
+            <div className="w-[70px] shrink-0" />
+          )}
         </div>
       </div>
-    </div>
+    </React.Fragment>
+  )}
+</div>
   );
 }

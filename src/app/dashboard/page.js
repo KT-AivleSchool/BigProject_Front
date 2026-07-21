@@ -241,7 +241,7 @@ export default function Dashboard({ isSubView = false }) {
       )}
 
       {/* 2. 대시보드 레이아웃 본문 */}
-      <main className="max-w-7xl mx-auto p-8 flex flex-col gap-8">
+      <main className="max-w-[1600px] w-full mx-auto p-8 flex flex-col gap-8">
 
         {/* 상단 3대 지표 분석 요약 카드 (크레딧 항목 제거 및 행정 지표 대체) */}
         <section className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -275,7 +275,7 @@ export default function Dashboard({ isSubView = false }) {
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="border-b border-hairline text-ink-secondary font-semibold bg-gray-200/50">
+                  <tr className="border-b border-hairline text-ink-secondary font-semibold bg-gray-200/50 whitespace-nowrap">
                     <th className="py-3 px-4">의사결정 ID</th>
                     <th className="py-3 px-4">일자</th>
                     <th className="py-3 px-4">대상 지역</th>
@@ -288,7 +288,7 @@ export default function Dashboard({ isSubView = false }) {
                 </thead>
                 <tbody>
                   {historyList.map(item => (
-                    <tr key={item.id} className="border-b border-hairline hover:bg-gray-100/50 transition-all text-ink">
+                    <tr key={item.id} className="border-b border-hairline hover:bg-gray-100/50 transition-all text-ink whitespace-nowrap">
                       <td className="py-3.5 px-4 font-mono text-ink font-semibold">#{item.id}</td>
                       <td className="py-3.5 px-4 text-ink-secondary">{item.date}</td>
                       <td className="py-3.5 px-4 font-semibold text-ink">{item.region}</td>
@@ -315,13 +315,13 @@ export default function Dashboard({ isSubView = false }) {
                         </button>
                       </td>
                       <td className="py-3.5 px-4 text-center">
+                        {/* [Button Validation] 임시 비활성화: disabled={item.status !== '행정 종결'} */}
                         <button
                           onClick={() => {
                             setActiveHistoryId(item.id);
                             setAuditFile(null);
                             setAuditResult(null);
                           }}
-                          disabled={item.status !== '행정 종결'}
                           className="btn-primary text-[10px] px-2 py-1 font-bold rounded disabled:opacity-30 disabled:pointer-events-none"
                         >
                           검증 선택
