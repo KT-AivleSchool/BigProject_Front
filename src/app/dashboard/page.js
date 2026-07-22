@@ -17,13 +17,14 @@ export default function Dashboard() {
   const [auditFile, setAuditFile] = useState(null);
   const [auditResult, setAuditResult] = useState(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   // 과거 이력 상세 모달 상태
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
 
-  // 파일 업로드 및 분석 시뮬레이션
-  const handleAuditUpload = (e) => {
+  // 파일 업로드 및 실제 API 검증 연동
+  const handleAuditUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !activeHistoryId) return;
 
@@ -31,15 +32,67 @@ export default function Dashboard() {
     setIsParsing(true);
     setAuditResult(null);
 
-    setTimeout(() => {
-      setIsParsing(false);
-      setAuditResult({
-        title: '서울시 용산구 한강로동 스마트쉼터 설치 준공 고시 공문',
-        mappedScenario: '시나리오 A (일반적 우호 타결)',
-        matchScore: 94,
-        summary: '부스 여과 필터링 시간(08시~22시) 및 인근 3.0m 소방 통로 준수 규정이 1단계 AHP 의사결정 모델 설계 가이드라인에 94% 부합하여 행정 종결 승인 완료.'
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('simulation_id', activeHistoryId);
+
+      const res = await fetch('http://localhost:8000/api/v1/audit/verify', {
+        method: 'POST',
+        body: formData,
       });
 
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '파일 업로드 및 검증에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      setAuditResult({
+        title: data.parsed_metadata?.title || file.name,
+        mappedScenario: data.matched_scenario,
+        matchScore: data.similarity_score,
+        summary: data.extracted_text_snippet,
+        classificationStatus: data.classification_status,
+        extractedText: data.extracted_text_snippet,
+        documentNo: data.parsed_metadata?.document_no || null
+      });
+
+    } catch (err) {
+      alert(`검증 실패: ${err.message}`);
+      setAuditFile(null);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  // 실증 이행 사례 최종 격리 저장 (환류 오염 방지)
+  const handleAuditSave = async () => {
+    if (!auditResult || !activeHistoryId) return;
+    setIsSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append('simulation_id', activeHistoryId);
+      formData.append('matched_scenario', auditResult.mappedScenario);
+      formData.append('similarity_score', auditResult.matchScore);
+      formData.append('classification_status', auditResult.classificationStatus);
+      formData.append('extracted_text', auditResult.extractedText);
+      if (auditResult.documentNo) {
+        formData.append('document_no', auditResult.documentNo);
+      }
+
+      const res = await fetch('http://localhost:8000/api/v1/audit/save', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '검증 결과 저장에 실패했습니다.');
+      }
+
+      alert('최종 저장 및 AI 학습(환류)이 완료되었습니다.');
+      
       // 해당 역사 행의 검증 상태 업데이트
       setHistoryList(prev => prev.map(item => {
         if (item.id === activeHistoryId) {
@@ -47,7 +100,11 @@ export default function Dashboard() {
         }
         return item;
       }));
-    }, 2000);
+    } catch (err) {
+      alert(`저장 실패: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   // 과거 토론 로그 목업 조회
@@ -361,8 +418,14 @@ export default function Dashboard() {
                       <span className="text-slate-500 block mb-0.5">주요 요약 결과</span>
                       <p className="text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 text-[11px]">{auditResult.summary}</p>
                     </div>
-                    <div className="text-[10px] text-emerald-400 font-bold border-t border-slate-900 pt-2 text-right">
-                      ✓ RAG 격리 세그먼트 적재 및 요약 완료
+                    <div className="text-[10px] text-emerald-400 font-bold border-t border-slate-900 pt-3 text-right">
+                      <button 
+                        onClick={handleAuditSave}
+                        disabled={isSaving}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded transition-all cursor-pointer"
+                      >
+                        {isSaving ? '저장 중...' : '✓ 최종 저장 및 AI 환류 승인'}
+                      </button>
                     </div>
                   </div>
                 )}
