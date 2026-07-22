@@ -1,31 +1,48 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Link from 'next/link';
 
 export default function Dashboard() {
-  // 가상의 과거 의사결정 이력 데이터 (크레딧 필드 제거)
-  const [historyList, setHistoryList] = useState([
-    { id: 104, date: '2026-06-28', region: '서울시 용산구 한강로동', infra: '스마트 쉼터형 부스', pnuCount: 3, status: '행정 종결', auditState: '검증 완료' },
-    { id: 103, date: '2026-06-15', region: '서울시 마포구 공덕동', infra: '옐로카펫 보행 정화지', pnuCount: 1, status: '행정 종결', auditState: '대기 중' },
-    { id: 102, date: '2026-06-02', region: '서울시 용산구 이태원동', infra: '전기차 화재방지 충전소', pnuCount: 2, status: '심의 중', auditState: '불가능' },
-    { id: 101, date: '2026-05-19', region: '서울시 서대문구 신촌동', infra: '다목적 방범 스마트부스', pnuCount: 3, status: '행정 종결', auditState: '검증 완료' }
-  ]);
+  const [historyList, setHistoryList] = useState([]);
+
+  useEffect(() => {
+    const fetchHistory = async () => {
+      try {
+        const res = await fetch('http://localhost:8000/api/v1/simulation/history');
+        if (res.ok) {
+          const data = await res.json();
+          setHistoryList(data);
+        }
+      } catch (err) {
+        console.error('Failed to fetch history:', err);
+      }
+    };
+    fetchHistory();
+  }, []);
 
   // Audit AI 폼 상태
   const [activeHistoryId, setActiveHistoryId] = useState(null);
   const [auditFile, setAuditFile] = useState(null);
   const [auditResult, setAuditResult] = useState(null);
   const [isParsing, setIsParsing] = useState(false);
+<<<<<<< HEAD
   const [isSaved, setIsSaved] = useState(false);
   const [rawText, setRawText] = useState('');
   const [documentNo, setDocumentNo] = useState('');
+=======
+  const [isSaving, setIsSaving] = useState(false);
+>>>>>>> 80e93ec (feat(dashboard): connect audit AI verification & save APIs)
 
   // 과거 이력 상세 모달 상태
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedHistory, setSelectedHistory] = useState(null);
 
+<<<<<<< HEAD
   // 파일 업로드 및 분석 시뮬레이션 (이슈 #13 E2E 실 연동)
+=======
+  // 파일 업로드 및 실제 API 검증 연동
+>>>>>>> 80e93ec (feat(dashboard): connect audit AI verification & save APIs)
   const handleAuditUpload = async (e) => {
     const file = e.target.files[0];
     if (!file || !activeHistoryId) return;
@@ -40,6 +57,7 @@ export default function Dashboard() {
     setAuditResult(null);
     setIsSaved(false);
 
+<<<<<<< HEAD
     const formData = new FormData();
     formData.append("file", file);
     formData.append("simulation_id", activeHistoryId);
@@ -64,9 +82,70 @@ export default function Dashboard() {
         matchScore: Math.round(data.similarity_score * 100),
         summary: data.extracted_text_snippet,
         classificationStatus: data.classification_status
+=======
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('simulation_id', activeHistoryId);
+
+      const res = await fetch('http://localhost:8000/api/v1/audit/verify', {
+        method: 'POST',
+        body: formData,
+>>>>>>> 80e93ec (feat(dashboard): connect audit AI verification & save APIs)
       });
       setRawText(data.extracted_text_snippet);
 
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '파일 업로드 및 검증에 실패했습니다.');
+      }
+
+      const data = await res.json();
+      setAuditResult({
+        title: data.parsed_metadata?.title || file.name,
+        mappedScenario: data.matched_scenario,
+        matchScore: data.similarity_score,
+        summary: data.extracted_text_snippet,
+        classificationStatus: data.classification_status,
+        extractedText: data.extracted_text_snippet,
+        documentNo: data.parsed_metadata?.document_no || null
+      });
+
+    } catch (err) {
+      alert(`검증 실패: ${err.message}`);
+      setAuditFile(null);
+    } finally {
+      setIsParsing(false);
+    }
+  };
+
+  // 실증 이행 사례 최종 격리 저장 (환류 오염 방지)
+  const handleAuditSave = async () => {
+    if (!auditResult || !activeHistoryId) return;
+    setIsSaving(true);
+    try {
+      const formData = new FormData();
+      formData.append('simulation_id', activeHistoryId);
+      formData.append('matched_scenario', auditResult.mappedScenario);
+      formData.append('similarity_score', auditResult.matchScore);
+      formData.append('classification_status', auditResult.classificationStatus);
+      formData.append('extracted_text', auditResult.extractedText);
+      if (auditResult.documentNo) {
+        formData.append('document_no', auditResult.documentNo);
+      }
+
+      const res = await fetch('http://localhost:8000/api/v1/audit/save', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        throw new Error(errorData.detail || '검증 결과 저장에 실패했습니다.');
+      }
+
+      alert('최종 저장 및 AI 학습(환류)이 완료되었습니다.');
+      
       // 해당 역사 행의 검증 상태 업데이트
       setHistoryList(prev => prev.map(item => {
         if (item.id === activeHistoryId) {
@@ -75,6 +154,7 @@ export default function Dashboard() {
         return item;
       }));
     } catch (err) {
+<<<<<<< HEAD
       console.error("공문서 검증 통신 실패:", err);
       alert(err.message || "서버 연결에 실패했습니다.");
       setIsParsing(false);
@@ -112,6 +192,11 @@ export default function Dashboard() {
     } catch (err) {
       console.error("RAG 저장 통신 실패:", err);
       alert("서버 연결에 실패했습니다.");
+=======
+      alert(`저장 실패: ${err.message}`);
+    } finally {
+      setIsSaving(false);
+>>>>>>> 80e93ec (feat(dashboard): connect audit AI verification & save APIs)
     }
   };
 
@@ -426,6 +511,7 @@ export default function Dashboard() {
                       <span className="text-slate-500 block mb-0.5">주요 요약 결과</span>
                       <p className="text-slate-400 bg-slate-900/30 p-2.5 rounded border border-slate-900 text-[11px]">{auditResult.summary}</p>
                     </div>
+<<<<<<< HEAD
                     {!isSaved ? (
                       <button
                         onClick={handleSaveAuditFeedback}
@@ -438,6 +524,17 @@ export default function Dashboard() {
                         ✓ RAG 격리 세그먼트 적재 및 요약 완료
                       </div>
                     )}
+=======
+                    <div className="text-[10px] text-emerald-400 font-bold border-t border-slate-900 pt-3 text-right">
+                      <button 
+                        onClick={handleAuditSave}
+                        disabled={isSaving}
+                        className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-semibold text-xs px-3 py-1.5 rounded transition-all cursor-pointer"
+                      >
+                        {isSaving ? '저장 중...' : '✓ 최종 저장 및 AI 환류 승인'}
+                      </button>
+                    </div>
+>>>>>>> 80e93ec (feat(dashboard): connect audit AI verification & save APIs)
                   </div>
                 )}
               </div>
