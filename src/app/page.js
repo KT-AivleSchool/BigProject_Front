@@ -882,7 +882,7 @@ export default function Home() {
   const triggerFileAudit = () => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.csv';
+    input.accept = '.csv, .xlsx';
     input.multiple = true; // 다중 파일 선택 허용
     
     input.onchange = async (e) => {
@@ -893,8 +893,8 @@ export default function Home() {
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         const ext = file.name.split('.').pop().toLowerCase();
-        if (ext !== 'csv') {
-          alert(`⚠️ 파일 유형 제한: 오직 CSV 파일만 업로드할 수 있습니다. (에러 파일: ${file.name})`);
+        if (ext !== 'csv' && ext !== 'xlsx') {
+          alert(`⚠️ 파일 유형 제한: 오직 CSV 및 XLSX 파일만 업로드할 수 있습니다. (에러 파일: ${file.name})`);
           return;
         }
         formData.append('files', file); // 동일한 'files' 키로 다중 추가
