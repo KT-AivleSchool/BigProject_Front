@@ -765,6 +765,8 @@ export default function Home() {
     const parcelId = activeParcel.id;
 
     // EventSource 커넥션 생성
+    window.dispatchEvent(new Event("sse-start"));
+    // [Bugfix #32] 중복 렌더링 방지를 위한 연결 상태 검증 로직 추가 예정
     const eventSource = new EventSource(`http://localhost:8000/api/v1/simulation/stream?parcel_id=${parcelId}`);
 
     eventSource.onmessage = (event) => {
