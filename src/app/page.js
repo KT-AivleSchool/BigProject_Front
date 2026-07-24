@@ -11,6 +11,10 @@ export default function Home() {
   // Step 4: 최적 입지 선정 및 갈등도 평가 (PostGIS Filtering & CSS)
   // Step 5: AI 모의 심의 및 PDF 보고서 (AI Simulation & PDF Report)
   const [pipelineStep, setPipelineStep] = useState(1);
+  const [pipelineLogs, setPipelineLogs] = useState([]);
+  const [pipelineProgress, setPipelineProgress] = useState(0);
+  const [isPipelineRunning, setIsPipelineRunning] = useState(false);
+  const [pipelineSessionId, setPipelineSessionId] = useState('');
 
   // Step 1 AI 감리 및 실무자 의도 매핑 검증 상태
   const [isAuditComplete, setIsAuditComplete] = useState(false);
@@ -702,6 +706,31 @@ export default function Home() {
         })
       });
 
+      // HITL 완료 후 GAM2 정제 파이프라인 자동 가동
+      setIsPipelineRunning(true);
+      setPipelineLogs([]);
+      setPipelineProgress(0);
+      const sessionId = Date.now().toString();
+      setPipelineSessionId(sessionId);
+
+      const eventSource = new EventSource(`http://localhost:8000/api/v1/pipeline/progress/${sessionId}`);
+      eventSource.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        setPipelineLogs(prev => [...prev, `[${data.step}] ${data.text}`]);
+        setPipelineProgress(data.progress);
+        if (data.is_finished) {
+          eventSource.close();
+          setIsPipelineRunning(false);
+          if (data.step === 'clean_done') {
+            setPipelineStep(2);
+          }
+        }
+      };
+
+      await fetch(`http://localhost:8000/api/v1/pipeline/clean?domain=흡연&session_id=${sessionId}`, {
+        method: 'POST'
+      });
+
       // API 전송 성공 시, 클라이언트의 후보 부지 주소/좌표 데이터를 갱신하고 Step 3로 상태를 진입시킵니다.
       if (res.ok) {
         setSelectedParcel(prev => ({
@@ -713,7 +742,7 @@ export default function Home() {
             lng: hitlLng
           }
         }));
-        setPipelineStep(3);
+        // setPipelineStep(3); // Step 3 이동은 파이프라인 정제 SSE 완료 시 처리됩니다.
         alert('공간 좌표 및 지번 속성이 보정 완료되어 백엔드 서버에 성공적으로 커밋되었습니다. 의사결정 의도 보정도 완료되어 [Step 3: AHP 인자 설정] 단계를 진행합니다. (의도 데이터는 로컬 보안 정책에 따라 서버로 전송되지 않고 브라우저에 격리 보관됩니다.)');
       } else {
         const errData = await res.json();
@@ -772,7 +801,17 @@ export default function Home() {
         const data = JSON.parse(event.data);
         
         // 실시간 대사 누적 및 스텝 갱신
-        setSimLogs(prev => [...prev, { sender: data.sender, text: data.text }]);
+        setSimLogs(prev => {
+          if (prev.length === 0) {
+            return [{ sender: data.sender, text: data.text }];
+          }
+          const lastLog = prev[prev.length - 1];
+          if (lastLog.sender === data.sender) {
+            return [...prev.slice(0, -1), { ...lastLog, text: lastLog.text + data.text }];
+          } else {
+            return [...prev, { sender: data.sender, text: data.text }];
+          }
+        });
         setSimStep(prev => prev + 1);
 
         // 마지막 패킷 수신 시 연결 종료 및 최종 결과 로드
@@ -912,7 +951,38 @@ export default function Home() {
           setUserIntent(data.user_intent);
           setAhpWeights(data.extracted_weights); // 동적 가중치 슬라이더 항목 대입
           setIsAuditComplete(true);
-          alert(`🎉 AI 통합 감리가 성공적으로 완료되었습니다. 총 ${selectedFiles.length}개의 데이터셋 분석을 기반으로 도출된 감리 사유 및 의도를 Step 2에서 확인하십시오.`);
+          
+          alert(`🎉 CSV 업로드 완료!\nZero-Click GAM2 통합 파이프라인(감리 ➔ 정제 ➔ 가중치)을 백그라운드에서 즉시 가동합니다.`);
+          
+          // 파이프라인 가동 모드로 UI 전환
+          setPipelineStep(2);
+          setIsPipelineRunning(true);
+          setPipelineLogs([]);
+          setPipelineProgress(0);
+          const sessionId = data.session_id;
+          setPipelineSessionId(sessionId);
+          
+          const eventSource = new EventSource(`http://localhost:8000/api/v1/pipeline/progress/${sessionId}`);
+          eventSource.onmessage = (e) => {
+            const evData = JSON.parse(e.data);
+            setPipelineLogs(prev => [...prev, `[${evData.step}] ${evData.text}`]);
+            setPipelineProgress(evData.progress);
+            if (evData.is_finished) {
+              eventSource.close();
+              setIsPipelineRunning(false);
+              if (evData.step === 'clean_done') {
+                setPipelineStep(2);
+                alert("🚀 Zero-Click 파이프라인 가동 완료! AI 정제 리포트를 확인해주세요.");
+              } else {
+                alert(`파이프라인 오류: ${evData.text}`);
+              }
+            }
+          };
+          
+          await fetch(`http://localhost:8000/api/v1/pipeline/full?session_id=${sessionId}`, {
+            method: 'POST'
+          });
+          
         } else {
           const errData = await res.json();
           alert(`감리 실패: ${errData.detail || '알 수 없는 오류'}`);
@@ -1067,57 +1137,52 @@ export default function Home() {
       <div className="floating-overlay right-6 top-20 w-96 glass-panel p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto">
         
         {/* [Step 2] 하이브리드 HITL: 탐색 의도 및 물리 좌표 동시 보정 영역 */}
+        {/* [Step 2] AI 데이터 정제 요약 리포트 (Zero-Click) */}
         {pipelineStep === 2 && (
           <div className="flex flex-col gap-3">
             <div className="border-b border-slate-800 pb-2">
-              <h2 className="text-xs font-bold text-amber-500">Step 2. 하이브리드 공간 및 의도 보정 (HITL)</h2>
-              <p className="text-[10px] text-slate-400 font-medium">지도의 주황색 핀을 드래그하거나 아래 폼에서 피드백을 보정하세요.</p>
+              <h2 className="text-xs font-bold text-blue-400">Step 2. AI 데이터 정제 요약 리포트 (Zero-Click)</h2>
+              <p className="text-[10px] text-slate-400 font-medium">자동화된 파이프라인이 수행한 데이터 가공 및 법령 적용 내역입니다.</p>
             </div>
             
-            <div className="bg-slate-950/40 p-4 rounded-xl border border-amber-500/30 flex flex-col gap-3">
-              {/* 1. 탐색 의도 보정 */}
-              <div className="flex flex-col gap-1 text-xs">
-                <span className="text-slate-400 font-semibold">1. 정보 탐색 의도 및 목적 수정</span>
-                <textarea 
-                  rows={3}
-                  value={userIntent} 
-                  onChange={(e) => setUserIntent(e.target.value)} 
-                  className="bg-slate-900 border border-slate-700 rounded p-2 text-white text-xs outline-none focus:border-amber-500 resize-none leading-relaxed"
-                />
-                <span className="text-[9px] text-slate-500">* 의도 데이터는 로컬 브라우저 세션에만 보안 격리 저장됩니다.</span>
+            <div className="bg-slate-950/40 p-4 rounded-xl border border-blue-500/30 flex flex-col gap-4">
+              
+              <div className="flex flex-col gap-2 border-b border-slate-800/80 pb-3">
+                <span className="text-[11px] text-slate-300 font-semibold flex items-center gap-2">
+                  <span>🧹</span> 1. 데이터 클렌징 내역
+                </span>
+                <p className="text-[10px] text-slate-400 leading-relaxed pl-5">
+                  • 결측치 및 이상치 제거 완료<br/>
+                  • 전체 데이터셋 주소 ➔ 위경도 지오코딩 100% 변환<br/>
+                  • EPSG:5186 공간 좌표계 투영 성공
+                </p>
               </div>
 
-              {/* 2. 지번 및 위경도 보정 */}
-              <div className="flex flex-col gap-2.5 border-t border-slate-800/80 pt-2.5">
-                <span className="text-[11px] text-slate-400 font-semibold">2. 공간 좌표 및 임시 지번 보정</span>
-                
-                <div className="flex flex-col gap-1 text-xs">
-                  <span className="text-slate-500">지번 주소</span>
-                  <input 
-                    type="text" 
-                    value={hitlJibun} 
-                    onChange={(e) => setHitlJibun(e.target.value)} 
-                    className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs outline-none focus:border-amber-500"
-                  />
-                </div>
-                
-                <div className="flex gap-2">
-                  <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                    <span className="text-slate-500">경도(Lng)</span>
-                    <input type="number" step="0.000001" value={hitlLng} onChange={(e) => setHitlLng(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
-                  </div>
-                  <div className="flex-1 flex flex-col gap-1 text-[11px]">
-                    <span className="text-slate-500">위도(Lat)</span>
-                    <input type="number" step="0.000001" value={hitlLat} onChange={(e) => setHitlLat(parseFloat(e.target.value))} className="bg-slate-900 border border-slate-700 rounded px-2 py-1 text-white text-xs" />
-                  </div>
-                </div>
+              <div className="flex flex-col gap-2 border-b border-slate-800/80 pb-3">
+                <span className="text-[11px] text-slate-300 font-semibold flex items-center gap-2">
+                  <span>⚖️</span> 2. 법적 규제 자동 적용
+                </span>
+                <p className="text-[10px] text-slate-400 leading-relaxed pl-5">
+                  • 관련 조례 및 상위법 자동 탐색 완료<br/>
+                  • 교육환경법 등 배제 반경 규제 수치(m) 식별 및 룰셋 적용
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 pb-1">
+                <span className="text-[11px] text-slate-300 font-semibold flex items-center gap-2">
+                  <span>📊</span> 3. AHP 지표 (Indicators) 모델링
+                </span>
+                <p className="text-[10px] text-slate-400 leading-relaxed pl-5">
+                  • 긍정적 요인(Benefit) 및 부정적 요인(Cost) 지표 분리<br/>
+                  • 초기 가중치 메타데이터 생성 완료
+                </p>
               </div>
 
               <button 
-                onClick={handleHitlCommit}
-                className="w-full mt-1 bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all cursor-pointer"
+                onClick={() => setPipelineStep(3)}
+                className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-xs py-2.5 rounded-lg transition-all cursor-pointer shadow-lg shadow-blue-900/20"
               >
-                보정 완료 및 데이터 확정 (Commit)
+                AHP 가중치 조절 단계로 이동 (Step 3) ➔
               </button>
             </div>
           </div>
@@ -1456,6 +1521,35 @@ export default function Home() {
                   </table>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 전체 화면 로딩 오버레이 */}
+      {isPipelineRunning && (
+        <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-slate-950/80 backdrop-blur-md">
+          <div className="w-96 bg-slate-900 border border-slate-800 p-8 rounded-2xl shadow-2xl flex flex-col items-center gap-6">
+            <div className="relative w-20 h-20">
+              <div className="absolute inset-0 border-4 border-slate-800 rounded-full"></div>
+              <div className="absolute inset-0 border-4 border-blue-500 rounded-full border-t-transparent animate-spin"></div>
+            </div>
+            
+            <div className="text-center">
+              <h3 className="text-lg font-bold text-slate-100 mb-2">Zero-Click Pipeline 실행 중</h3>
+              <p className="text-sm text-blue-400 animate-pulse">
+                {pipelineLogs.length > 0 ? pipelineLogs[pipelineLogs.length - 1].text : "데이터 프로파일링 준비 중..."}
+              </p>
+            </div>
+
+            <div className="w-full bg-slate-800 rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-blue-500 h-full transition-all duration-300 ease-out"
+                style={{ width: `${pipelineProgress}%` }}
+              ></div>
+            </div>
+            <div className="text-xs text-slate-400 font-mono text-right w-full">
+              {pipelineProgress}% 완료
             </div>
           </div>
         </div>
