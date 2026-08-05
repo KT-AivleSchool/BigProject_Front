@@ -283,7 +283,11 @@ export function GridMap({
          렌더 중에 ref 를 읽는 것이라 React 19 가 막는다(값이 바뀌어도 리렌더가
          안 되니 어차피 안 맞는 코드였다). 드래그 상태를 state 로 승격시키면
          팬 중에 매 프레임 리렌더가 붙는다. CSS `:active` 가 같은 일을 공짜로 한다. */
-      className="map-canvas relative h-full w-full cursor-grab select-none overflow-hidden rounded-lg border border-hairline active:cursor-grabbing"
+      /* 🔴 여기 `map-canvas` 클래스가 붙어 있었다. `globals.css` 의 그 규칙이
+         `position:absolute; inset:0` 이라 지도가 액자를 뚫고 뷰포트를 덮었다
+         (레이어 밖 규칙이 Tailwind 의 `relative` 를 이긴다). 규칙째로 지웠다 —
+         사유는 `globals.css` 같은 자리에 있다. 위치는 유틸리티로만 준다. */
+      className="relative h-full w-full cursor-grab select-none overflow-hidden active:cursor-grabbing"
       onWheel={(e) => {
         if (!view) return;
         const dz = e.deltaY < 0 ? 1 : -1;

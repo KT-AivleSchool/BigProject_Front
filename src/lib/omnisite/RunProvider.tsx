@@ -19,10 +19,16 @@ import {
   useState,
 } from "react";
 import { ApiError } from "./client";
-import { createRun, fetchRun } from "./pipeline";
+import {
+  createRun,
+  fetchRun,
+  MODE_FIXTURE,
+  submitAuditGate,
+  submitWeightGate,
+} from "./pipeline";
 import { saveBaseline } from "./progress";
 import { clearRunId, readRunId, writeRunId } from "./runStore";
-import type { RunDoc } from "./types";
+import type { AuditAnswer, RunDoc, WeightAnswer } from "./types";
 
 /** 폴링 주기. 계약 5절 권장(1~2초). */
 const POLL_MS = 1500;
@@ -37,7 +43,18 @@ interface RunContextValue {
   error: string | null;
   /** 진행 중 단계가 시작된 뒤 흐른 시간(초). 진행률 계산에 쓴다. */
   runningElapsedSec: number;
-  start: (domain: string) => Promise<string | null>;
+  start: (domain: string, mode?: string) => Promise<string | null>;
+  /**
+   * 게이트 답변. 성공하면 서버가 돌려준 status 를 그대로 현재 run 으로 삼는다 —
+   * 그 순간 `running` 이므로 폴링이 저절로 재개된다.
+   *
+   * 🔴 **오류를 삼키지 않고 던진다.** `start` 는 `null` 을 돌려주고 `error` 로만
+   *    알리는데, 게이트는 그러면 안 된다. 400 이 나도 게이트는 **그대로 열려 있고**
+   *    사람은 자기가 친 값을 고쳐서 다시 보내야 한다. 폼이 사유(`detail`)를 자기
+   *    자리에 붙여야 하므로 예외를 호출부까지 올린다.
+   */
+  answerAudit: (answer: AuditAnswer) => Promise<void>;
+  answerWeight: (answer: WeightAnswer) => Promise<void>;
   /**
    * 지금 한 번 다시 물어본다.
    *
@@ -164,11 +181,11 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   }, [run]);
 
   const start = useCallback(
-    async (domain: string) => {
+    async (domain: string, mode: string = MODE_FIXTURE) => {
       setStarting(true);
       setError(null);
       try {
-        const id = await createRun(domain);
+        const id = await createRun(domain, mode);
         writeRunId(id);
         const doc = await fetchRun(id);
         applyRun(doc);
@@ -179,6 +196,28 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
       } finally {
         setStarting(false);
       }
+    },
+    [applyRun],
+  );
+
+  /**
+   * 🔴 답변 본문의 `run_id` 를 **여기서 채우지 않는다.** 폼이 자기가 보고 있는
+   *    run 의 id 를 넣고, 그게 서버 경로와 다르면 400 이 난다 — 그 400 이 바로
+   *    "화면이 다른 run 을 보고 있다" 는 신호다. 여기서 `run.run_id` 로 덮어쓰면
+   *    그 신호가 사라지고 남의 run 에 답이 들어간다(계약 7-3b).
+   */
+  const answerAudit = useCallback(
+    async (answer: AuditAnswer) => {
+      applyRun(await submitAuditGate(answer.run_id, answer));
+      setError(null);
+    },
+    [applyRun],
+  );
+
+  const answerWeight = useCallback(
+    async (answer: WeightAnswer) => {
+      applyRun(await submitWeightGate(answer.run_id, answer));
+      setError(null);
     },
     [applyRun],
   );
@@ -209,6 +248,8 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         error,
         runningElapsedSec,
         start,
+        answerAudit,
+        answerWeight,
         refresh,
         reset,
       }}

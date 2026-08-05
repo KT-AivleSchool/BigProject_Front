@@ -5,21 +5,21 @@
  * ==================
  * 명세: 「감리 AI 가 잠정 판정한 것을 사람이 뒤집는 자리.」
  *
- * 🔴 **읽기 전용이다. 사유가 2026-08-05 에 바뀌었다** — 예전엔 "쓰기 API 가 계약에
- *    없다" 였는데 이제 있다(`POST /runs/{id}/hitl/audit`). 지금 읽기 전용인 이유는
- *    두 개고, 둘 다 API 유무와 관계가 없다:
+ * 🔴 **이 화면에는 층이 둘 있다. 섞으면 화면이 거짓말한다.**
  *
- *    1. **이 화면이 읽는 것은 답할 대상이 아니다.** 여기 그리는 `reviewed.json` 은
- *       실행이 **끝나고 나온 산출물**이다. 게이트A 가 묻는 질문은 `status.json` 의
- *       `gate.questions[]` 에 있고, 그건 **`awaiting_hitl` 일 때만 존재한다.**
- *       두 데이터는 출처도 시점도 다르다 — 산출물에 확정 버튼을 다는 것은
- *       **이미 지나간 실행의 결과를 고치는 것처럼 보이게** 만드는 일이다.
- *    2. 프런트는 `mode: fixture` 로만 실행을 만든다. **픽스처는 게이트가 안 선다.**
- *       그래서 지금 화면에 떠 있는 run 에는 답할 질문이 애초에 0건이다.
+ *    1. **게이트A 답변 폼** — `run.status === "awaiting_hitl"` 이고 `run.gate.id`
+ *       가 `audit` 일 때만 뜬다. 답할 질문은 `run.gate.questions[]` 이고,
+ *       그건 **실행이 멈춰 있는 동안에만 존재한다**(끝나면 키가 사라진다).
+ *    2. **산출물 `reviewed.json`** — 실행이 **끝나고 나온 기록**이다. 여기에는
+ *       확정 버튼을 달지 않는다. 지나간 실행의 결과에 버튼을 달면 사람은 값을
+ *       바꿨다고 믿지만 그 실행은 이미 그 값으로 끝나 있다.
  *
- *    쓰기 화면으로 만들려면 세 가지가 같이 와야 한다 —
- *    `mode: hitl` 실행 생성 · `run.gate.questions[]` 렌더 · 게이트 단위 배치 POST.
- *    셋 중 하나만 하면 화면이 거짓말한다.
+ *    그래서 폼은 위, 기록은 아래다. 같은 사실을 다른 시점에서 본 것이라
+ *    **키도 안 맞는다** — 게이트는 `(dataset_id, role_index)` 로 지목하고
+ *    계약은 `results[]` 배열 인덱스를 쓰지 말라고 명시한다.
+ *
+ * 🔴 게이트가 서려면 실행이 `mode: hitl` 이어야 한다. **픽스처는 게이트가 안 선다**
+ *    (회귀 기준선이 사람 입력으로 흔들리면 안 되기 때문). 화면 1 에서 고른다.
  *
  * 🔴 픽스처의 `reviewed.json` 은 **이미 HITL 이 끝난 상태**다(실측).
  *    `need_review` 가 true 인 role 은 0건이고, `hitl_flags` 3건은 전부
@@ -31,9 +31,12 @@
  *   화면 6: report.json 의 data_gap
  */
 import Link from "next/link";
+import { AuditGate } from "@/components/gate/AuditGate";
 import { ArtifactView } from "@/components/ui/ArtifactView";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
+import { GATE_AUDIT, openGate } from "@/lib/omnisite/gate";
 import { loadReviewed } from "@/lib/omnisite/pipeline";
+import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { meters } from "@/lib/omnisite/format";
@@ -57,7 +60,9 @@ const COORD_LABEL: Record<string, string> = {
 };
 
 export default function Screen2Page() {
+  const { run } = useRun();
   const state = useArtifact("reviewed", loadReviewed);
+  const gate = openGate(run, GATE_AUDIT);
 
   return (
     <PageBody>
@@ -71,26 +76,18 @@ export default function Screen2Page() {
         }
       />
 
-      <ReadOnlyNotice />
+      {gate ? (
+        <AuditGate gate={gate} runId={run!.run_id} />
+      ) : (
+        <NoGateNotice status={run?.status ?? null} />
+      )}
 
       <ArtifactView state={state} what="감리 결과">
         {(doc) => <Body doc={doc} />}
       </ArtifactView>
 
-      <PageFooter
-        screen={SCREEN}
-        action={
-          <button
-            type="button"
-            disabled
-            title="지금 보고 있는 것은 게이트 질문이 아니라 실행이 끝나고 나온 산출물입니다. 확정할 대상이 없습니다."
-            className="btn-secondary cursor-not-allowed text-[13px] opacity-40"
-          >
-            데이터 확정 (게이트 대기 아님)
-          </button>
-        }
-      />
-      <SourceNote files={["<도메인>_audit_result_reviewed.json"]} />
+      <PageFooter screen={SCREEN} />
+      <SourceNote files={["status.json 의 gate (게이트A)", "<도메인>_audit_result_reviewed.json"]} />
     </PageBody>
   );
 }
@@ -223,7 +220,6 @@ function PendingCard({ result, role }: { result: ReviewedResult; role: ReviewedR
         <span className="text-[11px] text-amber-800">사람 확인 필요</span>
       </div>
       <p className="mt-1 text-[12px] text-amber-900">{role.rationale}</p>
-      <Actions />
     </li>
   );
 }
@@ -268,36 +264,7 @@ function FlagCard({ result, flag }: { result: ReviewedResult; flag: ReviewedFlag
           {flag.근거문장}
         </blockquote>
       )}
-      <Actions />
     </li>
-  );
-}
-
-/**
- * 🔴 버튼이 항목마다 붙어 있지만 **확정은 항목 단위가 아니다.** 백엔드는 게이트A
- *    한 번에 `{exclusions[], intents[], code_prefixes[]}` 를 통째로 받는다. 1건씩
- *    보내면 검증이 전체를 못 본다 — 가중치 쪽에서 실제로 전 후보 점수가 0 이 된
- *    사고가 그렇게 났다. 배선할 때 이 버튼은 **모아서 한 번 보내는** 쪽에 연결한다.
- *
- * 🔴 그리고 배선 지점은 **이 카드가 아니다.** 이 카드는 `reviewed.json`(산출물)의
- *    한 줄이고, 게이트A 가 묻는 질문은 `run.gate.questions[]` 의 한 줄이다.
- *    둘은 같은 사실을 다른 시점에서 본 것이라 **키가 맞지 않는다** — 게이트는
- *    `(dataset_id, role_index)` 로 대상을 지목하고, 계약이 "`results[]` 배열
- *    인덱스는 쓰지 말라"고 명시한다(순서가 바뀌면 조용히 다른 걸 가리킨다).
- */
-function Actions() {
-  return (
-    <div className="mt-3 flex items-center gap-2">
-      <button type="button" disabled className="btn-utility cursor-not-allowed text-[12px] opacity-35">
-        수정
-      </button>
-      <button type="button" disabled className="btn-utility cursor-not-allowed text-[12px] opacity-35">
-        확정
-      </button>
-      <span className="text-[11px] text-ink-secondary">
-        이 항목은 실행이 끝나고 나온 기록입니다 — 되돌려 보낼 게이트가 열려 있지 않습니다.
-      </span>
-    </div>
   );
 }
 
@@ -316,22 +283,26 @@ function KV({ k, v, tone }: { k: string; v: string; tone?: "ok" | "warn" }) {
   );
 }
 
-function ReadOnlyNotice() {
+/**
+ * 게이트가 안 열려 있을 때, **왜 안 열렸는지**를 말한다.
+ * "답할 게 없다" 와 "답하는 기능이 없다" 는 완전히 다른 말이고, 예전 문구는
+ * 뒤쪽이었다. 이제는 폼이 있으므로 앞쪽만 말한다.
+ */
+function NoGateNotice({ status }: { status: string | null }) {
   return (
-    <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-900">
-      <p className="font-semibold">이 화면은 읽기 전용입니다.</p>
-      <p className="mt-1">
-        확정을 되돌려 보낼 API 는 <b>있습니다</b>(게이트A). 다만 여기 보이는 것은
-        <b> 실행이 끝나고 나온 기록</b>(<code>reviewed.json</code>)이고, 답을 받는 것은
-        실행이 <b>게이트에서 멈춰 있는 동안</b>의 질문 목록입니다. 지나간 실행의
-        기록에 「확정」을 달면, 사람은 값을 바꿨다고 믿지만 그 실행은 이미 그 값으로
-        끝나 있습니다.
+    <div className="mt-5 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px] leading-relaxed text-ink-secondary">
+      <p className="font-medium text-ink">
+        지금 답할 게이트가 열려 있지 않습니다{status ? ` (상태: ${status})` : ""}.
       </p>
       <p className="mt-1">
-        게이트에서 답하려면 실행을 <code>mode: hitl</code> 로 만들어야 하는데, 지금
-        화면 1 은 <code>fixture</code> 로만 만듭니다 — <b>픽스처는 게이트가 서지
-        않습니다</b>(회귀 기준선이 사람 입력으로 흔들리면 안 되기 때문입니다).
-        게이트 답변 화면은 아직 만들지 않았습니다.
+        아래에 보이는 것은 <b>실행이 끝나고 나온 기록</b>(<code>reviewed.json</code>)입니다.
+        게이트A 가 묻는 질문은 실행이 <b>멈춰 있는 동안에만</b> 존재하므로, 지나간
+        기록에는 되돌려 보낼 대상이 없습니다.
+      </p>
+      <p className="mt-1">
+        게이트를 세우려면 화면 1 에서 실행을 <code>mode: hitl</code> 로 만드십시오.
+        <b> 픽스처(<code>fixture</code>)는 게이트가 서지 않습니다</b> — 회귀 기준선이
+        사람 입력으로 흔들리면 안 되기 때문입니다.
       </p>
     </div>
   );

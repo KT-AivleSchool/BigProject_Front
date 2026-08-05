@@ -8,17 +8,14 @@
  *   GET  /api/v1/pipeline/runs/{run_id}/artifacts/{n} → 산출물 파일 원본
  *   GET  /api/v1/pipeline/runs/{run_id}/log[?tail=N]  → 실행 로그 (커밋 836455e)
  *
- * 쓰기 API 는 **이제 있다** — 백엔드가 구현·검증을 마쳤다(2026-08-05, 계약 7절):
+ * 쓰기 API 는 **이제 있고 이제 쓴다** — 화면 2 · 3 이 게이트 답변 화면이 됐다
+ * (2026-08-05, 계약 7절):
  *
  *   POST /api/v1/pipeline/runs/{id}/hitl/audit    게이트A
  *   POST /api/v1/pipeline/runs/{id}/hitl/weight   게이트B
  *   → 200 이면 본문은 **답변 직후의 status.json**(이미 `running`, `gate` 키 없음)
  *
- * 🔴 **그런데도 여기에 함수를 만들지 않는다.** 부르는 화면이 없기 때문이다.
- *    화면 2 · 3 은 아직 읽기 전용이고, 1차 목표(화면 4 까지 실행 확인)는 게이트가
- *    안 서는 `fixture` 로 달성된다. 안 쓰이는 클라이언트 함수를 미리 두면 다음
- *    사람이 "배선이 끝났다"고 읽고, 계약이 바뀌어도 아무 데서도 안 터진다.
- *    만들 때 알아야 할 것만 적어 둔다:
+ * 알아야 할 것:
  *
  *    - 본문에 **`run_id` 를 넣어야 한다.** 경로와 다르면 400 이다 — 프런트가 다른
  *      run 을 보고 있다는 뜻이라 조용히 경로 쪽을 쓰지 않는다.
@@ -26,9 +23,9 @@
  *      전 슬라이더 `sum(abs(v)) > 0` 을 검증할 수 없다 — 검증을 빼면 전 후보
  *      점수가 0 이 된다(백엔드가 실제로 겪은 사고).
  *    - 게이트A: `{run_id, exclusions[], intents[], code_prefixes[]}`. 세 배열 다
- *      선택이고 고칠 게 없으면 `{}`. 🔴 `radius_m: null`(= 반경 없는 면 배제)과
- *      **키 생략**(= 건드리지 않음)은 **다른 뜻**이다. `editable: false` 항목을
- *      수정하려 하면 400 — 보여주되 못 고친다.
+ *      선택이고 고칠 게 없으면 `{run_id}` 만. 🔴 `radius_m: null`(= 반경 없는 면
+ *      배제)과 **키 생략**(= 건드리지 않음)은 **다른 뜻**이다. `editable: false`
+ *      항목을 보내면 400 — 보여주되 못 고친다.
  *    - 게이트B: `{run_id, radius{}, slider{}}` **이 셋뿐**이다. 다른 키는 400.
  *      🔴 `slider` 는 `-1 ~ +1` 을 **그대로** 보낸다. 프런트가 `{seed_weight,
  *      direction}` 으로 미리 분해하면 `normalize_matrix` 의 cost 반전과 이중으로
@@ -43,6 +40,7 @@ import { getJson, postJson, getText } from "./client";
 import { parseCsv } from "./csv";
 import type {
   ArtifactName,
+  AuditAnswer,
   CleanReportDoc,
   ExclusionDoc,
   ReportDoc,
@@ -50,20 +48,24 @@ import type {
   RunDoc,
   ScoreGridDoc,
   TopNCsvRow,
+  WeightAnswer,
   WeightSetDoc,
 } from "./types";
 
 const BASE = "/api/v1/pipeline";
 
 /**
- * 계약 2절. `mode` 는 `fixture` · `hitl` 두 값이다(둘 다 구현됨, 2026-08-05).
+ * 계약 2절. `mode` 는 이 둘뿐이다.
  *
- * 🔴 프런트는 **`fixture` 만 만든다.** `hitl` 로 시작하면 실행이 곧바로 게이트A 에서
- *    멈추는데, 답을 보낼 화면이 아직 없어서 그 run 은 영영 안 끝난다. 고를 수 있게
- *    해 두고 "이걸 고르면 멈춥니다" 라고 적는 것보다, 못 하는 걸 안 만드는 게 낫다.
- *    화면 2 · 3 에 답변 UI 가 생기는 날 `MODE_HITL` 을 여기 추가할 것.
+ * - `fixture` 무입력 완주. 회귀 검증용. 게이트가 **안 선다.**
+ * - `hitl`    게이트A·B 에서 멈춘다. 화면 2 · 3 에서 답해야 이어진다.
+ *
+ * 🔴 목록을 프런트가 정하지 않는다 — 서버가 모르는 값을 보내면 400 이고 문구도
+ *    서버가 준다. 여기 있는 두 상수는 **버튼 라벨을 붙이기 위한 것**이지 화이트
+ *    리스트가 아니다. (모드가 늘면 서버가 먼저 알고, 화면은 그다음이다)
  */
 export const MODE_FIXTURE = "fixture";
+export const MODE_HITL = "hitl";
 
 export async function createRun(
   domain: string,
@@ -74,6 +76,27 @@ export async function createRun(
     mode,
   });
   return run_id;
+}
+
+/**
+ * 게이트 답변. 응답은 **답변 직후의 status.json** 이므로 그대로 현재 run 으로 쓴다.
+ *
+ * 🔴 `gate_id` 를 인자로 받지 않고 함수를 둘로 나눈 이유 — 본문 모양이 완전히 다르고
+ *    서버가 "지금 기다리는 게이트와 다른 gate_id" 를 400 으로 막는다. 하나로 합치면
+ *    호출부에서 `body` 가 `any` 에 가까워지고, 잘못된 짝을 타입이 못 잡는다.
+ */
+export function submitAuditGate(runId: string, answer: AuditAnswer): Promise<RunDoc> {
+  return postJson<RunDoc>(
+    `${BASE}/runs/${encodeURIComponent(runId)}/hitl/audit`,
+    answer,
+  );
+}
+
+export function submitWeightGate(runId: string, answer: WeightAnswer): Promise<RunDoc> {
+  return postJson<RunDoc>(
+    `${BASE}/runs/${encodeURIComponent(runId)}/hitl/weight`,
+    answer,
+  );
 }
 
 export function fetchRun(runId: string): Promise<RunDoc> {

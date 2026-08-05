@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { PageBody } from "@/components/ui/Page";
 import { NoRun } from "@/components/ui/State";
+import { gateScreen } from "@/lib/omnisite/gate";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { computeProgress, formatDuration, loadBaseline } from "@/lib/omnisite/progress";
 import { fetchRunLog } from "@/lib/omnisite/pipeline";
@@ -178,12 +179,9 @@ export default function ProgressPage() {
 /**
  * 게이트 — 실행이 사람을 기다리며 멈춰 있다.
  *
- * 🔴 **답변 UI 를 여기 만들지 않았다.** 이제는 "모른다"가 아니라 **범위 밖**이라서다
- *    — 백엔드가 `POST /runs/{id}/hitl/{audit|weight}` 를 구현·검증했고(2026-08-05)
- *    질문 형태도 계약 7-4 · 7-5 에 실물로 적혀 있다. 다만 1차 목표는 화면 4 까지
- *    돌려 보는 것이고, 게이트 답변은 화면 2 · 3 을 **쓰기 화면으로 바꾸는** 별개
- *    작업이다. 여기(진행 현황)에 축소판 폼을 하나 더 만들면 같은 입력이 두 곳에
- *    생기고 언젠가 갈린다.
+ * 🔴 **답변 폼을 여기 만들지 않는다. 답할 화면으로 보낸다.** 폼은 화면 2 · 화면 3
+ *    에 있다. 여기에 축소판을 하나 더 만들면 같은 입력이 두 곳에 생기고 언젠가
+ *    서로 다른 값을 보낸다.
  *
  * 🔴 **게이트 이름을 프런트가 갖고 있지 않다.** `gate.label` 을 그대로 쓴다 —
  *    예전엔 `{audit: "게이트A · 감리 확인", …}` 를 여기 박아 뒀는데, 그건 서버가
@@ -192,6 +190,8 @@ export default function ProgressPage() {
  */
 function GateBlock({ run, onRefresh }: { run: RunDoc; onRefresh: () => Promise<void> }) {
   const gate = run.gate;
+  /** 모르는 게이트면 `null` — 아무 화면으로나 보내지 않는다. */
+  const target = gate ? gateScreen(gate.id) : null;
 
   return (
     <section className="mt-6 rounded-xl border border-amber-300 bg-amber-50 p-5">
@@ -226,12 +226,24 @@ function GateBlock({ run, onRefresh }: { run: RunDoc; onRefresh: () => Promise<v
         </div>
       </dl>
 
-      <p className="mt-3 text-[12px] leading-relaxed text-amber-900">
-        <b>이 화면에서는 답할 수 없습니다.</b> 확정을 되돌려 보내는 API 는 있지만
-        (<code>POST …/hitl/{gate?.id ?? "{게이트}"}</code>), 답변 입력은 화면 2(감리
-        확인)·화면 3(가중치)이 맡을 자리입니다. 같은 입력을 여기에도 만들면 두 벌이
-        생기고 언젠가 서로 다른 값을 보냅니다. 두 화면의 쓰기 기능은 아직입니다.
-      </p>
+      {target ? (
+        <div className="mt-3">
+          <Link href={target.path} className="btn-primary text-[13px]">
+            화면 {target.no} · {target.name} 에서 답하기 →
+          </Link>
+          <p className="mt-2 text-[12px] leading-relaxed text-amber-900">
+            답변 폼은 그 화면에 있습니다. 여기에 축소판을 하나 더 만들면 같은 입력이
+            두 벌이 되고 언젠가 서로 다른 값을 보냅니다.
+          </p>
+        </div>
+      ) : (
+        <p className="mt-3 text-[12px] leading-relaxed text-amber-900">
+          <b>이 게이트를 어느 화면이 맡는지 모릅니다</b>
+          (<code>gate.id = {gate?.id ?? "(없음)"}</code>). 프런트가 아는 게이트는
+          <code> audit</code> · <code>weight</code> 둘뿐입니다. 아무 화면으로나 보내면
+          그 화면이 엉뚱한 본문을 POST 하므로 보내지 않습니다.
+        </p>
+      )}
       <p className="mt-2 text-[11px] leading-relaxed text-amber-900/80">
         멈춰 있는 동안 <b>자동 갱신을 끕니다.</b> 답을 주기 전까지 서버 상태가 바뀌지
         않으므로, 계속 물어보면 아무 일도 안 일어나는 요청만 쌓입니다. 다른 경로로

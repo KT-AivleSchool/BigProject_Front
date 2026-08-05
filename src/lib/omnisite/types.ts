@@ -35,19 +35,118 @@ export type RunStatus =
   | "succeeded"
   | "failed";
 
+// ── 게이트 질문 (계약 7-4 · 7-5) ────────────────────────────────
+//
+// 🔴 **API 응답이 아니라 그 응답을 만드는 코드에서 뽑았다.**
+//    `pipeline_runner.py:734 _questions_audit` · `:818 _questions_weight` 다.
+//    이유는 이 파일 맨 위 원칙("문서 표를 옮겨 적지 않는다")과 같은 쪽이다 —
+//    계약서(7-4)의 예시 JSON 은 **일부 필드가 값 예시뿐**이라 null 가능성이
+//    안 보인다. 실제로 `facility_type`·`radius_source`·`col`·`verdict` 는
+//    `dict.get()` 결과라 키가 없으면 `null` 로 나간다.
+//
+//    ⚠ 응답 실물로는 **아직 못 봤다.** 돌고 있는 서버가 `mode: hitl` 을 모르는
+//      옛 빌드라(2026-08-05 실측: `"지원하지 않는 mode 입니다: 'hitl'"`) 게이트를
+//      세울 수가 없었다. 생성기 코드를 근거로 삼은 것은 문서보다는 가깝지만
+//      응답 실물은 아니다 — 서버가 갱신되면 실물로 한 번 대조할 것.
+
+export interface GateExclusionQuestion {
+  kind: "exclusion";
+  dataset_id: string;
+  role_index: number;
+  /** false = 이미 확정됨. **보여주되 고칠 수 없다**(고치려 들면 400). */
+  editable: boolean;
+  summary: string;
+  facility_type: string | null;
+  exclusion_type: string | null;
+  rationale: string;
+  /** 현재 확정값. `null` = 아직 안 정해짐. */
+  radius_m: number | null;
+  radius_source: string | null;
+  /** 🔴 AI 제안값. `radius_m`(확정값)과 **합치지 않는다** — 합치면 화면에서 구분이 사라진다. */
+  proposed_m: number | null;
+  proposal_source: string | null;
+  evidence: string | null;
+  /** false = 근거문장에 그 시설명이 없다. **다른 시설 규정일 수 있다** — 경고로 띄운다. */
+  evidence_matches_facility: boolean | null;
+}
+
+export interface GateIntentChoice {
+  value: number;
+  label: string;
+  /** true(가점·감점)면 `weight` 를 같이 보내야 한다. */
+  needs_weight: boolean;
+}
+
+export interface GateIntentQuestion {
+  kind: "intent";
+  dataset_id: string;
+  editable: boolean;
+  summary: string;
+  message: string;
+  current_roles: string[];
+  choices: GateIntentChoice[];
+}
+
+export interface GateCodePrefixQuestion {
+  kind: "code_prefix";
+  dataset_id: string;
+  /** 🔴 `cleaning_ops` **전체** 기준 인덱스다. filter_by_code_prefix 만 센 번호가 아니다. */
+  op_index: number;
+  editable: boolean;
+  summary: string;
+  col: string | null;
+  prefix: string;
+  region: string;
+  verdict: string | null;
+  reason: string | null;
+  detail: string | null;
+  suggestion: string | null;
+  confirmed_by: string | null;
+  /** true = 감리 때도 API 도 코드표 대조를 **못 했다.** 사람이 직접 봐야 한다. */
+  recheck_skipped: boolean;
+}
+
+export type GateAuditQuestion =
+  | GateExclusionQuestion
+  | GateIntentQuestion
+  | GateCodePrefixQuestion;
+
+/** 결합 지표에서 geo 쪽과 val 쪽 방향 판정이 갈렸다. 슬라이더 **부호**로 확정한다. */
+export interface GateDirectionConflict {
+  indicator_id: string;
+  geo_dataset: string;
+  geo_direction: Direction;
+  val_dataset: string;
+  val_direction: Direction;
+}
+
+export interface GateWeightQuestion {
+  kind: "weight";
+  indicator_id: string;
+  indicator_kind: string;
+  /** `indicator_kind !== "admin"`. true 면 반경 **필수**, false 면 보내면 400. */
+  radius_required: boolean;
+  direction: Direction;
+  seed_weight: number;
+  components: Record<string, string | null> | null;
+  rationale: string;
+  data_note: string;
+  radius_proposed: number | null;
+  radius_rationale: string;
+  radius_source: string | null;
+  /** `-1 ~ +1`. `direction` 이 cost 면 음수다. */
+  slider_proposed: number | null;
+  conflict: GateDirectionConflict | null;
+}
+
 /**
  * `awaiting_hitl` 일 때만 붙는다. **그 외에는 키 자체가 없다(`null` 이 아니다)** —
  * 백엔드가 명시했다. 그래서 `RunDoc.gate` 는 `?` 이고 `null` 을 허용하지 않는다.
  *
- * 🔴 `questions` 는 **이제 실물을 확인했다**(계약 7-4 · 7-5, 2026-08-05 구현 완료).
- *    평평한 배열이고 원소마다 `kind` 가 있다 — 게이트A `exclusion`·`intent`·
- *    `code_prefix`, 게이트B `weight`. 흡연 픽스처 실측으로 게이트A 4건 · B 6건.
- *
- *    그런데도 `unknown[]` 로 둔다. **답변 UI 가 1차 범위 밖이라 이 필드를 읽는
- *    코드가 한 줄도 없기 때문이다.** 쓰지도 않을 타입을 미리 적어 두면 계약이
- *    바뀌어도 아무 데서도 안 터지고, "이 모양이 맞다"는 근거 없는 문서만 남는다.
- *    답변 화면을 만드는 사람이 그때 계약 7-4 · 7-5 를 보고 필요한 만큼만 적을 것.
- *    지금 화면은 **게이트 이름(`label`)과 건수만** 보여준다.
+ * 🔴 `questions` 는 **평평한 배열**이고 원소마다 `kind` 가 있다 — 게이트A
+ *    `exclusion`·`intent`·`code_prefix`, 게이트B `weight`. 한 배열에 두 게이트가
+ *    섞여 오지는 않지만(게이트는 한 번에 하나), 타입으로는 막지 않는다 —
+ *    화면이 `kind` 로 갈라 읽으므로 섞여 와도 안 깨진다.
  */
 export interface RunGate {
   /**
@@ -64,7 +163,59 @@ export interface RunGate {
    * 🔴 프런트가 게이트 이름을 따로 갖고 있지 않다 — 두 곳에 적으면 언젠가 갈린다.
    */
   label: string;
-  questions: unknown[];
+  questions: GateQuestion[];
+}
+
+export type GateQuestion = GateAuditQuestion | GateWeightQuestion;
+
+// ── 게이트 답변 (계약 7-4 · 7-5) ────────────────────────────────
+//
+// 🔴 **`run_id` 를 본문에 넣는다.** 경로와 다르면 400 이다 — 프런트가 다른 run 을
+//    보고 있다는 뜻이라 백엔드가 조용히 경로 쪽을 쓰지 않는다.
+
+export interface AuditAnswerExclusion {
+  dataset_id: string;
+  role_index: number;
+  /**
+   * 🔴 `null` = "반경 없음(면 배제)" 으로 **확정**. **키 생략** = 건드리지 않음(미확정 유지).
+   *    둘은 다른 뜻이다. 그래서 `?` 와 `| null` 을 **둘 다** 쓴다 —
+   *    `exactOptionalPropertyTypes` 가 아니어도 의도는 이 한 줄로 남는다.
+   */
+  radius_m?: number | null;
+}
+
+export interface AuditAnswerIntent {
+  dataset_id: string;
+  /** 1 가점 · 2 감점 · 3 배제 · 4 참조용 · 5 제외 */
+  choice: number;
+  /** 크기만. 부호는 `choice` 가 정한다. 1·2 에서만 쓰고 0 은 400(제외하려면 choice=5). */
+  weight?: number;
+}
+
+export interface AuditAnswerCodePrefix {
+  dataset_id: string;
+  op_index: number;
+  prefix: string;
+}
+
+export interface AuditAnswer {
+  run_id: string;
+  exclusions?: AuditAnswerExclusion[];
+  intents?: AuditAnswerIntent[];
+  code_prefixes?: AuditAnswerCodePrefix[];
+}
+
+/** 🔴 필드는 **이 셋뿐**이다. 다른 키가 있으면 400. */
+export interface WeightAnswer {
+  run_id: string;
+  /** 지표ID → 정수 m(1~5000). `radius_required` 인 지표가 하나라도 빠지면 400. */
+  radius: Record<string, number>;
+  /**
+   * 지표ID → `-1 ~ +1` **그대로**. 프런트가 `{seed_weight, direction}` 으로 분해하지
+   * 않는다(분해하면 cost 반전과 이중으로 걸려 조용히 뒤집히고 `direction_source` 가
+   * 산출물에서 사라진다). 생략하면 `slider_proposed` 를 쓴다.
+   */
+  slider: Record<string, number>;
 }
 
 /**
