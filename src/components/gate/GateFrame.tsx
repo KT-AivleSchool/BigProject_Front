@@ -90,6 +90,7 @@ export function QuestionCard({
   title,
   editable,
   warn,
+  aside,
   children,
 }: {
   /** 데이터셋 id 또는 지표 id. 배지로만 쓴다. */
@@ -97,6 +98,11 @@ export function QuestionCard({
   title: React.ReactNode;
   editable: boolean;
   warn?: boolean;
+  /**
+   * 제목줄 **오른쪽 끝**. 이름이 아닌 것(분류 배지·변경 표시)을 제목 옆에 붙이면
+   * 그것도 이름처럼 읽힌다 — 자리를 갈라 놓는다.
+   */
+  aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -105,12 +111,15 @@ export function QuestionCard({
         warn ? "border-amber-400 bg-amber-100/50" : "border-hairline bg-white"
       } ${editable ? "" : "opacity-90"}`}
     >
-      <div className="flex flex-wrap items-baseline gap-2">
-        <span className="tnum rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-ink-secondary">
-          {id}
-        </span>
-        <span className="text-[13px] font-medium">{title}</span>
-        {!editable && <LockedBadge />}
+      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <span className="tnum rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-ink-secondary">
+            {id}
+          </span>
+          <span className="text-[14px] font-semibold">{title}</span>
+          {!editable && <LockedBadge />}
+        </div>
+        {aside}
       </div>
       {children}
     </div>

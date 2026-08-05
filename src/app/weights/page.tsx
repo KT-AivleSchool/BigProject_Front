@@ -59,6 +59,13 @@ export default function Screen3Page() {
   // 후보 필지 수는 weight_set 에도 있지만, 실제 통과 수(survive)는 report 에만 있다.
   const report = useArtifact<ReportDoc>("report", loadReport);
 
+  /**
+   * 지표 이름은 게이트B 폼과 아래 표가 **같은 규칙**으로 지어야 한다. 두 곳에서
+   * 따로 지으면 같은 지표가 화면 위아래에서 다른 이름으로 불린다.
+   * (게이트B 시점에도 `reviewed`·`clean_report` 는 이미 있다 — 실측)
+   */
+  const labels = buildDatasetLabels(reviewed.data, clean.data);
+
   return (
     <PageBody>
       <PageHeader
@@ -67,14 +74,13 @@ export default function Screen3Page() {
       />
 
       {gate ? (
-        <WeightGate gate={gate} runId={run!.run_id} />
+        <WeightGate gate={gate} runId={run!.run_id} labels={labels} />
       ) : (
         <NoGateNotice status={run?.status ?? null} />
       )}
 
       <ArtifactView state={ws} what="가중치">
         {(w) => {
-          const labels = buildDatasetLabels(reviewed.data, clean.data);
           const sorted = [...w.indicators].sort((a, b) => b.w_final - a.w_final);
           const sum = w.indicators.reduce((s, i) => s + i.w_final, 0);
           /**
