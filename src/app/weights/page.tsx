@@ -6,19 +6,16 @@
  * 읽는 것: `weight_set.json`. 이름 붙이기에만 `reviewed` · `clean_report` 를 곁들인다
  * (없어도 화면은 뜬다 — id 로 표시된다).
  *
- * 🔴 **슬라이더를 움직일 수 없다. 사유가 2026-08-05 에 바뀌었다** — 예전엔
- *    "쓰기 API 가 없다" 였는데 이제 있다(`POST /runs/{id}/hitl/weight`).
- *    지금 막대인 이유는 **여기 그리는 값이 슬라이더의 값이 아니라서**다:
+ * 🔴 **이 화면에는 층이 둘 있다. 겹치면 무엇을 만졌는지 아무도 설명 못 한다.**
  *
- *    - 이 화면은 `weight_set.json`, 즉 **계산이 끝난 최종 가중치**를 읽는다.
- *    - 게이트B 가 묻는 것은 `run.gate.questions[]` 의 `slider_proposed`(`-1~+1`) ·
- *      `radius_proposed` 이고, 그건 **제안 패스(`--propose-only`)가 만든 사전값**으로
- *      `awaiting_hitl` 일 때만 존재한다.
+ *    1. **게이트B 답변 폼**(위) — `awaiting_hitl` + `gate.id === "weight"` 일 때만.
+ *       묻는 것은 `slider_proposed`(`-1~+1`) · `radius_proposed`, 즉 **계산 전 입력**
+ *       이고 제안 패스(`--propose-only`)가 만든 사전값이다.
+ *    2. **산출물 `weight_set.json`**(아래) — **계산이 끝난 최종 가중치**다. 여기에는
+ *       슬라이더를 달지 않고 **막대(bar)로** 그린다. 최종값에 슬라이더를 달면 사람은
+ *       이 숫자를 조정했다고 믿는데 서버가 받는 것은 다른 층의 값이다.
  *
- *    최종값에 슬라이더를 달면 사람은 "이 값을 조정했다"고 믿는데 서버가 받는 것은
- *    **그 값이 아니라 그 값을 만들어 낸 앞단의 입력**이다. 두 층을 한 화면에 겹치면
- *    무엇을 만졌는지 아무도 설명할 수 없게 된다. 그래서 **막대(bar)로** 그린다 —
- *    만질 수 있게 생기지도 않게. 사유는 화면에 적는다.
+ *    폼이 열려 있는 동안 아래 표는 **직전 실행의 값**이거나 아예 없다. 그게 정상이다.
  *
  * 🔴 명세의 지표명("유동인구 · 건물 밀도")은 **산출물에 없다.** 지어내지 않고
  *    `labels.ts` 규칙으로 데이터에서 끌어온다. 끌어온 근거도 같이 보여준다.
@@ -28,8 +25,11 @@
  *    이중으로 걸려 조용히 뒤집힌다(CLAUDE.md 규약). 그래서 여기서는
  *    **크기와 방향을 분리해서** 보여준다. 합치지 않는다.
  */
+import { WeightGate } from "@/components/gate/WeightGate";
 import { ArtifactView } from "@/components/ui/ArtifactView";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
+import { GATE_WEIGHT, openGate } from "@/lib/omnisite/gate";
+import { useRun } from "@/lib/omnisite/RunProvider";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import {
   loadCleanReport,
@@ -51,6 +51,8 @@ import type {
 const SCREEN = SCREENS.find((s) => s.no === "3")!;
 
 export default function Screen3Page() {
+  const { run } = useRun();
+  const gate = openGate(run, GATE_WEIGHT);
   const ws = useArtifact<WeightSetDoc>("weight_set", loadWeightSet);
   const reviewed = useArtifact<ReviewedDoc>("reviewed", loadReviewed);
   const clean = useArtifact<CleanReportDoc>("clean_report", loadCleanReport);
@@ -64,7 +66,11 @@ export default function Screen3Page() {
         lead="무엇을 중요하게 볼지 사람이 정한다. 여기서 정한 값이 점수의 분모다."
       />
 
-      <ReadOnlyNotice />
+      {gate ? (
+        <WeightGate gate={gate} runId={run!.run_id} />
+      ) : (
+        <NoGateNotice status={run?.status ?? null} />
+      )}
 
       <ArtifactView state={ws} what="가중치">
         {(w) => {
@@ -141,7 +147,13 @@ export default function Screen3Page() {
       </ArtifactView>
 
       <PageFooter screen={SCREEN} />
-      <SourceNote files={["weight_set.json", "reviewed.json · clean_report.json (지표 이름)"]} />
+      <SourceNote
+        files={[
+          "status.json 의 gate (게이트B)",
+          "weight_set.json",
+          "reviewed.json · clean_report.json (지표 이름)",
+        ]}
+      />
     </PageBody>
   );
 }
@@ -338,22 +350,23 @@ function Line({ k, v }: { k: string; v: string }) {
   );
 }
 
-function ReadOnlyNotice() {
+/** 게이트가 안 열려 있을 때 **왜 안 열렸는지**를 말한다. 아래 표에 슬라이더가 없는
+ *  이유는 "기능이 없어서" 가 아니라 "그 표가 답할 대상이 아니어서" 다. */
+function NoGateNotice({ status }: { status: string | null }) {
   return (
-    <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] leading-relaxed text-amber-900">
-      <p className="font-semibold">읽기 전용입니다 — 슬라이더를 만들지 않았습니다.</p>
-      <p className="mt-1">
-        값을 되돌려 보낼 API 는 <b>있습니다</b>(게이트B). 다만 여기 보이는 것은
-        <b> 계산이 끝난 최종 가중치</b>(<code>weight_set.json</code>)이고, 게이트가 받는
-        것은 그 값이 아니라 <b>그 값을 만들어 낸 앞단의 입력</b>(집계반경 · 슬라이더
-        <code> -1~+1</code>)입니다. 최종값에 슬라이더를 달면 사람은 이 숫자를 조정했다고
-        믿는데 서버는 다른 층의 값을 받습니다.
+    <div className="mt-5 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px] leading-relaxed text-ink-secondary">
+      <p className="font-medium text-ink">
+        지금 답할 게이트가 열려 있지 않습니다{status ? ` (상태: ${status})` : ""}.
       </p>
       <p className="mt-1">
-        게이트에서 조정하려면 실행을 <code>mode: hitl</code> 로 만들어야 하는데, 지금
-        화면 1 은 <code>fixture</code> 로만 만듭니다 — <b>픽스처는 게이트가 서지
-        않습니다</b>(회귀 기준선이 사람 입력으로 흔들리면 안 되기 때문입니다).
-        게이트 답변 화면은 아직 만들지 않았습니다.
+        아래 표는 <b>계산이 끝난 최종 가중치</b>(<code>weight_set.json</code>)라서
+        슬라이더가 없습니다. 게이트B 가 받는 것은 이 값이 아니라 <b>이 값을 만들어 낸
+        앞단의 입력</b>(집계반경 · 슬라이더 <code>-1~+1</code>)이고, 그 입력은 실행이
+        게이트에서 <b>멈춰 있는 동안에만</b> 존재합니다.
+      </p>
+      <p className="mt-1">
+        게이트를 세우려면 화면 1 에서 실행을 <code>mode: hitl</code> 로 만드십시오.
+        <b> 픽스처(<code>fixture</code>)는 게이트가 서지 않습니다.</b>
       </p>
     </div>
   );

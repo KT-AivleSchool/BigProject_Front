@@ -16,7 +16,7 @@
  *    CSV 쪽이어야 한다. 두 곳의 순위·점수는 같지만 좌표는 한쪽에만 있으므로
  *    "report 에서 읽었다"고 적으면 그건 거짓 출처 기록이다.
  */
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
 import { GridMap } from "@/components/map/GridMap";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
@@ -34,11 +34,31 @@ export default function Screen4Page() {
   const report = useArtifact<ReportDoc>("report", loadReport);
 
   const [selected, setSelected] = useState<number | null>(null);
+  /**
+   * 사이드바 탭. 예전엔 커버율·목록·상세를 **세로로 쌓았고**, 셋을 합치면 액자
+   * 높이(최대 600px)의 세 배가 넘어 사이드바만 끝없이 스크롤됐다.
+   *
+   * 🔴 탭으로 바꾸면 예전 결정 하나를 뒤집게 된다 — "상세를 띄워도 목록을
+   *    치우지 않는다". 그때 문제는 목록이 **사라진 것**이었고 되돌아갈 길이
+   *    「목록으로」 버튼 하나뿐이었다. 탭은 다르다: 목록은 항상 **보이는 자리에
+   *    이름표로 남아** 있고 한 번 눌러 돌아온다. 사라지는 것과 접히는 것은 다르다.
+   */
+  const [tab, setTab] = useState<"list" | "detail">("list");
   const [panel, setPanel] = useState(true);
   const [showExcluded, setShowExcluded] = useState(true);
   const [showGrid, setShowGrid] = useState(true);
   const [basemap, setBasemap] = useState(true);
   const [tileFailed, setTileFailed] = useState(false);
+
+  /**
+   * 선택은 **지도·목록 두 곳에서** 들어온다. 두 곳이 각자 탭을 만지면 한쪽만
+   * 고쳤을 때 조용히 갈린다 — 창구를 하나로 둔다.
+   * 빈 지도를 눌러 선택을 지우면(`null`) 상세 탭은 보여 줄 게 없으므로 목록으로 돌린다.
+   */
+  function select(rank: number | null) {
+    setSelected(rank);
+    setTab(rank === null ? "list" : "detail");
+  }
 
   return (
     <PageBody>
@@ -79,49 +99,93 @@ export default function Screen4Page() {
                 setPanel={setPanel}
               />
 
-              {basemap && tileFailed && (
-                <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-                  배경 지도 타일을 받지 못했습니다(외부 망 차단이거나 타일 서버 응답 없음).
-                  <b> 격자와 후보지는 그대로 정확합니다</b> — 배경만 없습니다. 「배경 지도」를
-                  꺼도 됩니다.
-                </p>
-              )}
+              {/*
+                🔴 **액자.** 지도·사이드바·범례를 한 상자에 가둔다. 예전엔 지도가
+                문서 흐름에 그냥 놓여 있었고, `globals.css` 의 `.map-canvas` 가
+                `position:absolute; inset:0` 이라 **뷰포트 전체를 덮어** 아래의
+                사이드바와 「갈등 예측 실행」 버튼을 가렸다(2026-08-05 실측).
+                그 규칙은 지웠고, 여기서는 높이를 **뷰포트에 묶어** 어떤 창
+                크기에서도 액자 아래가 남도록 한다 — `56vh` 상한이 그 몫이다.
+                고정 560px 이면 세로가 짧은 노트북에서 다시 버튼이 밀려난다.
+              */}
+              <section className="overflow-hidden rounded-b-xl border border-hairline bg-white">
+                {/* 경고도 **액자 안**에 둔다. 지도에 대한 말이므로 지도에 붙어 있어야
+                    한다 — 액자 밖에 두면 도구줄과 지도 사이가 벌어져 액자가 끊긴다. */}
+                {basemap && tileFailed && (
+                  <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900">
+                    배경 지도 타일을 받지 못했습니다(외부 망 차단이거나 타일 서버 응답 없음).
+                    <b> 격자와 후보지는 그대로 정확합니다</b> — 배경만 없습니다. 「배경 지도」를
+                    꺼도 됩니다.
+                  </p>
+                )}
 
-              <div
-                className={`mt-4 grid gap-4 ${panel ? "lg:grid-cols-[minmax(0,1fr)_380px]" : ""}`}
-              >
-                <div className="h-[560px]">
-                  <GridMap
-                    grid={g}
-                    topn={rows}
-                    selected={selected}
-                    onSelect={setSelected}
-                    showExcluded={showExcluded}
-                    showGrid={showGrid}
-                    basemap={basemap}
-                    onTileError={() => setTileFailed(true)}
-                  />
+                <div
+                  className={`grid ${panel ? "md:grid-cols-[minmax(0,1fr)_360px]" : ""}`}
+                >
+                  <div className="relative h-[clamp(340px,56vh,600px)]">
+                    <GridMap
+                      grid={g}
+                      topn={rows}
+                      selected={selected}
+                      onSelect={select}
+                      showExcluded={showExcluded}
+                      showGrid={showGrid}
+                      basemap={basemap}
+                      onTileError={() => setTileFailed(true)}
+                    />
+                  </div>
+
+                  {panel && (
+                    <aside
+                      /* 지도와 **같은 높이**로 묶는다. 스크롤은 **탭 내용에만** 건다 —
+                         `aside` 전체에 걸면 탭 머리가 같이 밀려 올라가 어느 탭인지
+                         모르는 채 스크롤하게 된다. */
+                      className="flex h-[clamp(340px,56vh,600px)] flex-col border-hairline md:border-l"
+                    >
+                      <div className="flex shrink-0 gap-1 border-b border-hairline px-2 pt-2">
+                        <Tab on={tab === "list"} onClick={() => setTab("list")}>
+                          후보 {rows.length}곳
+                        </Tab>
+                        <Tab on={tab === "detail"} onClick={() => setTab("detail")}>
+                          {sel ? `${sel.순위}순위 상세` : "상세"}
+                        </Tab>
+                      </div>
+
+                      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                        {tab === "list" ? (
+                          <TopList rows={rows} selected={selected} onSelect={select} />
+                        ) : sel ? (
+                          <Detail
+                            row={sel}
+                            prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
+                            rows={rows}
+                            minSep={minSepM(report.data)}
+                            onClose={() => select(null)}
+                          />
+                        ) : (
+                          /* 빈 탭을 그냥 비워 두지 않는다 — 「고장인가」와 「아직 안 골랐나」를
+                             화면만 보고 구분할 수 있어야 한다. */
+                          <p className="px-1 text-[12px] leading-relaxed text-ink-secondary">
+                            아직 고른 후보지가 없습니다. 지도의 번호 마커를 누르거나
+                            「후보 {rows.length}곳」 탭에서 한 줄을 고르면 여기에 세부 정보가
+                            나옵니다.
+                          </p>
+                        )}
+                      </div>
+                    </aside>
+                  )}
                 </div>
 
-                {panel && (
-                  <aside className="flex max-h-[560px] flex-col gap-4 overflow-y-auto pr-1">
-                    <Coverage report={report.data} nTop={rows.length} />
-                    {sel ? (
-                      <Detail
-                        row={sel}
-                        prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
-                        rows={rows}
-                        minSep={minSepM(report.data)}
-                        onClose={() => setSelected(null)}
-                      />
-                    ) : (
-                      <TopList rows={rows} onSelect={setSelected} />
-                    )}
-                  </aside>
-                )}
-              </div>
+                <Legend grid={g} />
+              </section>
 
-              <Legend grid={g} />
+              {/*
+                커버율은 **한 후보의 성질이 아니라 조합 전체의 성질**이다. 지도 옆에
+                두면 "지금 고른 후보의 커버율" 처럼 읽히고, 실제로 사이드바 스크롤을
+                길게 만든 주범이기도 했다. 액자 아래 가로로 펼치면 곡선과 수치가
+                나란히 놓여 세로 길이도 줄어든다.
+              */}
+              <Coverage report={report.data} nTop={rows.length} />
             </>
           );
         }}
@@ -181,7 +245,7 @@ function Toolbar({
 }) {
   const excluded = grid.cells.reduce((n, c) => n + (c[3] === 1 ? 1 : 0), 0);
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px]">
+    <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-t-xl border border-b-0 border-hairline bg-white px-4 py-3 text-[12px]">
       <Toggle on={showGrid} set={setShowGrid} label={`점수 격자 (${int(grid.count)}칸)`} />
       <Toggle on={showExcluded} set={setShowExcluded} label={`배제 칸 (${int(excluded)})`} />
       <Toggle on={basemap} set={setBasemap} label="배경 지도" />
@@ -212,10 +276,38 @@ function Toggle({
   );
 }
 
+/** 사이드바 탭 머리. 두 개뿐이라 라이브러리를 들이지 않는다. */
+function Tab({
+  on,
+  onClick,
+  children,
+}: {
+  on: boolean;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={on}
+      /* 선택 탭에 아래쪽 파란 줄. `-mb-px` 로 탭 테두리가 사이드바 경계선을
+         덮어 "이 탭이 아래 내용과 이어져 있다"가 보이게 한다. */
+      className={`-mb-px rounded-t border-b-2 px-3 py-1.5 text-[12px] ${
+        on
+          ? "border-primary font-semibold text-primary"
+          : "border-transparent text-ink-secondary hover:bg-black/[0.04]"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) {
   if (!report) {
     return (
-      <div className="rounded-xl border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
+      <div className="mt-4 rounded-xl border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
         커버율은 <code>report.json</code> 에서 읽습니다. 아직 못 읽었습니다.
       </div>
     );
@@ -223,7 +315,7 @@ function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) 
   const cov = report.coverage;
   if (!cov) {
     return (
-      <div className="rounded-xl border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
+      <div className="mt-4 rounded-xl border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
         이 실행에는 커버율 계산 결과가 없습니다(<code>report.coverage = null</code>).
       </div>
     );
@@ -232,39 +324,47 @@ function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) 
   const reach = Object.entries(cov.reach).sort((a, b) => Number(a[0]) - Number(b[0]));
 
   return (
-    <div className="rounded-xl border border-hairline bg-white p-4">
+    <section className="mt-4 rounded-xl border border-hairline bg-white p-4">
       <h2 className="text-[13px] font-semibold">커버율</h2>
-      <div className="mt-2 flex items-baseline gap-2">
-        <b className="tnum text-[24px]">{percent(atTop, 1)}</b>
-        <span className="text-[12px] text-ink-secondary">상위 {nTop}곳 설치 시</span>
-      </div>
-      <CoverageChart cumulative={cov.cumulative} knee={cov.knee} nTop={nTop} />
-      <dl className="mt-3 flex flex-col gap-1 text-[12px]">
-        {reach.map(([target, n]) => (
-          <div key={target} className="flex justify-between">
-            <dt className="text-ink-secondary">{percent(Number(target), 0)} 덮으려면</dt>
-            <dd className="tnum font-medium">{int(n)}곳</dd>
+      {/* 가로 2단. 좁은 화면에서는 자동으로 다시 세로로 쌓인다 — 액자 밖이라
+          여기서는 세로로 길어져도 지도나 버튼을 가리지 않는다. */}
+      <div className="mt-2 grid gap-x-8 gap-y-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+        <div>
+          <div className="flex items-baseline gap-2">
+            <b className="tnum text-[24px]">{percent(atTop, 1)}</b>
+            <span className="text-[12px] text-ink-secondary">상위 {nTop}곳 설치 시</span>
           </div>
-        ))}
-        <div className="flex justify-between">
-          <dt className="text-ink-secondary">기울기 꺾이는 지점</dt>
-          <dd className="tnum font-medium">{int(cov.knee)}곳</dd>
+          <CoverageChart cumulative={cov.cumulative} knee={cov.knee} nTop={nTop} />
         </div>
-        <div className="flex justify-between">
-          <dt className="text-ink-secondary">상한</dt>
-          <dd className="tnum font-medium">{percent(cov.ceiling, 2)}</dd>
-        </div>
-        <div className="flex justify-between">
-          <dt className="text-ink-secondary">아무리 놓아도 못 닿는 수요점</dt>
-          <dd className="tnum font-medium">{int(cov.unreached_n)}개</dd>
-        </div>
-      </dl>
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-secondary">
+
+        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 self-center text-[12px]">
+          {reach.map(([target, n]) => (
+            <div key={target} className="flex justify-between gap-3">
+              <dt className="text-ink-secondary">{percent(Number(target), 0)} 덮으려면</dt>
+              <dd className="tnum font-medium">{int(n)}곳</dd>
+            </div>
+          ))}
+          <div className="flex justify-between gap-3">
+            <dt className="text-ink-secondary">기울기 꺾이는 지점</dt>
+            <dd className="tnum font-medium">{int(cov.knee)}곳</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-ink-secondary">상한</dt>
+            <dd className="tnum font-medium">{percent(cov.ceiling, 2)}</dd>
+          </div>
+          <div className="flex justify-between gap-3">
+            <dt className="text-ink-secondary">못 닿는 수요점</dt>
+            <dd className="tnum font-medium">{int(cov.unreached_n)}개</dd>
+          </div>
+        </dl>
+      </div>
+
+      <p className="mt-3 text-[11px] leading-relaxed text-ink-secondary">
         상한이 100% 가 아닌 것은 버그가 아니라 사실입니다 — 배제구역 안에만 있어 어떤
         후보로도 닿지 않는 수요점이 {int(cov.unreached_n)}개 있습니다. 수요점{" "}
         {int(cov.n_demand)}개 · 커버 쌍 {int(cov.cover_pairs)}쌍으로 계산했습니다.
       </p>
-    </div>
+    </section>
   );
 }
 
@@ -303,37 +403,46 @@ function CoverageChart({
 
 function TopList({
   rows,
+  selected,
   onSelect,
 }: {
   rows: TopNCsvRow[];
+  selected: number | null;
   onSelect: (rank: number) => void;
 }) {
   const sorted = [...rows].sort((a, b) => a.순위 - b.순위);
+  /* 탭 안이라 카드 테두리를 두르지 않는다 — 탭 머리가 이미 경계다. 겹치면
+     상자 안의 상자가 되어 어디까지가 한 덩어리인지 흐려진다. */
   return (
-    <div className="rounded-xl border border-hairline bg-white p-4">
-      <h2 className="text-[13px] font-semibold">후보지 {rows.length}곳</h2>
-      <p className="mt-1 text-[11px] text-ink-secondary">
+    <div>
+      <p className="text-[11px] leading-relaxed text-ink-secondary">
         순위는 <b>커버 기여</b> 순입니다 — 점수가 높아도 앞 순위와 겹치면 뒤로 밀립니다.
       </p>
-      <ul className="mt-3 flex flex-col gap-1">
-        {sorted.map((r) => (
-          <li key={r.순위}>
-            <button
-              type="button"
-              onClick={() => onSelect(r.순위)}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-black/[0.04]"
-            >
-              <span className="tnum w-6 shrink-0 text-[12px] font-semibold text-primary">
-                {r.순위}
-              </span>
-              <span className="flex-1 truncate text-[12px]">{r.JIBUN}</span>
-              <span className="tnum text-[11px] text-ink-secondary">{fixed(r.점수, 3)}</span>
-              <span className="tnum w-12 shrink-0 text-right text-[11px] text-ink-secondary">
-                {percent(r.누적커버율, 1)}
-              </span>
-            </button>
-          </li>
-        ))}
+      <ul className="mt-2 flex flex-col gap-1">
+        {sorted.map((r) => {
+          const on = r.순위 === selected;
+          return (
+            <li key={r.순위}>
+              <button
+                type="button"
+                onClick={() => onSelect(r.순위)}
+                aria-current={on ? "true" : undefined}
+                className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left ${
+                  on ? "bg-primary/10 ring-1 ring-primary/40" : "hover:bg-black/[0.04]"
+                }`}
+              >
+                <span className="tnum w-6 shrink-0 text-[12px] font-semibold text-primary">
+                  {r.순위}
+                </span>
+                <span className="flex-1 truncate text-[12px]">{r.JIBUN}</span>
+                <span className="tnum text-[11px] text-ink-secondary">{fixed(r.점수, 3)}</span>
+                <span className="tnum w-12 shrink-0 text-right text-[11px] text-ink-secondary">
+                  {percent(r.누적커버율, 1)}
+                </span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
@@ -415,14 +524,16 @@ function Detail({
   const deltaCover = row.누적커버율 - (prev?.누적커버율 ?? 0);
   const near = nearestOther(row, rows);
   return (
-    <div className="rounded-xl border border-primary/30 bg-white p-4">
+    <div>
       <div className="flex items-start justify-between gap-2">
         <div>
           <div className="text-[12px] text-ink-secondary">{row.순위}순위 후보지</div>
           <h2 className="text-[15px] font-semibold">{row.JIBUN}</h2>
         </div>
-        <button type="button" onClick={onClose} className="btn-secondary text-[12px]">
-          목록으로
+        {/* 「목록으로」가 아니라 「선택 해제」다. 목록은 탭으로 늘 있으므로 이 버튼이
+            하는 일은 **고른 것을 지우는 것**(지도 강조도 같이 풀린다)이다. */}
+        <button type="button" onClick={onClose} className="btn-secondary shrink-0 text-[12px]">
+          선택 해제
         </button>
       </div>
 
@@ -479,7 +590,9 @@ function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
 
 function Legend({ grid }: { grid: ScoreGridDoc }) {
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-x-6 gap-y-2 text-[12px] text-ink-secondary">
+    /* 액자의 **아래 테두리**다. 위쪽 도구줄과 짝을 이룬다 — 지도를 설명하는 글이
+       지도에서 떨어져 문서 흐름에 흩어지면 무엇에 대한 범례인지 흐려진다. */
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-hairline bg-canvas-soft px-4 py-2.5 text-[12px] text-ink-secondary">
       <span className="flex items-center gap-2">
         <span className="h-3 w-24 rounded" style={{ background: "linear-gradient(90deg,#e9edf2,#0075de)" }} />
         점수 {fixed(grid.score_min, 3)} → {fixed(grid.score_max, 3)}

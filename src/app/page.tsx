@@ -18,6 +18,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
+import { MODE_FIXTURE, MODE_HITL } from "@/lib/omnisite/pipeline";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { PROGRESS_PATH, SCREENS } from "@/lib/omnisite/screens";
 
@@ -44,6 +45,13 @@ export default function Screen1Page() {
   const [facility, setFacility] = useState("");
   const [intent, setIntent] = useState("");
   const [tab, setTab] = useState<"data" | "law">("data");
+  /**
+   * 🔴 기본값이 `fixture` 인 이유는 "안전해서" 가 아니라 **회귀 기준선이기 때문**이다.
+   *    픽스처는 사람 입력 없이 끝까지 가고 값이 고정돼 있다. `hitl` 은 두 번 멈춰
+   *    사람을 기다리므로, 모르고 고르면 진행현황에서 멈춘 채로 방치된다.
+   *    그래서 고를 수 있게 하되 **각각이 무엇인지 옆에 적는다.**
+   */
+  const [mode, setMode] = useState<string>(MODE_FIXTURE);
 
   /**
    * 🔴 **칸에 글자가 보이는데 버튼이 꺼져 있었다.** 실측 2026-08-05, 사람이 신고.
@@ -98,7 +106,7 @@ export default function Screen1Page() {
     setInputError(null);
     // 칸의 값으로 상태를 맞춰 둔다 — 다음 렌더에서 글자가 사라지지 않게.
     if (fromDom.trim() && fromDom !== typedDomain) setTypedDomain(fromDom);
-    const id = await start(value);
+    const id = await start(value, mode);
     if (id) router.push(PROGRESS_PATH);
   }
 
@@ -175,8 +183,8 @@ export default function Screen1Page() {
           <section className="glass-panel rounded-xl border-primary/30 p-5">
             <h2 className="text-[14px] font-semibold">파이프라인 실행</h2>
             <p className="mt-1 text-[11px] text-ink-secondary">
-              고정된 감리 결과(픽스처)에서 STEP2~4 를 다시 돌립니다. 위의 입력값은
-              쓰지 않습니다 — 계약에 그런 필드가 없습니다.
+              고정된 감리 결과(픽스처)를 기점으로 돌립니다. 위의 입력값은 쓰지
+              않습니다 — 계약에 그런 필드가 없습니다.
             </p>
 
             <label className="mt-4 block text-[12px] font-medium">
@@ -189,6 +197,8 @@ export default function Screen1Page() {
                 className="text-input-notion mt-1 w-full"
               />
             </label>
+
+            <ModePicker mode={mode} onChange={setMode} />
 
             {/*
              * 🔴 `disabled={!canRun}` 이었다. **두 번 고쳤는데 두 번 다 못 잡았다.**
@@ -256,6 +266,58 @@ function Field({
   );
 }
 
+/**
+ * 실행 방식 고르기.
+ *
+ * 🔴 이름을 「빠름/느림」 같은 걸로 바꾸지 않는다. 서버가 받는 값 그대로
+ *    (`fixture` · `hitl`) 보여준다 — 400 이 났을 때 사유(`지원하지 않는 mode 입니다:
+ *    '…'`)와 화면의 낱말이 맞아야 사람이 잇는다.
+ */
+function ModePicker({ mode, onChange }: { mode: string; onChange: (v: string) => void }) {
+  const options: { value: string; title: string; note: string }[] = [
+    {
+      value: MODE_FIXTURE,
+      title: "fixture — 사람에게 안 묻고 끝까지",
+      note: "게이트가 서지 않습니다. 회귀 기준선이라 값이 고정돼 있습니다.",
+    },
+    {
+      value: MODE_HITL,
+      title: "hitl — 두 번 멈추고 사람에게 묻습니다",
+      note: "게이트A(화면 2 · 감리 확인) · 게이트B(화면 3 · 집계반경 + 가중치)에서 멈춥니다. 답하기 전까지 진행되지 않습니다.",
+    },
+  ];
+
+  return (
+    <fieldset className="mt-4">
+      <legend className="text-[12px] font-medium">실행 방식</legend>
+      <div className="mt-1.5 flex flex-col gap-1.5">
+        {options.map((o) => (
+          <label
+            key={o.value}
+            className={`flex cursor-pointer gap-2 rounded-lg border px-3 py-2 text-[12px] ${
+              mode === o.value ? "border-primary/40 bg-primary/[0.05]" : "border-hairline bg-white"
+            }`}
+          >
+            <input
+              type="radio"
+              name="run-mode"
+              className="mt-0.5"
+              checked={mode === o.value}
+              onChange={() => onChange(o.value)}
+            />
+            <span>
+              <span className="font-medium">{o.title}</span>
+              <span className="mt-0.5 block text-[11px] leading-relaxed text-ink-secondary">
+                {o.note}
+              </span>
+            </span>
+          </label>
+        ))}
+      </div>
+    </fieldset>
+  );
+}
+
 function NotConnected() {
   return (
     <span className="rounded border border-hairline bg-black/[0.04] px-1.5 py-0.5 text-[10px] text-ink-secondary">
@@ -281,9 +343,9 @@ function OutOfScope() {
       </p>
       <p className="mt-1">
         🔴 여기 「HITL 확정 API 도 없다」고 적혀 있었습니다. <b>2026-08-05 부터 틀린
-        말입니다</b> — 게이트 답변 API 는 서버에 있고 검증도 끝났습니다. 아직 못 쓰는
-        이유는 <b>이 화면이 <code>fixture</code> 실행만 만들기 때문</b>이고, 그건 API 가
-        아니라 프런트 몫입니다.
+        말입니다</b> — 게이트 답변 API 는 서버에 있고, 아래 「실행 방식」에서
+        <code> hitl</code> 을 고르면 화면 2 · 화면 3 에서 실제로 답할 수 있습니다.
+        업로드·감리 실행이 없다는 위 문단과는 <b>별개의 이야기</b>입니다.
       </p>
     </div>
   );
