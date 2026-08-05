@@ -32,6 +32,8 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# 예시는 추적한다 — 없으면 새로 받은 사람이 어떤 키가 필요한지 알 방법이 없다.
+!.env.example
 
 # vercel
 .vercel
