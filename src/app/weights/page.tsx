@@ -306,9 +306,11 @@ function HitlState({ hitl }: { hitl: WeightSetDoc["hitl"] }) {
       {!trusted && (
         <p className="basis-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
           🔴 <b>이 두 값은 믿을 수 없습니다.</b>{" "}
-          {src === undefined
-            ? "2026-08-05 백엔드 수정 이전에 만들어진 실행이라 판정 근거(value_source)가 없습니다."
-            : "판정 로직은 고쳐졌지만 서버가 재시작되기 전에 돌아간 실행입니다(value_source: cli)."}{" "}
+          {/* `== null` 로 undefined·null 을 같이 잡는다 — 옛 run(키 없음)과 완전
+              대화형 실행(null)은 사유가 다르지만 **둘 다 판정 근거가 없다**. */}
+          {src == null
+            ? "판정 근거(value_source)가 없는 실행입니다. 2026-08-05 백엔드 수정 이전에 만들어졌거나, 고정값 없이 완전 대화형으로 돌아간 실행입니다."
+            : "판정 로직은 고쳐졌지만 러너가 아직 옛 코드였을 때 돌아간 실행입니다(value_source: cli). 서버 재시작(2026-08-05 20:41:53) 전이면 여기에 해당합니다."}{" "}
           그때는 <b>사람이 확정했는지가 아니라 대화형 루프를 건너뛰었는지</b>를 기록했습니다 —
           fixture 실행과 hitl 실행이 같은 값으로 찍힙니다. 다시 실행하면 정확한 값이 남습니다.
         </p>
