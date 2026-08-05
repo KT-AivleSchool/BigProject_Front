@@ -445,7 +445,34 @@ export interface WeightSetDoc {
   engine_version: string;
   generated_at: string;
   inputs: Record<string, { file: string; sha256: string; mtime: string; size: number }>;
-  hitl: { radius_confirmed: boolean; weight_confirmed: boolean };
+  /**
+   * 사람이 [R]·[W] 를 확정했는가. **불리언 2개는 옛 run 에도 있다**(이름·타입 동일).
+   *
+   * 🔴 나머지 3개는 **2026-08-05 백엔드 수정 이후 run 에만 있다.** 옛 run 에는
+   *    키 자체가 없다(`null` 이 아니다) — 소급 수정은 안 했다.
+   *
+   * 🔴 **불리언만 보고 믿지 않는다.** 옛 판정은 `not --auto-weight`, 즉 "대화형
+   *    루프를 건너뛰었나"(실행 방식)였고 "사람이 확정했나"(사실)가 아니었다.
+   *    그래서 `r_20260804_001`~`r_20260805_016` 은 fixture·hitl 가릴 것 없이
+   *    전부 `{radius: true, weight: false}` 로 똑같이 찍혔다 — 사람이 개입한 run 과
+   *    안 한 run 이 구분되지 않는다.
+   *
+   * 판정은 `value_source` 로 한다(실측 4종):
+   *   - `undefined` … 옛 run. 불리언 **믿지 말 것**
+   *   - `"cli"`     … 수정은 됐지만 서버 재시작 전. 역시 **믿지 말 것**
+   *                   (`--value-source` 기본값이 `cli` 이고 `cli` 는 사람 취급이라
+   *                    호출자가 안 넘기면 `true` 로 샌다 — `r_20260805_017`)
+   *   - `"human"`   … 게이트에서 사람이 확정 (`r_20260805_019`)
+   *   - `"fixture"` … 픽스처 재생, 사람 개입 0회 (`r_20260805_018`·`020`)
+   */
+  hitl: {
+    radius_confirmed: boolean;
+    weight_confirmed: boolean;
+    value_source?: "human" | "fixture" | "cli";
+    /** 판정 근거. 예: `["human_confirmed", "none"]` — `none` 은 반경 없는 admin 지표. */
+    radius_sources?: string[];
+    weight_sources?: string[];
+  };
   alpha: number;
   n_candidates: number;
   candidate_unit: string;

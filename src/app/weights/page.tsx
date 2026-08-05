@@ -277,23 +277,55 @@ function Stat({ label, value, note }: { label: string; value: string; note: stri
   );
 }
 
+/**
+ * 🔴 불리언 2개를 **그대로 믿고 표시하면 안 된다.** 2026-08-05 이전 판정은
+ *    "대화형 루프를 건너뛰었나"(실행 방식)였지 "사람이 확정했나"(사실)가 아니었다 —
+ *    fixture·hitl 전 run 이 `{radius: true, weight: false}` 로 똑같이 찍혔다.
+ *    믿을 수 있는지는 `value_source` 가 말해 준다(`types.ts` WeightSetDoc.hitl).
+ *
+ *    못 믿을 때 화면이 할 일은 **값을 고쳐 보여주는 게 아니라 못 믿는다고 말하는 것**이다.
+ *    `true` 를 `false` 로 바꿔 그리면 그게 더 큰 거짓말이다(절대원칙 4).
+ */
 function HitlState({ hitl }: { hitl: WeightSetDoc["hitl"] }) {
+  const src = hitl.value_source;
+  const trusted = src === "human" || src === "fixture";
   return (
-    <div className="mt-4 flex flex-wrap gap-3 text-[12px]">
-      <Chip ok={hitl.radius_confirmed} label="집계 반경 [R]" />
-      <Chip ok={hitl.weight_confirmed} label="가중치 [W]" />
-      <span className="self-center text-[11px] text-ink-secondary">
+    <div className="mt-4 flex flex-wrap items-center gap-3 text-[12px]">
+      <Chip ok={hitl.radius_confirmed} label="집계 반경 [R]" trusted={trusted} />
+      <Chip ok={hitl.weight_confirmed} label="가중치 [W]" trusted={trusted} />
+      <span className="text-[11px] text-ink-secondary">
         산출물의 <code>hitl</code> 값 그대로입니다. 이 화면에서 바꿀 수 없습니다.
+        {src && (
+          <>
+            {" "}
+            판정 근거 <code>value_source: {src}</code>
+            {hitl.weight_sources?.length ? ` · [W] ${hitl.weight_sources.join(", ")}` : ""}
+          </>
+        )}
       </span>
+      {!trusted && (
+        <p className="basis-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
+          🔴 <b>이 두 값은 믿을 수 없습니다.</b>{" "}
+          {src === undefined
+            ? "2026-08-05 백엔드 수정 이전에 만들어진 실행이라 판정 근거(value_source)가 없습니다."
+            : "판정 로직은 고쳐졌지만 서버가 재시작되기 전에 돌아간 실행입니다(value_source: cli)."}{" "}
+          그때는 <b>사람이 확정했는지가 아니라 대화형 루프를 건너뛰었는지</b>를 기록했습니다 —
+          fixture 실행과 hitl 실행이 같은 값으로 찍힙니다. 다시 실행하면 정확한 값이 남습니다.
+        </p>
+      )}
     </div>
   );
 }
 
-function Chip({ ok, label }: { ok: boolean; label: string }) {
+function Chip({ ok, label, trusted }: { ok: boolean; label: string; trusted: boolean }) {
   return (
     <span
       className={`rounded-md px-2 py-1 font-medium ${
-        ok ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-800"
+        !trusted
+          ? "bg-black/[0.06] text-ink-secondary line-through decoration-ink-secondary/50"
+          : ok
+            ? "bg-emerald-50 text-emerald-700"
+            : "bg-amber-50 text-amber-800"
       }`}
     >
       {label} {ok ? "사람이 확정함" : "미확정 (엔진 기본값 사용)"}
