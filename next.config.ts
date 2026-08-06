@@ -51,6 +51,10 @@ const nextConfig: NextConfig = {
         source: "/api/v1/pipeline/:path*",
         destination: `${API_ORIGIN}/api/v1/pipeline/:path*`,
       },
+      {
+        source: "/api/v1/simulation/:path*",
+        destination: `${API_ORIGIN}/api/v1/simulation/:path*`,
+      },
     ];
   },
 };
