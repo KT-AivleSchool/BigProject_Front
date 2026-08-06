@@ -40,11 +40,13 @@
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
+import { useRouter } from "next/navigation";
 
 const SCREEN = SCREENS.find((s) => s.no === "5")!;
 
 export default function Screen5Page() {
   const { run } = useRun();
+  const router = useRouter();
 
   return (
     <PageBody>
@@ -52,6 +54,15 @@ export default function Screen5Page() {
         screen={SCREEN}
         lead="놓기 전에 반대를 미리 듣는다. 사람 대신 에이전트가 공청회를 연다."
       />
+
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={() => router.push("/dynamic-hearing")}
+          className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          동적 페르소나 토론 모드 (새 브랜치) 테스트하기 🚀
+        </button>
+      </div>
 
       <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-[12px] leading-relaxed text-amber-900">
         <p className="text-[13px] font-semibold">
