@@ -140,7 +140,7 @@ export default function HearingPdfReportPage() {
 
         <AhpWeightSection ahpWeights={data.ahp_weights} />
 
-        <PdfReportFooter />
+        <PdfReportFooter timestamp={data.timestamp} />
       </div>
     </div>
   );
