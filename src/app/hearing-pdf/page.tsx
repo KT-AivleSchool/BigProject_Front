@@ -12,6 +12,7 @@ import { PdfReportFooter } from "./_components/PdfReportFooter";
 // 파이프라인 표준 데이터 예시
 const DEFAULT_PIPELINE_DATA: HearingPipelineData = {
   candidate_jibun: "후보지 #1 (실제 위치 기반)",
+  candidate_address: "서울특별시 용산구 이태원동 123-4",
   candidate_lat: 37.534,
   candidate_lng: 126.994,
   facility_type: "흡연부스",
@@ -130,6 +131,7 @@ export default function HearingPdfReportPage() {
 
         <CandidateInfoSection
           candidateJibun={data.candidate_jibun}
+          candidateAddress={data.candidate_address}
           facilityType={data.facility_type}
           lat={data.candidate_lat}
           lng={data.candidate_lng}
