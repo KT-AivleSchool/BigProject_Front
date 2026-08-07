@@ -50,10 +50,22 @@ async function readDetail(res: Response): Promise<string> {
   return text.slice(0, 300);
 }
 
+import { getAuthToken } from "./auth";
+
 async function request(url: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
-    res = await fetch(url, { cache: "no-store", ...init });
+    const headers = new Headers(init?.headers);
+    const token = getAuthToken();
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    }
+    
+    res = await fetch(url, { 
+      cache: "no-store", 
+      ...init,
+      headers
+    });
   } catch (e) {
     throw new NetworkError(url, e);
   }

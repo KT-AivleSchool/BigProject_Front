@@ -33,7 +33,7 @@ export function PageHeader({
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[19px] font-semibold tracking-tight">
-            화면 {screen.no} · {screen.name}
+            {screen.name}
           </h1>
           {screen.draft && <DraftBadge />}
         </div>

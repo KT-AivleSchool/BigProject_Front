@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { RunProvider } from "@/lib/omnisite/RunProvider";
 import { Header } from "@/components/shell/Header";
+import { Footer } from "@/components/shell/Footer";
 
 export const metadata: Metadata = {
   title: "OmniSite — 갈등시설 입지 선정",
@@ -23,6 +24,7 @@ export default function RootLayout({
         <RunProvider>
           <Header />
           <main className="flex-1 flex flex-col">{children}</main>
+          <Footer />
         </RunProvider>
       </body>
     </html>
