@@ -34,53 +34,72 @@ export function GateFrame({
   submitLabel: string;
 }) {
   return (
-    <section className="mt-6 rounded-xl border border-amber-300 bg-amber-50/60 p-5">
-      <div className="flex flex-wrap items-baseline justify-between gap-3">
-        <h2 className="text-[15px] font-semibold text-amber-900">
+    <section className="mt-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6 shadow-sm overflow-hidden relative">
+      <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
+        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 relative z-10">
+        <h2 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+          <span className="relative flex h-3 w-3">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+          </span>
           {gate.label}
         </h2>
-        <span className="tnum text-[12px] text-amber-900/70">
-          {gate.questions.length}건 · gate <code>{gate.id}</code> · run{" "}
-          <span className="font-medium">{runId}</span>
+        <span className="text-xs font-semibold text-blue-800 bg-blue-100/50 px-3 py-1.5 rounded-full border border-blue-200/50 shadow-sm">
+          검토 대기: <span className="text-blue-900 font-bold">{gate.questions.length}건</span>
         </span>
       </div>
 
-      <p className="mt-2 text-[12px] leading-relaxed text-amber-900">{lead}</p>
+      <div className="text-[13px] leading-relaxed text-blue-800 mb-6 bg-white p-4 rounded-xl border border-blue-100 shadow-sm relative z-10">
+        {lead}
+      </div>
 
-      <div className="mt-4 flex flex-col gap-3">{children}</div>
+      <div className="flex flex-col gap-5 relative z-10">{children}</div>
 
       {error && (
-        <pre className="mt-4 whitespace-pre-wrap break-all rounded border border-red-300 bg-red-50 p-3 font-mono text-[12px] text-red-800">
-          {error}
-        </pre>
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-800 flex items-start gap-3 shadow-sm relative z-10">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <pre className="whitespace-pre-wrap break-all font-mono">{error}</pre>
+        </div>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-amber-200 pt-4">
+      <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-blue-100 pt-5 relative z-10">
+        <span className="text-[12px] leading-relaxed text-blue-800/70 max-w-lg">
+          답변을 검토한 뒤 <strong>한 번에 제출</strong>해주세요. <br className="hidden sm:block" />일부만 제출할 경우 전체 분석 파이프라인의 정확도가 떨어질 수 있습니다.
+        </span>
         <button
           type="button"
           onClick={onSubmit}
           disabled={submitting}
-          className="btn-primary text-[13px] disabled:opacity-40"
+          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
         >
-          {submitting ? "보내는 중…" : submitLabel}
+          {submitting ? (
+            <>
+              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+              제출 중...
+            </>
+          ) : (
+            <>
+              {submitLabel}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </>
+          )}
         </button>
-        <span className="text-[11px] leading-relaxed text-amber-900/80">
-          이 게이트의 답을 <b>한 번에</b> 보냅니다. 항목별로 나눠 보내면 서버가
-          전체를 놓고 하는 검증(예: 전 지표 슬라이더 합)을 할 수 없습니다.
-        </span>
       </div>
     </section>
   );
 }
 
-/** 확정돼 못 고치는 항목임을 표시한다. **감추지 않는다** — 감추면 화면이 사실의 일부만 보여준다. */
 export function LockedBadge() {
   return (
     <span
-      className="rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] text-ink-secondary"
-      title="HITL 전에 조례·코드표에서 근거를 찾아 확정된 항목입니다. 수정을 보내면 서버가 400 으로 되돌립니다."
+      className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-500 border border-gray-200"
+      title="법령 및 조례를 통해 AI가 명확한 근거를 찾아 확정한 항목입니다. (읽기 전용)"
     >
-      🔒 확정됨 · 수정 불가
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      자동 확정됨
     </span>
   );
 }
@@ -93,46 +112,41 @@ export function QuestionCard({
   aside,
   children,
 }: {
-  /** 데이터셋 id 또는 지표 id. 배지로만 쓴다. */
   id: string;
   title: React.ReactNode;
   editable: boolean;
   warn?: boolean;
-  /**
-   * 제목줄 **오른쪽 끝**. 이름이 아닌 것(분류 배지·변경 표시)을 제목 옆에 붙이면
-   * 그것도 이름처럼 읽힌다 — 자리를 갈라 놓는다.
-   */
   aside?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div
-      className={`rounded-lg border px-4 py-3 ${
-        warn ? "border-amber-400 bg-amber-100/50" : "border-hairline bg-white"
-      } ${editable ? "" : "opacity-90"}`}
+    <article
+      className={`rounded-xl border bg-white p-5 shadow-sm transition-colors ${
+        warn ? "border-amber-300" : editable ? "border-blue-200 hover:border-blue-300" : "border-gray-200 opacity-90"
+      }`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="tnum rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-ink-secondary">
+      <header className="flex flex-wrap items-center justify-between gap-3 mb-3 border-b border-gray-50 pb-3">
+        <div className="flex items-center gap-3">
+          <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md font-mono text-[11px] font-bold ${editable ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
             {id}
           </span>
-          <span className="text-[14px] font-semibold">{title}</span>
+          <h3 className={`text-sm font-bold ${editable ? 'text-gray-900' : 'text-gray-600'}`}>{title}</h3>
           {!editable && <LockedBadge />}
         </div>
-        {aside}
-      </div>
-      {children}
-    </div>
+        {aside && <div className="text-sm">{aside}</div>}
+      </header>
+      <div className="space-y-3">{children}</div>
+    </article>
   );
 }
 
-export function Fact({ k, v, sub }: { k: string; v: string; sub?: string }) {
+export function Fact({ k, v, sub }: { k: string; v: React.ReactNode; sub?: string }) {
   return (
-    <div>
-      <dt className="text-[11px] text-ink-secondary">{k}</dt>
-      <dd className="tnum text-[12px] font-medium">
+    <div className="flex flex-col gap-1 min-w-[120px] bg-gray-50 p-2.5 rounded-lg border border-gray-100">
+      <dt className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{k}</dt>
+      <dd className="text-sm font-medium text-gray-900">
         {v}
-        {sub && <span className="ml-1 text-[11px] font-normal text-ink-secondary">{sub}</span>}
+        {sub && <span className="block text-[11px] font-normal text-gray-400 mt-0.5">{sub}</span>}
       </dd>
     </div>
   );
