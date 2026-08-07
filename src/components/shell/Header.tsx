@@ -7,11 +7,14 @@
  * 완료 표시(✓)의 기준은 "그 화면이 읽을 산출물이 run 에 있는가" 다 —
  * 사용자가 방문했는지가 아니라 데이터가 있는지로 판단한다.
  */
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_SCREENS, PROGRESS_PATH, screenOf } from "@/lib/omnisite/screens";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import type { ArtifactName, RunDoc } from "@/lib/omnisite/types";
+import { AuthModal } from "./AuthModal";
+import { getAuthUser, setAuthUser, setAuthToken, UserResponse } from "@/lib/omnisite/auth";
 
 /** 화면 → 그 화면이 살아 있으려면 있어야 하는 산출물. 없으면 아직 미완이다. */
 const NEEDS: Record<string, ArtifactName[]> = {
@@ -36,69 +39,102 @@ export function Header() {
   const current = screenOf(pathname);
   const live = run?.status === "queued" || run?.status === "running";
 
-  return (
-    <header className="sticky top-0 z-50 border-b border-hairline bg-glass-mid backdrop-blur-xl">
-      <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-6 px-5">
-        <Link href="/" className="flex shrink-0 items-baseline gap-2">
-          <span className="text-[15px] font-semibold tracking-tight">OmniSite</span>
-          <span className="text-[11px] text-ink-secondary">B2G SDSS</span>
-        </Link>
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [user, setUser] = useState<UserResponse | null>(null);
 
-        <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-          {NAV_SCREENS.map((s, i) => {
-            const active = current?.no === s.no;
-            const done = ready(run, s.no) && !active;
-            return (
-              <div key={s.no} className="flex shrink-0 items-center">
-                {i > 0 && <span className="px-1 text-ink-secondary/40">›</span>}
-                <Link
-                  href={s.path}
-                  aria-current={active ? "page" : undefined}
-                  className={[
-                    "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
-                    active
-                      ? "bg-primary text-white"
-                      : "text-ink-secondary hover:bg-black/[0.04] hover:text-ink",
-                  ].join(" ")}
-                >
-                  <span
+  useEffect(() => {
+    setUser(getAuthUser());
+  }, []);
+
+  const handleLogout = () => {
+    setAuthToken(null);
+    setAuthUser(null);
+    setUser(null);
+  };
+
+  return (
+    <>
+      <header className="sticky top-0 z-50 border-b border-hairline bg-glass-mid backdrop-blur-xl">
+        <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-6 px-5">
+          <Link href="/" className="flex shrink-0 items-baseline gap-2">
+            <span className="text-[15px] font-semibold tracking-tight">OmniSite</span>
+          </Link>
+
+          <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+            {[
+              NAV_SCREENS[0],
+              { no: "P", path: PROGRESS_PATH, name: "진행 현황", inNav: true, draft: false },
+              ...NAV_SCREENS.slice(1)
+            ].map((s, i) => {
+              if (!s) return null; // Safe guard
+              const isProgress = s.no === "P";
+              const active = current?.no === s.no || (isProgress && pathname === PROGRESS_PATH);
+              const done = isProgress ? (run && !active) : (ready(run, s.no) && !active);
+              
+              return (
+                <div key={s.no} className="flex shrink-0 items-center">
+                  {i > 0 && <span className="px-1 text-ink-secondary/40">›</span>}
+                  <Link
+                    href={s.path}
+                    aria-current={active ? "page" : undefined}
                     className={[
-                      "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[10px] font-semibold",
+                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
                       active
-                        ? "bg-white/25 text-white"
-                        : done
-                          ? "bg-primary/12 text-primary"
-                          : "bg-black/[0.06] text-ink-secondary",
+                        ? "bg-primary text-white"
+                        : "text-ink-secondary hover:bg-black/[0.04] hover:text-ink",
                     ].join(" ")}
                   >
-                    {done ? "✓" : s.no}
-                  </span>
-                  <span className="whitespace-nowrap">{s.name}</span>
-                </Link>
-              </div>
-            );
-          })}
-        </nav>
+                    <span
+                      className={[
+                        "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[10px] font-semibold",
+                        active
+                          ? "bg-white/25 text-white"
+                          : done
+                            ? "bg-primary/12 text-primary"
+                            : "bg-black/[0.06] text-ink-secondary",
+                      ].join(" ")}
+                    >
+                      {done ? "✓" : isProgress ? (run?.status === "running" ? "⏳" : "•") : s.no}
+                    </span>
+                    <span className="whitespace-nowrap">{s.name}</span>
+                  </Link>
+                </div>
+              );
+            })}
+          </nav>
 
-        <Link
-          href={PROGRESS_PATH}
-          className="flex shrink-0 items-center gap-2 rounded-md border border-hairline bg-white px-3 py-1.5 text-[12px] text-ink-secondary transition-colors hover:text-ink"
-        >
-          {live && (
-            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
-          )}
-          {run ? (
-            <>
-              <span className="tnum">{run.run_id}</span>
-              <span className="text-ink-secondary/60">·</span>
-              <span>{statusText(run.status)}</span>
-            </>
-          ) : (
-            <span>실행 없음</span>
-          )}
-        </Link>
-      </div>
-    </header>
+          <div className="flex shrink-0 items-center gap-4 ml-4">
+            {/* 유틸리티 링크 (가이드라인 준수) */}
+            <div className="flex items-center gap-3 text-[12px] text-gray-600 font-medium">
+              {user ? (
+                <>
+                  <Link href="/mypage" className="text-gray-800 hover:text-primary transition-colors font-semibold">
+                    {maskName(user.username)}님
+                  </Link>
+                  <span className="text-gray-300">|</span>
+                  <Link href="/mypage" className="hover:text-primary transition-colors">마이페이지</Link>
+                  <span className="text-gray-300">|</span>
+                  <button onClick={handleLogout} className="hover:text-primary transition-colors">로그아웃</button>
+                </>
+              ) : (
+                <>
+                  <button onClick={() => { setAuthMode("login"); setAuthModalOpen(true); }} className="hover:text-primary transition-colors">로그인</button>
+                  <span className="text-gray-300">|</span>
+                  <button onClick={() => { setAuthMode("register"); setAuthModalOpen(true); }} className="hover:text-primary transition-colors">회원가입</button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      </header>
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        initialMode={authMode}
+        onSuccess={(u) => setUser(u)}
+      />
+    </>
   );
 }
 
@@ -116,4 +152,16 @@ function statusText(s: RunDoc["status"]): string {
     succeeded: "완료",
     failed: "실패",
   }[s];
+}
+
+function maskName(name: string): string {
+  if (!name) return "";
+  if (name.length <= 1) return name;
+  if (name.length === 2) return name[0] + "*";
+
+  const first = name.substring(0, 1);
+  const last = name.substring(name.length - 1);
+  const masked = "*".repeat(name.length - 2);
+
+  return first + masked + last;
 }
