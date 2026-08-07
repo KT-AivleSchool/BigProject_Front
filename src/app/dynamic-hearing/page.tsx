@@ -25,16 +25,6 @@ export default function DynamicHearingPage() {
   const [discussionStatus, setDiscussionStatus] = useState<any>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (chatContainerRef.current) {
-      setTimeout(() => {
-        if (chatContainerRef.current) {
-          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
-        }
-      }, 50);
-    }
-  }, [messages]);
-
   const generatePersonas = async () => {
     const cacheKey = `personas_${topic}`;
     const cached = localStorage.getItem(cacheKey);
@@ -161,13 +151,18 @@ export default function DynamicHearingPage() {
                     let displaySpeaker = nodeName;
                     let displayText = rawText;
                     
-                    const match = rawText.match(/^(.+? \(.+?\)):\s*(.*)$/s);
-                    if (match) {
-                        displaySpeaker = match[1];
-                        displayText = match[2];
-                    } else if (rawText.startsWith("[팩트체커 (System)]:")) {
+                    const colonIndex = rawText.indexOf("): ");
+                    if (colonIndex > 0) {
+                        displaySpeaker = rawText.substring(0, colonIndex + 1).trim();
+                        displayText = rawText.substring(colonIndex + 3).trim();
+                    } else if (rawText.startsWith("[팩트체커")) {
+                        const idx = rawText.indexOf("]: ");
                         displaySpeaker = "팩트체커 (System)";
-                        displayText = rawText.replace("[팩트체커 (System)]:", "").trim();
+                        displayText = idx > 0 ? rawText.substring(idx + 3).trim() : rawText.replace("[팩트체커 (System)]:", "").trim();
+                    } else if (rawText.includes(":")) {
+                        const idx = rawText.indexOf(":");
+                        displaySpeaker = rawText.substring(0, idx).trim();
+                        displayText = rawText.substring(idx + 1).trim();
                     }
 
                     // @ts-ignore
@@ -206,22 +201,22 @@ export default function DynamicHearingPage() {
     <PageBody>
       <PageHeader screen={SCREEN} lead="AI가 주변 환경과 조례를 분석해 다자간 페르소나를 도출하고, 사용자 승인(HITL)을 거쳐 공청회를 시뮬레이션합니다." />
       
-      <div className="flex items-center justify-center mb-10 mt-4 space-x-2 md:space-x-4">
+      <div className="flex justify-center mb-8">
         {[
-          { num: 1, title: "안건 설정", icon: <Info size={18} /> },
-          { num: 2, title: "페르소나 확정", icon: <Users size={18} /> },
-          { num: 3, title: "공청회 진행", icon: <MessageSquare size={18} /> }
+          { num: 1, title: "안건 설정", icon: <Info size={16} /> },
+          { num: 2, title: "페르소나 확정", icon: <Users size={16} /> },
+          { num: 3, title: "공청회 진행", icon: <MessageSquare size={16} /> }
         ].map((s) => (
           <div key={s.num} className="flex items-center">
-            <div className={`flex items-center justify-center px-4 py-2 rounded-full text-sm font-semibold transition-all duration-500 ${
-              step >= s.num ? "bg-blue-600 text-white shadow-lg shadow-blue-500/30" : "bg-slate-100 text-slate-400"
+            <div className={`flex items-center justify-center px-4 py-2 rounded-md text-[13px] font-semibold transition-all duration-300 border ${
+              step >= s.num ? "bg-primary text-white border-primary" : "bg-black/[0.02] text-ink-secondary border-hairline"
             }`}>
               {s.icon}
               <span className="ml-2 hidden sm:inline">{s.num}. {s.title}</span>
             </div>
             {s.num < 3 && (
-              <div className={`w-8 md:w-12 h-1 mx-2 rounded-full transition-all duration-500 ${
-                step > s.num ? "bg-blue-600" : "bg-slate-200"
+              <div className={`w-6 md:w-10 h-[2px] mx-2 transition-all duration-300 ${
+                step > s.num ? "bg-primary" : "bg-hairline"
               }`} />
             )}
           </div>
@@ -255,6 +250,8 @@ export default function DynamicHearingPage() {
           discussionStatus={discussionStatus}
           chatContainerRef={chatContainerRef}
           setStep={setStep}
+          activePersonas={personas.filter((_, idx) => selectedPersonaIds.has(idx))}
+          topic={topic}
         />
       </div>
     </PageBody>
