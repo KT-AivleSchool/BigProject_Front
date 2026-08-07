@@ -28,6 +28,8 @@ import {
 } from "./pipeline";
 import { saveBaseline } from "./progress";
 import { clearRunId, readRunId, writeRunId } from "./runStore";
+import { gateScreen } from "./gate";
+import { usePathname, useRouter } from "next/navigation";
 import type { AuditAnswer, RunDoc, WeightAnswer } from "./types";
 
 /** 폴링 주기. 계약 5절 권장(1~2초). */
@@ -92,6 +94,9 @@ function isLive(run: RunDoc | null): boolean {
 }
 
 export function RunProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  
   const [run, setRun] = useState<RunDoc | null>(null);
   const [restoring, setRestoring] = useState(true);
   const [starting, setStarting] = useState(false);
@@ -100,6 +105,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
 
   /** 진행 중 단계가 바뀐 시각. 단계별 경과 시간을 재려고 둔다. */
   const stepStartedAt = useRef<{ id: string; at: number } | null>(null);
+  const lastNavigatedState = useRef<string | null>(null);
 
   const applyRun = useCallback((doc: RunDoc) => {
     setRun(doc);

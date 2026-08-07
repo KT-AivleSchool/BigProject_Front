@@ -8,7 +8,7 @@
  * 왜 비었는지와 다음에 뭘 하면 되는지를 같이 쓴다(절대원칙 1·4).
  */
 import Link from "next/link";
-import { PROGRESS_PATH } from "@/lib/omnisite/screens";
+
 
 function Box({
   tone,
@@ -53,9 +53,6 @@ export function Running({ status }: { status: string }) {
         이 화면이 읽을 산출물은 해당 단계가 끝나야 생깁니다. 없는 값을 임시로
         채우지 않습니다.
       </p>
-      <Link href={PROGRESS_PATH} className="btn-secondary mt-4 text-[13px]">
-        진행 현황 보기
-      </Link>
     </Box>
   );
 }

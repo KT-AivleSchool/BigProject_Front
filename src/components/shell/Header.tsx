@@ -10,28 +10,11 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { NAV_SCREENS, PROGRESS_PATH, screenOf } from "@/lib/omnisite/screens";
+import { NAV_SCREENS, screenOf, isScreenReady, isScreenAllowed } from "@/lib/omnisite/screens";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import type { ArtifactName, RunDoc } from "@/lib/omnisite/types";
 import { AuthModal } from "./AuthModal";
 import { getAuthUser, setAuthUser, setAuthToken, UserResponse } from "@/lib/omnisite/auth";
-
-/** 화면 → 그 화면이 살아 있으려면 있어야 하는 산출물. 없으면 아직 미완이다. */
-const NEEDS: Record<string, ArtifactName[]> = {
-  "1": [],
-  "2": ["reviewed"],
-  "3": ["weight_set"],
-  "4": ["score_grid", "topN"],
-  "5": [], // 파이프라인 밖 — 산출물로 판정하지 않는다
-  "6": ["report"],
-};
-
-function ready(run: RunDoc | null, no: string): boolean {
-  if (!run) return false;
-  const need = NEEDS[no];
-  if (!need || need.length === 0) return false;
-  return need.every((n) => Boolean(run.artifacts[n]));
-}
 
 export function Header() {
   const pathname = usePathname();
@@ -62,43 +45,55 @@ export function Header() {
           </Link>
 
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
-            {[
-              NAV_SCREENS[0],
-              { no: "P", path: PROGRESS_PATH, name: "진행 현황", inNav: true, draft: false },
-              ...NAV_SCREENS.slice(1)
-            ].map((s, i) => {
-              if (!s) return null; // Safe guard
-              const isProgress = s.no === "P";
-              const active = current?.no === s.no || (isProgress && pathname === PROGRESS_PATH);
-              const done = isProgress ? (run && !active) : (ready(run, s.no) && !active);
+            {NAV_SCREENS.map((s, i) => {
+              const active = current?.no === s.no;
+              const done = isScreenReady(run, s.no) && !active;
+              const allowed = isScreenAllowed(run, s.no);
               
+              const inner = (
+                <>
+                  <span
+                    className={[
+                      "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[10px] font-semibold transition-colors",
+                      active
+                        ? "bg-white/25 text-white"
+                        : done
+                          ? "bg-primary/12 text-primary"
+                          : allowed
+                            ? "bg-black/[0.06] text-ink-secondary"
+                            : "bg-black/[0.03] text-ink-secondary/30",
+                    ].join(" ")}
+                  >
+                    {done ? "✓" : s.no}
+                  </span>
+                  <span className="whitespace-nowrap">{s.name}</span>
+                </>
+              );
+
               return (
                 <div key={s.no} className="flex shrink-0 items-center">
                   {i > 0 && <span className="px-1 text-ink-secondary/40">›</span>}
-                  <Link
-                    href={s.path}
-                    aria-current={active ? "page" : undefined}
-                    className={[
-                      "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
-                      active
-                        ? "bg-primary text-white"
-                        : "text-ink-secondary hover:bg-black/[0.04] hover:text-ink",
-                    ].join(" ")}
-                  >
-                    <span
+                  {allowed ? (
+                    <Link
+                      href={s.path}
+                      aria-current={active ? "page" : undefined}
                       className={[
-                        "grid h-[18px] w-[18px] shrink-0 place-items-center rounded-full text-[10px] font-semibold",
+                        "flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors",
                         active
-                          ? "bg-white/25 text-white"
-                          : done
-                            ? "bg-primary/12 text-primary"
-                            : "bg-black/[0.06] text-ink-secondary",
+                          ? "bg-primary text-white"
+                          : "text-ink-secondary hover:bg-black/[0.04] hover:text-ink",
                       ].join(" ")}
                     >
-                      {done ? "✓" : isProgress ? (run?.status === "running" ? "⏳" : "•") : s.no}
-                    </span>
-                    <span className="whitespace-nowrap">{s.name}</span>
-                  </Link>
+                      {inner}
+                    </Link>
+                  ) : (
+                    <div
+                      className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-ink-secondary/40 cursor-not-allowed"
+                      title="이전 단계를 먼저 완료해주세요."
+                    >
+                      {inner}
+                    </div>
+                  )}
                 </div>
               );
             })}

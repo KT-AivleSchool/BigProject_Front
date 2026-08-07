@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { PageBody, PageHeader } from "@/components/ui/Page";
 import { MODE_FIXTURE, MODE_HITL } from "@/lib/omnisite/pipeline";
 import { useRun } from "@/lib/omnisite/RunProvider";
-import { PROGRESS_PATH, SCREENS } from "@/lib/omnisite/screens";
+import { SCREENS } from "@/lib/omnisite/screens";
 
 const SCREEN = SCREENS[0]!;
 
@@ -40,7 +40,7 @@ export default function Screen1Page() {
     setInputError(null);
     if (fromDom.trim() && fromDom !== typedDomain) setTypedDomain(fromDom);
     const id = await start(value, mode);
-    if (id) router.push(PROGRESS_PATH);
+    // if (id) router.push(PROGRESS_PATH); // No longer redirect, sidebar handles it.
   }
 
   return (
