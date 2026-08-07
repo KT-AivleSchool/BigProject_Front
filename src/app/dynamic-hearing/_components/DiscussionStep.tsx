@@ -1,5 +1,6 @@
 import { MessageSquare, Loader2, Info } from "lucide-react";
-import { RefObject } from "react";
+import { RefObject, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface DiscussionStepProps {
   step: number;
@@ -8,6 +9,8 @@ interface DiscussionStepProps {
   discussionStatus: any;
   chatContainerRef: RefObject<HTMLDivElement | null>;
   setStep: (step: 1 | 2 | 3) => void;
+  activePersonas?: any[];
+  topic?: string;
 }
 
 export function DiscussionStep({
@@ -16,22 +19,106 @@ export function DiscussionStep({
   isDiscussing,
   discussionStatus,
   chatContainerRef,
-  setStep
+  setStep,
+  activePersonas = [],
+  topic = "주제 미설정"
 }: DiscussionStepProps) {
+  const router = useRouter();
+  const [selectedSpeaker, setSelectedSpeaker] = useState<string | null>(null);
+
+  const getBadgeStyle = (badgeText: string) => {
+    const text = badgeText.trim();
+    if (text.includes("목표")) {
+      return "bg-blue-600 text-white border-blue-700";
+    }
+    if (text.includes("기대하는 이익") || text.includes("이익")) {
+      return "bg-white text-slate-900 border-slate-300 shadow-sm";
+    }
+    if (text.includes("우려하는") || text.includes("비용") || text.includes("위험")) {
+      return "bg-orange-500 text-white border-orange-600";
+    }
+    if (text.includes("수용 가능한") || text.includes("수용가능")) {
+      return "bg-emerald-600 text-white border-emerald-700";
+    }
+    if (text.includes("절대 수용") || text.includes("수용 불가능") || text.includes("불가")) {
+      return "bg-rose-600 text-white border-rose-700";
+    }
+    return "bg-slate-100 text-slate-700 border-slate-200";
+  };
+
+  const renderMessageWithBadges = (text: string) => {
+    // [목표] 등 대괄호 안의 텍스트를 찾아 뱃지로 변환
+    const parts = text.split(/(\[[^\]]+\])/g);
+    return (
+      <>
+        {parts.map((part, idx) => {
+          if (part.startsWith('[') && part.endsWith(']')) {
+            const badgeText = part.substring(1, part.length - 1);
+            const badgeStyle = getBadgeStyle(badgeText);
+            return (
+              <span key={idx} className={`inline-block px-2.5 py-0.5 rounded-md text-[11px] font-bold mr-1.5 mb-1 shadow-sm border align-middle ${badgeStyle}`}>
+                {badgeText}
+              </span>
+            );
+          }
+          return <span key={idx}>{part}</span>;
+        })}
+      </>
+    );
+  };
+
+  useEffect(() => {
+    if (chatContainerRef.current) {
+      setTimeout(() => {
+        if (chatContainerRef.current) {
+          chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+        }
+      }, 50);
+    }
+  }, [messages, chatContainerRef]);
+
   return (
     <div className={`transition-all duration-700 ease-in-out transform ${step === 3 ? 'translate-x-0 opacity-100 relative' : 'translate-x-full opacity-0 absolute top-0 w-full pointer-events-none'}`}>
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[600px]">
         {/* 왼쪽 채팅 영역 */}
-        <div className="lg:col-span-2 p-6 md:p-8 border border-white/40 rounded-3xl bg-white/60 backdrop-blur-2xl shadow-xl shadow-slate-200/50 flex flex-col h-full">
-          <div className="flex justify-between items-center mb-6 pb-5 border-b-2 border-slate-100">
-            <h2 className="font-bold text-2xl text-slate-800 flex items-center">
-              <span className="bg-violet-100 text-violet-600 p-2.5 rounded-xl mr-3 shadow-sm"><MessageSquare size={22} /></span>
-              실시간 다자간 공청회 스트리밍
-            </h2>
-            <div className="flex items-center gap-2.5 text-sm font-bold bg-emerald-50 text-emerald-600 px-4 py-2 rounded-full border border-emerald-100 shadow-sm">
-              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></div>
-              LIVE
+        <div className="lg:col-span-2 glass-panel p-6 md:p-8 rounded-2xl flex flex-col h-full min-h-0 overflow-hidden">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-5 border-b border-hairline flex-shrink-0 gap-4">
+            <div>
+              <h2 className="font-semibold text-[20px] text-ink flex items-center tracking-tight mb-2">
+                <span className="bg-primary/10 text-primary p-2.5 rounded-lg mr-3"><MessageSquare size={20} /></span>
+                실시간 다자간 공청회 스트리밍
+              </h2>
+              {topic && (
+                <div className="inline-flex items-center px-3 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-full text-[12px] font-bold shadow-sm">
+                  🎯 {topic}
+                </div>
+              )}
             </div>
+            <div className="flex flex-col items-end gap-3">
+              <div className="flex items-center gap-2.5 text-[12px] font-semibold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-md border border-emerald-100 shadow-sm">
+                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                LIVE
+              </div>
+            </div>
+          </div>
+          
+          {/* 이해관계자 필터 태그 (스티커) */}
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-none flex-shrink-0">
+            <button 
+              onClick={() => setSelectedSpeaker(null)}
+              className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold whitespace-nowrap transition-colors border shadow-sm ${selectedSpeaker === null ? 'bg-primary text-white border-primary' : 'bg-white text-ink-secondary border-hairline hover:bg-slate-50'}`}
+            >
+              전체 보기
+            </button>
+            {activePersonas?.map((p, idx) => (
+              <button 
+                key={idx} 
+                onClick={() => setSelectedSpeaker(p.name)}
+                className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold whitespace-nowrap transition-colors border shadow-sm ${selectedSpeaker === p.name ? 'bg-primary text-white border-primary' : 'bg-white text-ink-secondary border-hairline hover:bg-slate-50'}`}
+              >
+                {p.name}
+              </button>
+            ))}
           </div>
           
           <div 
@@ -46,7 +133,10 @@ export function DiscussionStep({
           )}
           
           <div className="space-y-6">
-            {messages.map((msg, idx) => {
+            {messages.filter(msg => {
+              if (!selectedSpeaker) return true;
+              return msg.speaker.includes(selectedSpeaker) || msg.speaker === selectedSpeaker;
+            }).map((msg, idx, filteredArray) => {
               const isSystem = msg.speaker.toLowerCase().includes('system') || msg.speaker.toLowerCase().includes('fact_checker') || msg.speaker.toLowerCase().includes('supervisor');
               
               const getAvatarColor = (name: string) => {
@@ -59,9 +149,9 @@ export function DiscussionStep({
               if (isSystem) {
                 return (
                   <div key={idx} className="flex w-full justify-center my-4">
-                    <div className="bg-slate-800 text-slate-100 border border-slate-700 w-full max-w-[80%] rounded-2xl px-5 py-4 text-sm shadow-md text-left whitespace-pre-wrap break-words leading-relaxed">
-                      <div className="font-bold text-violet-300 mb-1.5 flex items-center">
-                        <span className="text-lg mr-1.5">🤖</span> {msg.speaker}
+                    <div className="bg-ink text-white w-full max-w-[80%] rounded-xl px-4 py-3 text-[13px] shadow-sm text-left whitespace-pre-wrap break-words leading-relaxed border border-hairline">
+                      <div className="font-semibold text-primary-active mb-1.5 flex items-center">
+                        <span className="text-[16px] mr-1.5">🤖</span> {msg.speaker}
                       </div>
                       <div className="opacity-95">{msg.text}</div>
                     </div>
@@ -70,25 +160,25 @@ export function DiscussionStep({
               }
 
               const avatarColor = getAvatarColor(msg.speaker);
-              const isConsecutive = idx > 0 && messages[idx-1].speaker === msg.speaker && !isSystem;
+              const isConsecutive = idx > 0 && filteredArray[idx-1].speaker === msg.speaker && !isSystem;
 
               return (
                 <div key={idx} className={`flex w-full justify-start ${isConsecutive ? 'mt-1' : 'mt-6'}`}>
                   <div className="flex items-start max-w-[85%] md:max-w-[75%]">
                     {!isConsecutive ? (
-                      <div className={`w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center text-white font-bold text-sm shadow-sm ${avatarColor} mr-3 mt-1`}>
+                      <div className={`w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center text-white font-semibold text-[12px] shadow-sm ${avatarColor} mr-3 mt-1`}>
                         {msg.speaker.substring(0, 1)}
                       </div>
                     ) : (
-                      <div className="w-10 mr-3 flex-shrink-0"></div>
+                      <div className="w-8 mr-3 flex-shrink-0"></div>
                     )}
                     
                     <div className="flex flex-col flex-1 min-w-0">
                       {!isConsecutive && (
-                        <span className="text-sm font-bold text-slate-700 mb-1 ml-1">{msg.speaker}</span>
+                        <span className="text-[12px] font-semibold text-ink-secondary mb-1 ml-1">{msg.speaker}</span>
                       )}
-                      <div className="bg-white/80 border border-slate-200/50 rounded-2xl rounded-tl-none px-5 py-3.5 shadow-sm text-slate-700 leading-relaxed min-w-[200px] whitespace-pre-wrap break-words">
-                        {msg.text}
+                      <div className="glass-panel rounded-xl rounded-tl-none px-4 py-3 text-ink leading-relaxed min-w-[200px] whitespace-pre-wrap break-words text-[13px]">
+                        {renderMessageWithBadges(msg.text)}
                       </div>
                     </div>
                   </div>
@@ -99,14 +189,14 @@ export function DiscussionStep({
             {isDiscussing && messages.length > 0 && (
               <div className="flex w-full justify-start mt-6">
                 <div className="flex items-start max-w-[85%]">
-                  <div className="w-10 h-10 rounded-full bg-slate-200 animate-pulse mr-3 mt-1"></div>
+                  <div className="w-8 h-8 rounded-full bg-slate-200 animate-pulse mr-3 mt-1"></div>
                   <div className="flex flex-col">
-                    <div className="h-4 bg-slate-200 rounded w-20 mb-2 ml-1 animate-pulse"></div>
-                    <div className="bg-white/50 border border-slate-200/50 rounded-2xl rounded-tl-none px-4 py-3 shadow-sm min-w-[200px]">
+                    <div className="h-3 bg-slate-200 rounded w-16 mb-2 ml-1 animate-pulse"></div>
+                    <div className="glass-panel rounded-xl rounded-tl-none px-4 py-3 min-w-[200px]">
                        <div className="flex space-x-1.5 mt-2 mb-1">
-                         <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce"></div>
-                         <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
-                         <div className="w-2 h-2 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
+                         <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce"></div>
+                         <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></div>
+                         <div className="w-1.5 h-1.5 bg-slate-300 rounded-full animate-bounce" style={{ animationDelay: '0.4s' }}></div>
                        </div>
                     </div>
                   </div>
@@ -117,59 +207,77 @@ export function DiscussionStep({
         </div>
           {/* 하단 패널 */}
           {!isDiscussing && messages.length > 0 && (
-            <div className="mt-6 pt-5 border-t-2 border-slate-100 flex justify-end">
+            <div className="mt-6 pt-5 border-t border-hairline flex justify-end gap-3 flex-shrink-0">
               <button 
                 onClick={() => setStep(1)} 
-                className="bg-slate-800 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-700 hover:shadow-lg hover:-translate-y-0.5 transition-all"
+                className="btn-secondary text-[13px]"
               >
                 새 안건으로 다시 시작하기
+              </button>
+              <button 
+                onClick={() => router.push('/report')}
+                className="btn-primary text-[13px]"
+              >
+                최종 보고서 작성하기
               </button>
             </div>
           )}
         </div>
 
         {/* 오른쪽 현황 대시보드 */}
-        <div className="p-6 md:p-8 border border-white/40 rounded-3xl bg-slate-50/90 backdrop-blur-2xl shadow-xl shadow-slate-200/50 flex flex-col h-full overflow-y-auto">
-          <h2 className="font-bold text-xl text-slate-800 mb-6 flex items-center">
-            <span className="bg-indigo-100 text-indigo-600 p-2 rounded-lg mr-3 shadow-sm"><Info size={18} /></span>
-            실시간 토론 현황
-          </h2>
-
-          {!discussionStatus ? (
-            <div className="flex flex-col items-center justify-center flex-1 text-slate-400 space-y-4">
-              <div className="w-16 h-16 border-4 border-slate-200 border-t-indigo-500 rounded-full animate-spin"></div>
-              <p className="text-sm font-medium">데이터 수집 및 분석 중...</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
-                <h3 className="text-sm font-bold text-slate-500 mb-1">현재 진행 라운드</h3>
-                <div className="text-3xl font-extrabold text-indigo-600">{discussionStatus.round_count} <span className="text-lg text-slate-400 font-medium">Round</span></div>
+        <div className="glass-panel p-6 rounded-2xl flex flex-col h-full h-[calc(100vh-200px)] min-h-[600px] overflow-hidden">
+          <h3 className="font-semibold text-[18px] text-ink mb-5 flex items-center border-b border-hairline pb-4">
+            <span className="bg-primary/10 text-primary p-2 rounded-lg mr-2"><Info size={18} /></span>
+            실시간 쟁점 요약
+          </h3>
+          
+          <div className="flex-1 overflow-y-auto pr-2 space-y-4 scroll-smooth scrollbar-thin scrollbar-thumb-slate-300">
+            {!discussionStatus ? (
+              <div className="flex flex-col items-center justify-center h-full text-ink-secondary/70">
+                <Loader2 size={32} className="animate-spin mb-3 opacity-50" />
+                <p className="text-[13px] font-medium">데이터 대기 중...</p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                <div className="glass-panel-deep p-4 rounded-xl border border-hairline">
+                  <h4 className="text-[12px] font-semibold text-primary mb-2">현재 진행 상태</h4>
+                  <div className="text-[14px] font-semibold text-ink">{discussionStatus.reporter?.topic || '주제 수집 중...'}</div>
+                </div>
+              
+              <div className="glass-panel p-4 rounded-xl border border-hairline">
+                <h3 className="text-[12px] font-semibold text-ink-secondary mb-1">현재 진행 라운드</h3>
+                <div className="text-[24px] font-bold text-primary tnum">{discussionStatus.round_count} <span className="text-[13px] text-ink-secondary font-medium">Round</span></div>
               </div>
 
-              <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
-                <h3 className="text-sm font-bold text-slate-800 mb-3 border-b pb-2">페르소나별 수용도 분석</h3>
-                {Object.entries(discussionStatus.evaluations || {}).map(([key, val]: any, idx) => (
+              <div className="glass-panel p-4 rounded-xl border border-hairline space-y-3">
+                <h3 className="text-[12px] font-semibold text-ink mb-2 border-b border-hairline pb-2">페르소나별 수용도 분석</h3>
+                {Object.entries(discussionStatus.evaluations || {}).map(([key, val]: any, idx) => {
+                  const personaId = key.replace('_acceptance', '');
+                  const pIdx = parseInt(personaId.replace('persona_', ''));
+                  const displayName = !isNaN(pIdx) && activePersonas[pIdx] ? activePersonas[pIdx].name : personaId;
+                  
+                  return (
                   <div key={idx} className="flex flex-col">
-                    <div className="flex justify-between text-xs font-bold text-slate-600 mb-1">
-                      <span>{key.replace('_acceptance', '')}</span>
-                      <span>{Math.round(val * 100)}%</span>
+                    <div className="flex justify-between text-[11px] font-medium text-ink-secondary mb-1">
+                      <span>{displayName}</span>
+                      <span className="tnum">{Math.round(val * 100)}%</span>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-2">
-                      <div className={`h-2 rounded-full ${val >= 0.7 ? 'bg-emerald-500' : val >= 0.3 ? 'bg-amber-400' : 'bg-rose-500'}`} style={{ width: `${Math.max(val * 100, 5)}%` }}></div>
+                    <div className="w-full bg-black/5 rounded-full h-1.5 border border-hairline/50">
+                      <div className={`h-1.5 rounded-full ${val >= 0.7 ? 'bg-primary' : val >= 0.3 ? 'bg-amber-400' : 'bg-rose-500'}`} style={{ width: `${Math.max(val * 100, 5)}%` }}></div>
                     </div>
                   </div>
-                ))}
+                )})}
               </div>
 
               {discussionStatus.reporter && (
-                <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 rounded-2xl text-white shadow-lg">
-                  <div className="text-indigo-200 text-xs font-bold mb-1 uppercase tracking-wider">최종 시나리오 도출</div>
-                  <h3 className="text-xl font-extrabold mb-3">{discussionStatus.reporter.scenario_title}</h3>
-                  <p className="text-sm text-indigo-100 leading-relaxed mb-4">{discussionStatus.reporter.summary}</p>
-                  <div className="bg-white/10 rounded-xl p-3 text-sm">
-                    <span className="font-bold text-indigo-200 block mb-1">권장 후속 조치</span>
-                    {discussionStatus.reporter.next_action}
+                <div className="glass-panel-deep p-5 rounded-xl border border-primary/20 shadow-sm relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1.5 h-full bg-primary rounded-l-xl"></div>
+                  <div className="text-primary text-[11px] font-bold mb-1.5 tracking-tight">최종 시나리오 도출</div>
+                  <h3 className="text-[16px] font-bold text-ink mb-2">{discussionStatus.reporter.scenario_title}</h3>
+                  <p className="text-[12px] text-ink-secondary leading-relaxed mb-4">{discussionStatus.reporter.summary}</p>
+                  <div className="bg-canvas-soft rounded-lg p-3 text-[12px] border border-hairline">
+                    <span className="font-semibold text-ink block mb-1">권장 후속 조치</span>
+                    <span className="text-ink-secondary">{discussionStatus.reporter.next_action}</span>
                   </div>
                 </div>
               )}
@@ -178,5 +286,6 @@ export function DiscussionStep({
         </div>
       </div>
     </div>
+  </div>
   );
 }

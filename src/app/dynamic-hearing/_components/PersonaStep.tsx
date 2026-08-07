@@ -23,25 +23,25 @@ export function PersonaStep({
 }: PersonaStepProps) {
   return (
     <div className={`transition-all duration-700 ease-in-out transform ${step === 2 ? 'translate-x-0 opacity-100 relative' : (step < 2 ? 'translate-x-full opacity-0 absolute top-0 w-full pointer-events-none' : '-translate-x-full opacity-0 absolute top-0 w-full pointer-events-none')}`}>
-      <div className="p-8 border border-white/40 rounded-3xl bg-white/60 backdrop-blur-2xl shadow-xl shadow-slate-200/50">
+      <div className="glass-panel p-8 rounded-2xl">
         <div className="flex justify-between items-end mb-8">
           <div>
-            <h2 className="font-bold text-2xl mb-2 text-slate-800 flex items-center">
-              <span className="bg-indigo-100 text-indigo-600 p-2.5 rounded-xl mr-3 shadow-sm"><Users size={22} /></span>
+            <h2 className="font-semibold text-[20px] mb-2 text-ink flex items-center tracking-tight">
+              <span className="bg-primary/10 text-primary p-2.5 rounded-lg mr-3"><Users size={20} /></span>
               이해관계자 페르소나 확정 (HITL)
             </h2>
-            <p className="text-slate-500 ml-14 font-medium">자동 발굴된 페르소나 중 공청회 시뮬레이션에 참여할 대상을 직접 선택해주세요.</p>
+            <p className="text-[13px] text-ink-secondary ml-[52px]">자동 발굴된 페르소나 중 공청회 시뮬레이션에 참여할 대상을 직접 선택해주세요.</p>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             <button 
               onClick={() => fetchMorePersonas()} 
               disabled={isLoading}
-              className="text-sm font-bold bg-white text-indigo-600 px-4 py-2 rounded-full border border-indigo-200 shadow-sm hover:bg-indigo-50 transition-colors flex items-center gap-2 disabled:opacity-50"
+              className="btn-utility text-[13px] gap-1.5"
             >
-              {isLoading ? <Loader2 size={16} className="animate-spin" /> : "✨"} AI 새로운 인물 추가 발굴
+              {isLoading ? <Loader2 size={14} className="animate-spin" /> : "✨"} AI 인물 추가
             </button>
-            <div className="text-sm font-bold bg-indigo-50 text-indigo-600 px-4 py-2 rounded-full border border-indigo-100">
-              선택됨: {selectedPersonaIds.size}명 / 전체 {personas.length}명
+            <div className="text-[13px] font-medium bg-black/[0.04] text-ink-secondary px-3 py-1.5 rounded-md tnum border border-hairline">
+              선택됨 {selectedPersonaIds.size} / 전체 {personas.length}
             </div>
           </div>
         </div>
@@ -68,28 +68,28 @@ export function PersonaStep({
                 key={idx} 
                 onClick={() => togglePersona(idx)}
                 style={{ animation: `staggerFadeIn 0.5s ease-out ${idx * 0.15}s both` }}
-                className={`cursor-pointer border-2 p-6 rounded-3xl transition-all duration-300 relative group overflow-hidden ${
+                className={`cursor-pointer border p-5 rounded-xl transition-all duration-300 relative group overflow-hidden ${
                   isSelected 
-                    ? 'border-indigo-500 bg-indigo-50/60 shadow-lg shadow-indigo-100/50 scale-[1.02]' 
-                    : 'border-slate-200 bg-white hover:border-indigo-300 hover:shadow-md'
+                    ? 'border-primary bg-primary/5 shadow-sm' 
+                    : 'border-hairline bg-white hover:border-primary/40 hover:shadow-sm'
                 }`}
               >
-                <div className={`absolute top-5 right-5 w-7 h-7 rounded-full border-2 flex items-center justify-center transition-colors ${
-                  isSelected ? 'bg-indigo-500 border-indigo-500 text-white' : 'border-slate-300 text-transparent bg-slate-50 group-hover:border-indigo-200'
+                <div className={`absolute top-4 right-4 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
+                  isSelected ? 'bg-primary border-primary text-white' : 'border-hairline text-transparent bg-slate-50 group-hover:border-primary/40'
                 }`}>
-                  <Check size={16} strokeWidth={3} />
+                  <Check size={14} strokeWidth={3} />
                 </div>
                 
-                <div className="pr-10">
-                  <div className="inline-block px-3.5 py-1.5 rounded-full text-xs font-bold mb-4 shadow-sm bg-slate-200 text-slate-700">
+                <div className="pr-8">
+                  <div className="inline-block px-2.5 py-1 rounded bg-black/[0.04] text-[11px] font-semibold mb-3 text-ink-secondary border border-hairline">
                     중요도: {p.importance_grade || 'C'}
                   </div>
-                  <h3 className="font-extrabold text-lg text-slate-800 mb-1.5">[{p.role}] {p.name}</h3>
-                  <p className="text-sm text-slate-600 mb-5 line-clamp-3 leading-relaxed">{p.description}</p>
+                  <h3 className="font-semibold text-[16px] text-ink mb-1.5">[{p.role}] {p.name}</h3>
+                  <div className="text-[12px] font-medium text-ink-secondary mb-3 line-clamp-3 leading-relaxed">{p.description}</div>
                   
-                  <div className="flex gap-2 flex-wrap">
+                  <div className="flex gap-1.5 flex-wrap">
                     {p.keywords?.slice(0, 3).map((kw: string, kIdx: number) => (
-                      <span key={kIdx} className="bg-white/80 border border-slate-200 px-2.5 py-1 rounded-lg text-xs text-slate-500 font-semibold shadow-sm">#{kw}</span>
+                      <span key={kIdx} className="bg-black/[0.03] border border-hairline/60 px-2 py-0.5 rounded-md text-[11px] text-ink-secondary font-medium">#{kw}</span>
                     ))}
                   </div>
                 </div>
@@ -98,19 +98,19 @@ export function PersonaStep({
           })}
         </div>
         
-        <div className="mt-10 flex gap-4">
+        <div className="mt-8 pt-5 border-t border-hairline flex justify-end gap-3">
           <button 
             onClick={() => setStep(1)} 
-            className="flex-1 bg-white border-2 border-slate-200 text-slate-600 px-6 py-4.5 rounded-2xl text-lg font-bold hover:bg-slate-50 hover:text-slate-900 transition-colors"
+            className="btn-secondary text-[13px]"
           >
             다시 설정하기
           </button>
           <button 
             onClick={startDiscussion} 
-            disabled={selectedPersonaIds.size === 0} 
-            className="flex-[2] bg-gradient-to-r from-indigo-600 to-violet-600 text-white px-6 py-4.5 rounded-2xl text-lg font-bold hover:shadow-xl hover:shadow-indigo-500/30 hover:-translate-y-0.5 disabled:opacity-50 disabled:hover:translate-y-0 transition-all flex items-center justify-center gap-3"
+            disabled={selectedPersonaIds.size < 2}
+            className="btn-primary text-[13px]"
           >
-            선택된 {selectedPersonaIds.size}명과 공청회 시작 <Play size={20} fill="currentColor" />
+            선택된 {selectedPersonaIds.size}명으로 공청회 시작
           </button>
         </div>
       </div>
