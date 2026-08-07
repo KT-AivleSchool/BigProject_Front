@@ -15,6 +15,7 @@ export interface ScenarioItem {
 }
 
 export interface HearingPipelineData {
+  parcel_id?: number;
   candidate_jibun: string;
   candidate_address?: string;
   candidate_lat: number;
