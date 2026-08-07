@@ -45,6 +45,15 @@ export const PROGRESS_PATH = "/progress";
 /** 현재 경로가 어느 화면인지. 가장 긴 접두사가 이긴다(`/audit/exclusion` vs `/audit`). */
 export function screenOf(pathname: string): Screen | null {
   if (pathname === "/") return SCREENS[0] ?? null;
+
+  // 특수 경로 매핑 (/hearing-pdf -> 보고서, /dynamic-hearing -> 갈등 예측)
+  if (pathname.startsWith("/hearing-pdf")) {
+    return SCREENS.find((s) => s.no === "6") ?? null;
+  }
+  if (pathname.startsWith("/dynamic-hearing")) {
+    return SCREENS.find((s) => s.no === "5") ?? null;
+  }
+
   const hit = SCREENS.filter((s) => s.path !== "/" && pathname.startsWith(s.path)).sort(
     (a, b) => b.path.length - a.path.length,
   );
