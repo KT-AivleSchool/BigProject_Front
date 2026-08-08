@@ -2,6 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { RunProvider } from "@/lib/omnisite/RunProvider";
 import { Header } from "@/components/shell/Header";
+import { Footer } from "@/components/shell/Footer";
+
+import { ProgressSidebar } from "@/components/shell/ProgressSidebar";
 
 export const metadata: Metadata = {
   title: "OmniSite — 갈등시설 입지 선정",
@@ -22,7 +25,13 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col">
         <RunProvider>
           <Header />
-          <main className="flex-1 flex flex-col">{children}</main>
+          <div className="flex flex-1 relative">
+            <main className="flex-1 flex flex-col">
+              {children}
+            </main>
+            <ProgressSidebar />
+          </div>
+          <Footer />
         </RunProvider>
       </body>
     </html>

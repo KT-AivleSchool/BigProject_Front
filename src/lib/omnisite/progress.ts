@@ -110,13 +110,37 @@ export function computeProgress(
 
   if (run.status === "awaiting_hitl") {
     // 게이트는 사람이 답할 때까지 **영영** 안 움직인다. 남은 시간의 분모가
-    // 서버가 아니라 사람이므로 계산 근거가 아예 없다.
+    // 서버가 아니라 사람이므로 남은 시간은 계산 불가이지만, 진행률(%)은 유지한다.
+    if (!baseline) {
+      return {
+        ratio: null,
+        remainSec: null,
+        doneCount: done,
+        totalCount: total,
+        note: "사람 확인 대기 중",
+      };
+    }
+    const missing = run.steps.filter((s) => baseline[s.id] === undefined);
+    if (missing.length > 0) {
+      return {
+        ratio: null,
+        remainSec: null,
+        doneCount: done,
+        totalCount: total,
+        note: "사람 확인 대기 중",
+      };
+    }
+    const totalSec = run.steps.reduce((a, s) => a + (baseline[s.id] as number), 0);
+    if (totalSec <= 0) {
+      return { ratio: null, remainSec: null, doneCount: done, totalCount: total, note: "사람 확인 대기 중" };
+    }
+    const elapsed = run.steps.reduce((a, s) => a + (s.status === "done" ? (baseline[s.id] as number) : 0), 0);
     return {
-      ratio: null,
+      ratio: Math.min(elapsed / totalSec, 0.999),
       remainSec: null,
       doneCount: done,
       totalCount: total,
-      note: "사람 확인을 기다리는 중입니다 — 답변 시점에 달려 있어 남은 시간을 예측하지 않습니다.",
+      note: "사람 확인 대기 중",
     };
   }
 

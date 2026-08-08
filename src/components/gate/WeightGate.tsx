@@ -25,7 +25,7 @@
  * 세로 길이도 카드당 절반이 된다.
  */
 import { useState } from "react";
-import { GateFrame, QuestionCard } from "./GateFrame";
+import { GateFrame, QuestionCard, Fact } from "./GateFrame";
 import { fixed, meters } from "@/lib/omnisite/format";
 import { isWeightQuestion } from "@/lib/omnisite/gate";
 import { indicatorLabel, type DatasetLabel } from "@/lib/omnisite/labels";
@@ -38,7 +38,7 @@ function signed(v: number, digits = 2): string {
 }
 
 function dirWord(d: string): string {
-  return d === "cost" ? "낮을수록 좋음" : d === "benefit" ? "높을수록 좋음" : d;
+  return d === "cost" ? "값이 클수록 점수 하락" : d === "benefit" ? "값이 클수록 점수 상승" : d;
 }
 
 export function WeightGate({
@@ -163,32 +163,32 @@ export function WeightGate({
       onSubmit={() => void onSubmit()}
       submitLabel="이 값으로 계속 진행"
       lead={
-        <>
-          실행이 <b>여기서 멈춰</b> 사람을 기다리고 있습니다. 칸에 들어 있는 값은
-          <b> 제안값</b>(제안 패스가 만든 것)이고, 그대로 보내면 제안대로 갑니다.
-        </>
+        <div className="flex flex-col gap-1">
+          <p className="text-sm font-bold text-gray-900">AI가 추천하는 집계 반경 및 가중치 제안값입니다.</p>
+          <p className="text-[13px] text-gray-600">제안값을 검토하시고, 필요에 따라 슬라이더를 조정하여 최종 확정해 주세요.</p>
+        </div>
       }
     >
       {/* ── 슬라이더 읽는 법 ───────────────────────────────
           카드마다 되풀이하면 여섯 번 읽어야 한다. 규칙은 전 지표 공통이므로
           맨 위에 한 번만 둔다. */}
-      <div className="rounded-lg border border-amber-200 bg-white/70 px-4 py-3">
-        <p className="text-[12px] font-medium">슬라이더 읽는 법</p>
-        <div className="mt-2 grid gap-x-6 gap-y-1.5 text-[12px] sm:grid-cols-3">
-          <Legend tone="cost" head="−1 … 0 미만">
-            <b>낮을수록 좋음</b>(cost). 값이 클수록 점수가 <b>내려갑니다</b>.
+      <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-5 shadow-sm">
+        <h4 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">가중치 슬라이더 조작 안내</h4>
+        <div className="grid gap-x-8 gap-y-3 text-[13px] sm:grid-cols-3">
+          <Legend tone="cost" head="−1 ~ 0 미만 (부정적 영향)">
+            해당 지표의 값이 클수록 최종 분석 점수가 <b>낮아지도록</b> 반영됩니다.
           </Legend>
-          <Legend tone="zero" head="정확히 0">
-            이 지표를 <b>점수에서 뺍니다</b>. 「중요도 낮음」이 아니라 <b>제외</b>입니다.
+          <Legend tone="zero" head="0 (지표 제외)">
+            해당 지표를 분석에서 <b>제외</b>합니다.
           </Legend>
-          <Legend tone="benefit" head="0 초과 … +1">
-            <b>높을수록 좋음</b>(benefit). 값이 클수록 점수가 <b>올라갑니다</b>.
+          <Legend tone="benefit" head="0 초과 ~ +1 (긍정적 영향)">
+            해당 지표의 값이 클수록 최종 분석 점수가 <b>올라가도록</b> 반영됩니다.
           </Legend>
         </div>
       </div>
 
       {/* ── 요약 띠 ──────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-2 rounded-lg border border-hairline bg-white px-4 py-2.5 text-[12px]">
+      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm text-[13px]">
         <Metric label="지표" value={`${questions.length}개`} />
         <Metric label="슬라이더 절대값 합" value={fixed(sum, 3)} />
         <Metric
@@ -228,10 +228,10 @@ export function WeightGate({
 
 function Metric({ label, value, note }: { label: string; value: string; note?: string }) {
   return (
-    <span className="inline-flex items-baseline gap-1.5">
-      <span className="text-ink-secondary">{label}</span>
-      <b className="tnum text-[13px]">{value}</b>
-      {note && <span className="tnum text-[11px] text-ink-secondary">({note})</span>}
+    <span className="inline-flex items-center gap-2">
+      <span className="text-gray-500 font-medium">{label}</span>
+      <b className="text-[14px] text-gray-900">{value}</b>
+      {note && <span className="text-[12px] text-gray-400">({note})</span>}
     </span>
   );
 }
@@ -246,14 +246,14 @@ function Legend({
   children: React.ReactNode;
 }) {
   const dot =
-    tone === "cost" ? "bg-red-600" : tone === "benefit" ? "bg-emerald-600" : "bg-ink-secondary";
+    tone === "cost" ? "bg-red-500" : tone === "benefit" ? "bg-emerald-500" : "bg-gray-400";
   return (
-    <div className="flex gap-2">
-      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot}`} />
-      <p className="leading-relaxed">
-        <span className="tnum font-medium">{head}</span>
-        <span className="mx-1.5 text-ink-secondary">·</span>
-        <span className="text-ink-secondary">{children}</span>
+    <div className="flex gap-2.5 items-start">
+      <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full shadow-sm ${dot}`} />
+      <p className="leading-relaxed text-gray-700">
+        <span className="font-bold text-gray-900">{head}</span>
+        <span className="mx-2 text-gray-300">|</span>
+        <span className="text-[12px] text-gray-600">{children}</span>
       </p>
     </div>
   );
@@ -311,57 +311,51 @@ function WeightCard({
         <p className="mt-1.5 text-[12px] leading-relaxed text-ink-secondary">{q.rationale}</p>
       )}
 
-      {/* ── 정할 값 — 반경과 슬라이더를 **한 줄에** 나란히 ────────────
-          처음엔 좌우 2단(왼쪽 입력·오른쪽 근거)으로 짰다. 입력이 앞으로 오긴
-          했는데 오른쪽 근거가 세로 5줄이 되면서 **카드가 213px → 304px 로
-          되레 길어졌다**(실측). 근거는 값 5개짜리 한 줄이면 충분하다 —
-          입력만 판으로 띄우고 근거는 아래 한 줄로 깐다. */}
-      <div className="mt-2.5 flex flex-wrap items-end gap-x-8 gap-y-3 rounded-lg border border-primary/25 bg-white px-4 py-3">
+      {/* ── 정할 값 — 반경과 슬라이더를 **한 줄에** 나란히 ──────────── */}
+      <div className="mt-3 flex flex-wrap items-end gap-x-8 gap-y-4 rounded-xl border border-gray-100 bg-gray-50/50 p-5">
         {/* [R] 집계 반경 */}
         <div className="shrink-0">
-          <label className="block text-[11px] font-semibold text-primary" htmlFor={`r-${q.indicator_id}`}>
+          <label className="block text-[12px] font-bold text-gray-700 mb-1.5" htmlFor={`r-${q.indicator_id}`}>
             집계 반경
           </label>
           {q.radius_required ? (
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                id={`r-${q.indicator_id}`}
-                type="number"
-                min={1}
-                max={5000}
-                step={1}
-                value={radius}
-                onChange={(e) => onRadius(e.target.value)}
-                /* `.text-input-notion` 은 레이어 밖이라 `font-size:14px` 가
-                   Tailwind 의 `text-*` 를 이긴다(globals.css 주석 참조).
-                   그래서 크기를 유틸리티로 낮추려 하지 않는다 — 입력칸은
-                   읽기값보다 커야 맞기도 하다. */
-                className="text-input-notion tnum w-24 py-1.5"
-              />
-              <span className="text-[11px] text-ink-secondary">m · 정수 1~5000</span>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <input
+                  id={`r-${q.indicator_id}`}
+                  type="number"
+                  min={1}
+                  max={5000}
+                  step={1}
+                  value={radius}
+                  onChange={(e) => onRadius(e.target.value)}
+                  className="w-24 rounded-lg border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-gray-400 pointer-events-none">m</span>
+              </div>
+              <span className="text-[11px] text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md">정수 1~5000</span>
             </div>
           ) : (
-            /* 🔴 admin 지표에 반경을 보내면 400 이다. 칸 자체를 안 만든다. */
-            <p className="mt-1.5 max-w-[220px] text-[11px] leading-relaxed text-ink-secondary">
-              행정동 단위 지표라 <b>반경이 없습니다</b> — 보내면 400 입니다.
+            <p className="mt-1.5 max-w-[220px] text-[12px] leading-relaxed text-gray-500">
+              행정동 단위 지표라 <b>반경이 없습니다</b>.
             </p>
           )}
         </div>
 
         {/* [W] 가중치 슬라이더 */}
-        <div className="min-w-[280px] flex-1">
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[11px] font-semibold text-primary">가중치</span>
-            <span className="flex items-baseline gap-2">
+        <div className="min-w-[320px] flex-1">
+          <div className="flex items-end justify-between gap-2 mb-2">
+            <span className="text-[12px] font-bold text-gray-700">가중치 (중요도)</span>
+            <span className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-md shadow-sm border border-gray-100">
               <b
-                className={`tnum text-[18px] leading-none ${
-                  v === 0 ? "text-ink-secondary" : cost ? "text-red-700" : "text-emerald-700"
+                className={`font-mono text-[16px] leading-none tracking-tight ${
+                  v === 0 ? "text-gray-400" : cost ? "text-red-600" : "text-emerald-600"
                 }`}
               >
                 {signed(v)}
               </b>
-              <span className="text-[11px] text-ink-secondary">
-                {v === 0 ? "이 지표를 뺍니다" : dirWord(cost ? "cost" : "benefit")}
+              <span className="text-[11px] font-medium text-gray-500">
+                {v === 0 ? "지표 제외됨" : dirWord(cost ? "cost" : "benefit")}
               </span>
             </span>
           </div>
@@ -369,30 +363,34 @@ function WeightCard({
           <SignedSlider id={`w-${q.indicator_id}`} v={v} onChange={onSlider} />
 
           {slider === undefined && (
-            <p className="mt-1 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[11px] text-amber-900">
-              제안값이 없습니다 — 슬라이더를 움직여야 값이 지정됩니다.
+            <p className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 border border-amber-200/50">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              제안값이 없어 임시로 0으로 표시됩니다. 슬라이더를 움직여 값을 확정해주세요.
             </p>
           )}
         </div>
       </div>
 
       {/* ── 감리·제안 (읽기) — 한 줄 ──────────────────────── */}
-      <dl className="mt-2 flex flex-wrap items-baseline gap-x-5 gap-y-1 text-[11px] text-ink-secondary">
-        <Ref k="데이터" v={q.data_note || "—"} />
-        <Ref k="감리" v={`${dirWord(q.direction)} · seed ${fixed(q.seed_weight, 3)}`} />
-        <Ref
-          k="제안"
+      <div className="mt-4 flex flex-wrap items-stretch gap-3">
+        <Fact k="데이터 건수" v={q.data_note || "—"} />
+        <Fact k="감리 설정" v={dirWord(q.direction)} sub={`seed ${fixed(q.seed_weight, 3)}`} />
+        <Fact 
+          k="AI 제안값" 
           v={
             (q.radius_required ? `${meters(q.radius_proposed)} · ` : "") +
             (typeof q.slider_proposed === "number" ? signed(q.slider_proposed, 2) : "—")
           }
-          sub={q.radius_source ?? undefined}
+          sub={q.radius_source ?? undefined} 
         />
-      </dl>
+      </div>
       {q.radius_rationale && (
-        <p className="mt-1 text-[11px] leading-relaxed text-ink-secondary">
-          반경 근거 · {q.radius_rationale}
-        </p>
+        <div className="mt-3 rounded-lg bg-blue-50/50 p-3 border border-blue-100/50">
+          <p className="text-[12px] leading-relaxed text-blue-800/80">
+            <b className="font-semibold text-blue-900 mr-1.5">반경 산정 근거</b>
+            {q.radius_rationale}
+          </p>
+        </div>
       )}
 
       {q.conflict && (
@@ -473,24 +471,12 @@ function SignedSlider({
                      [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:opacity-0"
         />
       </div>
-      <div className="mt-1 flex justify-between text-[10px] text-ink-secondary">
-        <span className="tnum">−1 낮을수록 좋음</span>
-        <span className="tnum">0 제외</span>
-        <span className="tnum">+1 높을수록 좋음</span>
+      <div className="mt-1 flex justify-between text-[10px] text-gray-400 font-medium px-1">
+        <span>−1 (점수 하락)</span>
+        <span>0 (제외)</span>
+        <span>+1 (점수 상승)</span>
       </div>
     </>
   );
 }
 
-/** 참고값 한 칸. 이름과 값을 같은 줄에 두되 **값만 진하게** — 눈이 값을 먼저 잡는다. */
-function Ref({ k, v, sub }: { k: string; v: string; sub?: string }) {
-  return (
-    <div className="flex items-baseline gap-1.5">
-      <dt className="shrink-0">{k}</dt>
-      <dd className="tnum font-medium text-ink">
-        {v}
-        {sub && <span className="ml-1 font-normal text-ink-secondary">({sub})</span>}
-      </dd>
-    </div>
-  );
-}

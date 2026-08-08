@@ -8,7 +8,8 @@
  * 각주로 남긴다(명세 2쪽이 요구하는 바다).
  */
 import Link from "next/link";
-import { NAV_SCREENS, neighbours, type Screen } from "@/lib/omnisite/screens";
+import { NAV_SCREENS, neighbours, type Screen, isScreenAllowed } from "@/lib/omnisite/screens";
+import { useRun } from "@/lib/omnisite/RunProvider";
 
 export function DraftBadge() {
   return (
@@ -33,7 +34,7 @@ export function PageHeader({
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[19px] font-semibold tracking-tight">
-            화면 {screen.no} · {screen.name}
+            {screen.name}
           </h1>
           {screen.draft && <DraftBadge />}
         </div>
@@ -56,27 +57,13 @@ export function PageFooter({
   action,
 }: {
   screen: Screen;
-  /** 화면 고유의 주 동작. 없으면 이전/다음만. */
   action?: React.ReactNode;
 }) {
-  const { prev, next } = neighbours(screen.no);
+  if (!action) return null;
+
   return (
-    <div className="mt-8 flex items-center justify-between gap-4 border-t border-hairline pt-4">
-      {prev ? (
-        <Link href={prev.path} className="btn-secondary text-[13px]">
-          ◀ {prev.name}
-        </Link>
-      ) : (
-        <span />
-      )}
-      <div className="flex items-center gap-2">
-        {action}
-        {next && (
-          <Link href={next.path} className="btn-primary text-[13px]">
-            {next.name} ▶
-          </Link>
-        )}
-      </div>
+    <div className="mt-8 flex items-center justify-end gap-4 border-t border-hairline pt-4">
+      {action}
     </div>
   );
 }
