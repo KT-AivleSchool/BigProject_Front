@@ -17,14 +17,14 @@
  *   화면 6  보고서       /report
  */
 
+import type { ArtifactName, RunDoc } from "./types";
+import { gateScreen } from "./gate";
+
 export interface Screen {
-  /** 명세의 화면 번호. 문자열인 이유는 `2b` 때문이다. */
   no: string;
   path: string;
   name: string;
-  /** 상단 6단계 내비에 나오는가. 2b(보조)와 진행현황은 안 나온다. */
   inNav: boolean;
-  /** 명세가 "임시(안)" 표시를 요구하는 화면. */
   draft?: boolean;
 }
 
@@ -40,9 +40,6 @@ export const SCREENS: readonly Screen[] = [
 
 export const NAV_SCREENS = SCREENS.filter((s) => s.inNav);
 
-export const PROGRESS_PATH = "/progress";
-
-/** 현재 경로가 어느 화면인지. 가장 긴 접두사가 이긴다(`/audit/exclusion` vs `/audit`). */
 export function screenOf(pathname: string): Screen | null {
   if (pathname === "/") return SCREENS[0] ?? null;
   const hit = SCREENS.filter((s) => s.path !== "/" && pathname.startsWith(s.path)).sort(
@@ -51,7 +48,6 @@ export function screenOf(pathname: string): Screen | null {
   return hit[0] ?? null;
 }
 
-/** 내비 상의 이전/다음. 보조 화면(2b)은 순서에서 빠진다. */
 export function neighbours(no: string): { prev: Screen | null; next: Screen | null } {
   const i = NAV_SCREENS.findIndex((s) => s.no === no);
   if (i < 0) return { prev: null, next: null };
@@ -59,4 +55,39 @@ export function neighbours(no: string): { prev: Screen | null; next: Screen | nu
     prev: NAV_SCREENS[i - 1] ?? null,
     next: NAV_SCREENS[i + 1] ?? null,
   };
+}
+
+/** 화면 → 그 화면이 살아 있으려면 있어야 하는 산출물. 없으면 아직 미완이다. */
+const NEEDS: Record<string, ArtifactName[]> = {
+  "1": [],
+  "2": ["reviewed"],
+  "3": ["weight_set"],
+  "4": ["score_grid", "topN"],
+  "5": [], 
+  "6": ["report"],
+};
+
+export function isScreenReady(run: RunDoc | null, no: string): boolean {
+  if (!run) return false;
+  const need = NEEDS[no];
+  if (!need || need.length === 0) return false;
+  return need.every((n) => Boolean(run.artifacts[n]));
+}
+
+/**
+ * 단계별 네비게이션 제어: 
+ * 사용자가 특정 화면에 접근 가능한지 판단합니다.
+ * - 1단계는 항상 허용.
+ * - 이미 준비된 화면은 허용.
+ * - 현재 HITL 게이트로 지정된 화면은 허용.
+ */
+export function isScreenAllowed(run: RunDoc | null, no: string): boolean {
+  if (no === "1") return true;
+  if (isScreenReady(run, no)) return true;
+  if (run?.status === "awaiting_hitl" && run.gate) {
+    const target = gateScreen(run.gate.id);
+    if (target && target.no === no) return true;
+  }
+  if (run?.status === "succeeded") return true;
+  return false;
 }

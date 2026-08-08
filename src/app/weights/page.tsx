@@ -25,10 +25,11 @@
  *    이중으로 걸려 조용히 뒤집힌다(CLAUDE.md 규약). 그래서 여기서는
  *    **크기와 방향을 분리해서** 보여준다. 합치지 않는다.
  */
+import Link from "next/link";
 import { WeightGate } from "@/components/gate/WeightGate";
 import { ArtifactView } from "@/components/ui/ArtifactView";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
-import { GATE_WEIGHT, openGate } from "@/lib/omnisite/gate";
+import { GATE_WEIGHT, openGate, gateScreen } from "@/lib/omnisite/gate";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import {
@@ -46,6 +47,7 @@ import type {
   ReportDoc,
   ReviewedDoc,
   WeightSetDoc,
+  RunDoc,
 } from "@/lib/omnisite/types";
 
 const SCREEN = SCREENS.find((s) => s.no === "3")!;
@@ -70,19 +72,20 @@ export default function Screen3Page() {
     <PageBody>
       <PageHeader
         screen={SCREEN}
-        lead="무엇을 중요하게 볼지 사람이 정한다. 여기서 정한 값이 점수의 분모다."
+        lead="최종 분석에 반영할 지표별 중요도를 설정하는 단계입니다. 지표의 가중치를 조정하여 분석 결과를 세밀하게 제어할 수 있습니다."
       />
 
       {gate ? (
         <WeightGate gate={gate} runId={run!.run_id} labels={labels} />
       ) : (
-        <NoGateNotice status={run?.status ?? null} />
+        <NoGateNotice run={run ?? null} />
       )}
 
-      <ArtifactView state={ws} what="가중치">
-        {(w) => {
-          const sorted = [...w.indicators].sort((a, b) => b.w_final - a.w_final);
-          const sum = w.indicators.reduce((s, i) => s + i.w_final, 0);
+      {(!gate && run?.status !== "running" && run?.status !== "queued" && !(run?.status === "awaiting_hitl" && run?.gate && run.gate.id !== GATE_WEIGHT)) && (
+        <ArtifactView state={ws} what="가중치">
+          {(w) => {
+            const sorted = [...w.indicators].sort((a, b) => b.w_final - a.w_final);
+            const sum = w.indicators.reduce((s, i) => s + i.w_final, 0);
           /**
            * 🔴 `w_final` 은 산출물에 **소수 4자리로 반올림돼** 실린다(실측). 그래서 합에는
            *    지표 수만큼 반올림 오차가 쌓인다 — 실측 6지표에서 0.9999 다.
@@ -151,6 +154,7 @@ export default function Screen3Page() {
           );
         }}
       </ArtifactView>
+    )}
 
       <PageFooter screen={SCREEN} />
       <SourceNote
@@ -392,7 +396,42 @@ function Line({ k, v }: { k: string; v: string }) {
 
 /** 게이트가 안 열려 있을 때 **왜 안 열렸는지**를 말한다. 아래 표에 슬라이더가 없는
  *  이유는 "기능이 없어서" 가 아니라 "그 표가 답할 대상이 아니어서" 다. */
-function NoGateNotice({ status }: { status: string | null }) {
+function NoGateNotice({ run }: { run: RunDoc | null }) {
+  const status = run?.status;
+
+  if (status === "succeeded") {
+    return null; // 완료된 경우 산출물(ArtifactView)만 깔끔하게 보여줍니다.
+  }
+  
+  if (status === "running" || status === "queued") {
+    return (
+      <div className="flex flex-col items-center justify-center p-10 bg-blue-50/50 rounded-2xl border border-blue-100 text-center shadow-sm animate-in fade-in zoom-in-95 mt-5">
+        <div className="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin mb-4" />
+        <h3 className="text-base font-bold text-blue-900 mb-1">AI가 다음 분석을 위해 열심히 데이터를 처리하고 있습니다...</h3>
+        <p className="text-sm text-blue-700/80">우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다.</p>
+      </div>
+    );
+  }
+
+  if (status === "awaiting_hitl" && run?.gate) {
+    const target = gateScreen(run.gate.id);
+    if (target && target.no !== "3") {
+      return (
+        <div className="flex flex-col items-center justify-center p-8 bg-yellow-50 rounded-2xl border-2 border-yellow-300 text-center shadow-sm animate-in fade-in slide-in-from-bottom-4 mt-5">
+          <div className="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center mb-3">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-yellow-600"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+          <h3 className="text-base font-bold text-yellow-900 mb-2">다음 단계({target.name}) 분석이 완료되었습니다!</h3>
+          <p className="text-sm text-yellow-800/80 mb-5">AI가 다음 단계를 위한 제안을 준비했습니다. 확인을 위해 이동해주세요.</p>
+          <Link href={target.path} className="inline-flex items-center gap-2 px-6 py-3 bg-yellow-400 text-yellow-900 font-bold text-sm rounded-xl hover:bg-yellow-500 hover:-translate-y-0.5 transition-all shadow-md">
+            {target.name} 단계로 바로 이동하기
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </Link>
+        </div>
+      );
+    }
+  }
+
   return (
     <div className="mt-5 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px] leading-relaxed text-ink-secondary">
       <p className="font-medium text-ink">

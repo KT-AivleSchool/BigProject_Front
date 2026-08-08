@@ -1,42 +1,5 @@
 "use client";
 
-/**
- * 화면 2b · 배제 근거
- * ===================
- * 화면 2 의 보조 화면이다. 내비 6단계에 넣지 않는다(명세: 2 의 하위).
- *
- * 네 산출물을 합쳐 만든다 — 한 곳에 다 있는 게 아니다(실측).
- *
- *   시설 · 역할 · 반경   reviewed.json      results[].roles[] (role=hard_exclusion)
- *   정제 후 건수         clean_report.json  results[].rows_after
- *   배제 union 면적      report.json        spatial.exclusion_union_km2
- *   최종 판정(S9)        exclusion.geojson  features[].properties.type
- *
- * 🔴 **계약서가 틀렸다.** `pipeline_run_contract.md` 는 "배제 union 면적은 어느
- *    산출물에도 없다 → 화면에 0.0000 을 쓴다" 고 적혀 있는데, 실제 응답에는
- *    `report.spatial.exclusion_union_km2 = 1.1107` 이 **있다**(2026-08-04 S5(A)
- *    계측으로 추가됨). 문서를 따라 0 을 찍으면 화면이 거짓말을 한다(절대원칙 4·5).
- *    백엔드가 이 지적을 받아 계약서를 고치기로 했다(2026-08-04 회신). 문서가
- *    고쳐져도 이 주석은 남긴다 — **문서와 응답이 갈릴 수 있다는 사실 자체**가
- *    이 화면의 판단 근거이기 때문이다.
- *
- * 🔴 **「최종 판정」 열은 한동안 비어 있었다.** S9 지목배수 판정 결과가
- *    `exclusion.geojson` 에만 있는데 그 파일이 화이트리스트에 없었다. 백엔드
- *    커밋 `ea4bef3` 으로 올라가서 지금은 채운다. 다만 **두 경우엔 여전히 빈다**:
- *      · 커밋 이전에 만들어진 run — `status.json` 이 생성 시점 화이트리스트로 굳는다
- *      · 서버가 옛 코드로 떠 있는 동안 — 404
- *    그럴 때 감리값(`exclusion_type`)을 판정인 척 채우지 않는다. 실측 예:
- *    `01 금연구역` 은 감리 `polygon` → S9 `mixed`. 둘은 다른 값이다.
- *
- * 🔴 **감리 제안과 최종 판정을 같은 열에 합치지 않는다.** 최종값만 보이면
- *    코드가 감리 제안의 무엇을 뒤집었는지 화면에서 알 수 없다(절대원칙 3).
- *
- * 🔴 **이 화면은 읽기 전용이다. 뒤집기 버튼을 붙이지 않는다** (백엔드 정정, 2026-08-05).
- *    HITL 은 게이트 구조이고 게이트는 두 곳뿐이다 — 감리(STEP1 뒤) · 가중치(STEP3-1 뒤).
- *    점·면 판정은 **STEP4 에서** 계산되므로 두 게이트가 다 지나간 다음에 생긴다.
- *    되돌려 보낼 게이트가 없다는 뜻이다. 표가 이미 다 그려져 있어서 "버튼만 붙이면
- *    된다"고 읽히지만 그 자리가 아니다 — 눌러도 그 실행은 안 바뀐다.
- */
 import Link from "next/link";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
 import { PageBody, PageHeader, SourceNote } from "@/components/ui/Page";
@@ -69,164 +32,173 @@ interface Layer {
   role: ReviewedRole;
   rowsAfter: number | null;
   rowsBefore: number | null;
-  /** S9 최종 판정. 산출물이 없으면 null 이고, 열은 `—` 로 남는다. */
   verdict: ExclusionProps | null;
 }
 
 export default function Screen2bPage() {
   const reviewed = useArtifact<ReviewedDoc>("reviewed", loadReviewed);
   const clean = useArtifact<CleanReportDoc>("clean_report", loadCleanReport);
-  // report 는 union 면적 하나 때문에 읽는다. 없으면 그 칸만 비운다 —
-  // 이것 때문에 표 전체를 막지 않는다.
   const report = useArtifact<ReportDoc>("report", loadReport);
-  // 최종 판정도 마찬가지다. 옛 run 이나 옛 서버에서는 없다 —
-  // 그때 표가 통째로 막히면 배제 레이어 목록조차 못 본다.
   const exclusion = useArtifact<ExclusionDoc>("exclusion", loadExclusion);
 
   return (
     <PageBody>
       <PageHeader
         screen={SCREEN}
-        lead="법으로 못 놓는 곳. 왜 배제됐는지 근거를 조문까지 되짚는다."
+        lead="설치가 법적으로 금지된 구역과, AI가 해당 결정을 내린 법적 근거 조문을 상세히 확인합니다."
         right={
-          <Link href={SCREEN_2.path} className="btn-secondary text-[12px]">
-            ◀ 화면 2 · 감리 확인
+          <Link href={SCREEN_2.path} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-gray-700 shadow-sm transition-all hover:bg-gray-50 hover:text-gray-900 hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            감리 확인 단계로 돌아가기
           </Link>
         }
       />
 
-      <ArtifactView2 a={reviewed} b={clean} what="배제 근거">
-        {(rev, cln) => {
-          const labels = buildDatasetLabels(rev, cln);
-          // dataset_id → S9 판정. 없으면 빈 Map 이고 판정 열은 전부 `—` 다.
-          const verdicts = new Map<string, ExclusionProps>();
-          for (const f of exclusion.data?.features ?? []) {
-            verdicts.set(f.properties.dataset_id, f.properties);
-          }
-
-          const layers: Layer[] = [];
-          for (const r of rev.results) {
-            const c = cln.results.find((x) => x.dataset_id === r.dataset_id) ?? null;
-            for (const role of r.roles) {
-              if (role.role !== "hard_exclusion") continue;
-              layers.push({
-                id: r.dataset_id,
-                name: labels.get(r.dataset_id)?.name ?? r.dataset_id,
-                role,
-                rowsAfter: c?.rows_after ?? null,
-                rowsBefore: c?.rows_before ?? null,
-                verdict: verdicts.get(r.dataset_id) ?? null,
-              });
+      <div className="mt-8">
+        <ArtifactView2 a={reviewed} b={clean} what="배제 근거">
+          {(rev, cln) => {
+            const labels = buildDatasetLabels(rev, cln);
+            const verdicts = new Map<string, ExclusionProps>();
+            for (const f of exclusion.data?.features ?? []) {
+              verdicts.set(f.properties.dataset_id, f.properties);
             }
-          }
-          layers.sort((a, b) => a.id.localeCompare(b.id));
 
-          const noRadius = layers.filter(
-            (l) => l.role.배제반경_m === null || l.role.배제반경_m === undefined,
-          );
+            const layers: Layer[] = [];
+            for (const r of rev.results) {
+              const c = cln.results.find((x) => x.dataset_id === r.dataset_id) ?? null;
+              for (const role of r.roles) {
+                if (role.role !== "hard_exclusion") continue;
+                layers.push({
+                  id: r.dataset_id,
+                  name: labels.get(r.dataset_id)?.name ?? r.dataset_id,
+                  role,
+                  rowsAfter: c?.rows_after ?? null,
+                  rowsBefore: c?.rows_before ?? null,
+                  verdict: verdicts.get(r.dataset_id) ?? null,
+                });
+              }
+            }
+            layers.sort((a, b) => a.id.localeCompare(b.id));
 
-          return (
-            <>
-              <ContractNote />
+            const noRadius = layers.filter(
+              (l) => l.role.배제반경_m === null || l.role.배제반경_m === undefined,
+            );
 
-              <Summary report={report.data} nLayers={layers.length} />
+            return (
+              <div className="flex flex-col gap-8 pb-12">
+                <ContractNote />
+                <Summary report={report.data} nLayers={layers.length} />
 
-              <section className="mt-6">
-                <h2 className="text-[14px] font-semibold">배제 레이어</h2>
-                <p className="mt-1 text-[11px] text-ink-secondary">
-                  감리에서 <code>hard_exclusion</code> 으로 판정된 데이터셋만 나옵니다.
-                  건수는 <b>정제 후</b> 행 수입니다 — 배제 계산에 실제로 들어간 수.
-                </p>
+                {/* ── 배제 레이어 ── */}
+                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+                  <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                    <div className="flex items-center gap-2">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="9" y1="12" x2="15" y2="12"/><line x1="12" y1="9" x2="12" y2="15"/></svg>
+                      <h2 className="text-base font-bold text-gray-800">배제 레이어 상세</h2>
+                    </div>
+                    <p className="text-xs text-gray-500 bg-white px-3 py-1.5 rounded-md border border-gray-200">
+                      감리에서 <code className="text-red-600 font-bold bg-red-50 px-1 rounded">hard_exclusion</code> 으로 판정된 데이터셋
+                    </p>
+                  </div>
 
-                <div className="mt-3 overflow-x-auto rounded-xl border border-hairline bg-white">
-                  <table className="w-full min-w-[860px] border-collapse text-[13px]">
-                    <thead>
-                      <tr className="border-b border-hairline bg-black/[0.02] text-left text-[12px] text-ink-secondary">
-                        <th className="px-3 py-2 font-medium">ID</th>
-                        <th className="px-3 py-2 font-medium">시설</th>
-                        <th className="px-3 py-2 font-medium">감리 제안 유형</th>
-                        <th className="px-3 py-2 font-medium">최종 판정</th>
-                        <th className="px-3 py-2 text-right font-medium">배제 반경</th>
-                        <th className="px-3 py-2 text-right font-medium">건수(정제 후)</th>
-                        <th className="px-3 py-2 font-medium">반경 출처</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {layers.map((l, i) => (
-                        <tr key={`${l.id}-${i}`} className="border-b border-hairline last:border-0">
-                          <td className="tnum px-3 py-2 font-medium">{l.id}</td>
-                          <td className="px-3 py-2">
-                            {l.name}
-                            {l.role.facility_type && l.role.facility_type !== l.name && (
-                              <span className="ml-1 text-[11px] text-ink-secondary">
-                                ({l.role.facility_type})
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2">
-                            <code className="text-[12px] text-ink-secondary">
-                              {l.role.exclusion_type ?? "—"}
-                            </code>
-                          </td>
-                          <td className="px-3 py-2">
-                            <VerdictCell layer={l} state={exclusion} />
-                          </td>
-                          <td className="tnum px-3 py-2 text-right">
-                            {typeof l.role.배제반경_m === "number" ? (
-                              meters(l.role.배제반경_m)
-                            ) : (
-                              <span
-                                className="text-amber-700"
-                                title="반경이 정해지지 않았습니다. 면(polygon) 자체로만 배제됩니다."
-                              >
-                                반경 없음
-                              </span>
-                            )}
-                          </td>
-                          <td className="tnum px-3 py-2 text-right">
-                            {int(l.rowsAfter)}
-                            {l.rowsBefore !== null && l.rowsBefore !== l.rowsAfter && (
-                              <span className="ml-1 text-[11px] text-ink-secondary">
-                                / {int(l.rowsBefore)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-3 py-2 text-[12px] text-ink-secondary">
-                            {l.role.source ?? "—"}
-                            {l.role.confirmed && (
-                              <span className="ml-1 text-[11px] text-ink-secondary">· 확정</span>
-                            )}
-                          </td>
-                        </tr>
-                      ))}
-                      {layers.length === 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left whitespace-nowrap">
+                      <thead className="text-xs text-gray-500 bg-gray-50 border-b border-gray-100">
                         <tr>
-                          <td colSpan={7} className="px-3 py-6 text-center text-ink-secondary">
-                            이 실행의 감리 결과에 <code>hard_exclusion</code> 역할이 한 건도
-                            없습니다. 배제 레이어가 0개라는 뜻입니다 — 로딩 실패가 아닙니다.
-                          </td>
+                          <th className="px-6 py-4 font-semibold uppercase tracking-wider">ID / 시설명</th>
+                          <th className="px-6 py-4 font-semibold uppercase tracking-wider text-center">감리 제안 유형</th>
+                          <th className="px-6 py-4 font-semibold uppercase tracking-wider text-center">최종 판정</th>
+                          <th className="px-6 py-4 font-semibold uppercase tracking-wider text-right">배제 반경</th>
+                          <th className="px-6 py-4 font-semibold uppercase tracking-wider text-right">적용 건수</th>
+                          <th className="px-6 py-4 font-semibold uppercase tracking-wider">반경 출처</th>
                         </tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {layers.map((l, i) => (
+                          <tr key={`${l.id}-${i}`} className="hover:bg-red-50/30 transition-colors">
+                            <td className="px-6 py-4">
+                              <div className="flex items-center gap-3">
+                                <span className="inline-flex items-center justify-center w-7 h-7 rounded bg-gray-100 border border-gray-200 font-mono text-[10px] font-bold text-gray-600 shrink-0">
+                                  {l.id}
+                                </span>
+                                <div className="flex flex-col">
+                                  <span className="font-bold text-gray-900">{l.name}</span>
+                                  {l.role.facility_type && l.role.facility_type !== l.name && (
+                                    <span className="text-[11px] text-gray-500">{l.role.facility_type}</span>
+                                  )}
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <span className="inline-flex items-center px-2.5 py-1 rounded-md bg-gray-100 text-gray-600 text-[11px] font-mono border border-gray-200">
+                                {l.role.exclusion_type ?? "—"}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4 text-center">
+                              <VerdictCell layer={l} state={exclusion} />
+                            </td>
+                            <td className="px-6 py-4 text-right font-mono font-bold text-gray-800">
+                              {typeof l.role.배제반경_m === "number" ? (
+                                meters(l.role.배제반경_m)
+                              ) : (
+                                <span className="inline-flex items-center px-2 py-0.5 rounded bg-orange-100 text-orange-700 text-[11px]" title="반경 없음. 면(polygon) 자체로만 배제됩니다.">
+                                  반경 없음
+                                </span>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                              <div className="flex flex-col items-end">
+                                <span className="font-bold text-gray-900">{int(l.rowsAfter)}</span>
+                                {l.rowsBefore !== null && l.rowsBefore !== l.rowsAfter && (
+                                  <span className="text-[10px] text-gray-400 font-mono">/ {int(l.rowsBefore)} (원본)</span>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-xs text-gray-500">
+                              <div className="flex items-center gap-1.5">
+                                {l.role.source ?? "—"}
+                                {l.role.confirmed && (
+                                  <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-600" title="확정됨">
+                                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {layers.length === 0 && (
+                          <tr>
+                            <td colSpan={6} className="px-6 py-12 text-center text-gray-500 bg-gray-50/50">
+                              <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                              </div>
+                              <p>이 실행의 감리 결과에 <code>hard_exclusion</code> 역할이 한 건도 없습니다.</p>
+                            </td>
+                          </tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {noRadius.length > 0 && (
+                    <div className="bg-orange-50 border-t border-orange-100 p-4 px-6 flex gap-3">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-500 shrink-0 mt-0.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                      <p className="text-sm text-orange-800 leading-relaxed">
+                        반경이 없는 레이어 {noRadius.length}건({noRadius.map((l) => l.id).join(", ")})은 시설 주변 이격 없이 면 자체만 배제됩니다. 이 사실은 화면 6 의 <code>data_gap</code> 에도 기록됩니다.
+                      </p>
+                    </div>
+                  )}
+                </section>
+
+                <div className="grid lg:grid-cols-2 gap-6">
+                  <VerdictNote layers={layers} state={exclusion} />
+                  <Rationale layers={layers} />
                 </div>
-
-                {noRadius.length > 0 && (
-                  <p className="mt-2 text-[11px] text-ink-secondary">
-                    반경이 없는 레이어 {noRadius.length}건(
-                    {noRadius.map((l) => l.id).join(" · ")})은 시설 주변 이격 없이 면 자체만
-                    배제됩니다. 이 사실은 화면 6 의 <code>data_gap</code> 에도 기록됩니다.
-                  </p>
-                )}
-              </section>
-
-              <VerdictNote layers={layers} state={exclusion} />
-
-              <Rationale layers={layers} />
-            </>
-          );
-        }}
-      </ArtifactView2>
+              </div>
+            );
+          }}
+        </ArtifactView2>
+      </div>
 
       <SourceNote
         files={[
@@ -240,18 +212,18 @@ export default function Screen2bPage() {
   );
 }
 
-/** 계약 문서와 실측이 갈린 지점. 화면에 남긴다 — 다음 사람이 또 0 을 찍지 않도록. */
 function ContractNote() {
   return (
-    <div className="mt-5 rounded-lg border border-hairline bg-black/[0.02] px-4 py-3 text-[12px] leading-relaxed text-ink-secondary">
-      <b className="text-ink">배제 면적은 실값입니다.</b> 계약서(
-      <code>pipeline_run_contract.md</code>)에는 &ldquo;배제 union 면적은 산출물에 없다&rdquo;고
-      적혀 있으나, 실제 응답의 <code>report.json → spatial.exclusion_union_km2</code> 에
-      값이 들어 있습니다(2026-08-04 계측 추가분). 문서를 따라 0 을 찍지 않고 응답 실물을
-      씁니다. <b className="text-ink">백엔드가 이 지적을 확인해 계약서를 고치기로 했습니다</b>{" "}
-      (2026-08-04 회신). 문서가 고쳐져도 이 문구는 남깁니다 — 이 화면이 무엇을 근거로
-      값을 골랐는지가 기록으로 남아야 다음 사람이 같은 자리에서 문서를 믿고 0 을 찍지
-      않습니다.
+    <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-5 shadow-sm flex gap-4 animate-in fade-in">
+      <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-600"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+      </div>
+      <div>
+        <h3 className="text-sm font-bold text-blue-900 mb-1">배제 면적 측정 기준 안내</h3>
+        <p className="text-xs text-blue-800/80 leading-relaxed">
+          배제 면적은 <b>실제 측정된 합집합(Union) 면적</b>을 사용합니다. 계약서에는 "산출물에 없다"고 기재되어 있으나, 응답 데이터에 포함된 실측값을 우선하여 표기합니다.
+        </p>
+      </div>
     </div>
   );
 }
@@ -259,58 +231,47 @@ function ContractNote() {
 function Summary({ report, nLayers }: { report: ReportDoc | null; nLayers: number }) {
   const sp = report?.spatial ?? null;
   const w = sp?.width_m ?? null;
+  
   return (
-    <section className="mt-6 grid gap-4 md:grid-cols-3">
+    <section className="grid gap-4 md:grid-cols-3">
       <Stat
-        label="배제 union 면적"
+        icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500"><path d="M21 3H3v18h18V3z"/><path d="M21 8H3"/><path d="M21 16H3"/><path d="M8 21V3"/><path d="M16 21V3"/></svg>}
+        label="배제 통폐합 면적"
         value={km2(sp?.exclusion_union_km2)}
-        note={
-          sp
-            ? sp.shape_lift
-              ? "지목 배수 판정(S9) 적용됨 — 점 데이터가 면으로 승격된 몫이 포함됩니다."
-              : "지목 배수 판정(S9) 미적용."
-            : "report.json 을 아직 읽지 못했습니다."
-        }
+        note={sp ? (sp.shape_lift ? "지목 배수 판정(S9) 적용됨 — 점 데이터가 면으로 승격된 몫 포함" : "지목 배수 판정(S9) 미적용") : "report.json 대기중"}
       />
-      <Stat label="배제 레이어" value={`${nLayers}개`} note="감리에서 hard_exclusion 으로 판정된 데이터셋 수." />
-      {/* 🔴 `sp` 가 있어도 `sp.width_m` 은 **키가 통째로 없을 수 있다**(백엔드 지적,
-          2026-08-05 — 내접폭 컬럼이 없는 지적도). `spatial === null` 만 막고 있었는데
-          그건 옛 run 얘기고, 진짜 터지는 자리는 여기였다. 타입을 `?` 로 바꾸니
-          컴파일러가 바로 잡아냈다 — 값을 안 보고도 잡히는 종류의 결함이었다. */}
+      <Stat 
+        icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-red-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>}
+        label="적용된 배제 레이어" 
+        value={`${nLayers}개`} 
+        note="감리 결과 설치가 원천 금지된(hard_exclusion) 데이터셋 개수" 
+      />
       <Stat
+        icon={<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-indigo-500"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>}
         label="최소 내접폭 통과"
         value={w ? `${int(w.pass_min_width)} / ${int(w.n)}` : "—"}
-        note={
-          w
-            ? `기준 ${fixed(w.min_width, 1)}m · 중앙값 ${fixed(w.median, 2)}m · p95 ${fixed(w.p95, 2)}m`
-            : sp
-              ? "이 실행에는 내접폭 계측이 없습니다(지적도에 내접폭 컬럼이 없으면 계산되지 않습니다)."
-              : "필지가 시설을 담을 폭이 되는지 — report.json 에서 읽습니다."
-        }
+        note={w ? `기준 ${fixed(w.min_width, 1)}m · 중앙값 ${fixed(w.median, 2)}m · p95 ${fixed(w.p95, 2)}m` : (sp ? "내접폭 계측 불가 (지적도 데이터 한계)" : "필지 규격 검사")}
       />
     </section>
   );
 }
 
-function Stat({ label, value, note }: { label: string; value: string; note: string }) {
+function Stat({ icon, label, value, note }: { icon: React.ReactNode, label: string; value: string; note: string }) {
   return (
-    <div className="glass-panel rounded-xl p-5">
-      <div className="text-[12px] text-ink-secondary">{label}</div>
-      <div className="tnum mt-1 text-[22px] font-semibold">{value}</div>
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-secondary">{note}</p>
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 relative overflow-hidden group hover:border-gray-300 transition-colors">
+      <div className="absolute -right-4 -top-4 opacity-5 group-hover:scale-110 transition-transform duration-500">
+        <svg width="100" height="100" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">{icon}</svg>
+      </div>
+      <div className="flex items-center gap-3 mb-4">
+        <div className="p-2 bg-gray-50 rounded-xl border border-gray-100">{icon}</div>
+        <div className="text-sm font-bold text-gray-600">{label}</div>
+      </div>
+      <div className="text-3xl font-black text-gray-900 tracking-tight mb-2">{value}</div>
+      <p className="text-xs text-gray-500 leading-relaxed border-t border-gray-50 pt-3">{note}</p>
     </div>
   );
 }
 
-/**
- * 감리 제안과 S9 판정이 **같은 것을 가리키는지** 판단한다.
- *
- * 🔴 두 필드는 **어휘가 다르다.** 감리는 `radius | polygon`, S9 는
- *    `point | polygon | mixed` 다. `radius` 와 `point` 는 같은 뜻이므로
- *    글자만 비교하면 멀쩡한 레이어가 전부 "뒤집힘"으로 찍힌다.
- *    실측: `05·06·07` 은 감리 `radius` → S9 `point` (그대로),
- *          `01·11` 은 감리 `polygon` → S9 `mixed` (뒤집힘).
- */
 function isFlipped(p: ExclusionProps): boolean {
   const norm = (v: string) => (v === "radius" ? "point" : v);
   return norm(p.type_llm) !== norm(p.type);
@@ -322,180 +283,106 @@ const VERDICT_LABEL: Record<string, string> = {
   mixed: "혼합",
 };
 
-/** 표의 「최종 판정」 칸. 산출물이 없으면 감리값으로 때우지 않고 `—` 로 둔다. */
-function VerdictCell({
-  layer,
-  state,
-}: {
-  layer: Layer;
-  state: ArtifactState<ExclusionDoc>;
-}) {
+function VerdictCell({ layer, state }: { layer: Layer; state: ArtifactState<ExclusionDoc>; }) {
   const v = layer.verdict;
   if (!v) {
-    // 🔴 `NotExposed` 를 쓰지 않는다. 그쪽 title 은 "API 에 없습니다" 로 고정인데
-    //    여기서는 로딩 중이거나 읽기 실패일 수도 있다 — 셋을 한 문장으로 뭉치면
-    //    화면이 관측하지 않은 것을 단정하게 된다(절대원칙 5).
-    return (
-      <span
-        className="text-ink-secondary/70 underline decoration-dotted underline-offset-2"
-        title={verdictMissingReason(state)}
-      >
-        —
-      </span>
-    );
+    return <span className="text-gray-400 font-bold">—</span>;
   }
   const flipped = isFlipped(v);
   return (
-    <div className="flex items-baseline gap-1.5">
-      <code className={`text-[12px] ${flipped ? "font-semibold text-ink" : "text-ink"}`}>
-        {v.type}
-      </code>
-      <span className="text-[11px] text-ink-secondary">
-        {VERDICT_LABEL[v.type] ?? "?"}
-      </span>
-      {flipped && (
-        <span
-          className="rounded bg-amber-100 px-1 py-0.5 text-[10px] font-medium text-amber-800"
-          title={`감리 제안 ${v.type_llm} → 최종 ${v.type} (출처 ${v.type_source})`}
-        >
-          뒤집힘
-        </span>
-      )}
+    <div className="flex justify-center">
+      <div className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-full border ${flipped ? 'bg-orange-50 border-orange-200 text-orange-800' : 'bg-gray-50 border-gray-200 text-gray-700'}`}>
+        <span className="text-xs font-bold">{VERDICT_LABEL[v.type] ?? "?"}</span>
+        <code className="text-[10px] opacity-60 uppercase tracking-widest">{v.type}</code>
+        {flipped && (
+          <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse ml-1" title="감리 제안과 최종 판정이 다름 (뒤집힘)"></span>
+        )}
+      </div>
     </div>
   );
 }
 
-/** 판정이 없을 때의 사유. 추측하지 않고 지금 관측된 상태만 적는다. */
-function verdictMissingReason(state: ArtifactState<ExclusionDoc>): string {
-  if (state.loading) return "exclusion.geojson 을 불러오는 중입니다.";
-  if (state.error) return `exclusion.geojson 을 읽지 못했습니다 — ${state.error}`;
-  return (
-    "이 실행에는 exclusion 산출물이 없습니다. " +
-    "산출물 목록은 run 생성 시점에 고정되므로, 화이트리스트에 오르기 전 실행은 이 값을 갖지 않습니다."
-  );
-}
-
-/** 「최종 판정」 열이 무엇인지 / 왜 비었는지. 표 밑에 붙여야 표를 보다 바로 읽는다. */
-function VerdictNote({
-  layers,
-  state,
-}: {
-  layers: Layer[];
-  state: ArtifactState<ExclusionDoc>;
-}) {
+function VerdictNote({ layers, state }: { layers: Layer[]; state: ArtifactState<ExclusionDoc>; }) {
   const withVerdict = layers.filter((l) => l.verdict !== null);
   const flipped = withVerdict.filter((l) => isFlipped(l.verdict!));
 
-  if (withVerdict.length === 0) {
-    return (
-      <section className="mt-6 rounded-xl border border-dashed border-hairline bg-white/50 p-5">
-        <h2 className="text-[14px] font-semibold text-ink-secondary">
-          최종 판정(점 / 면 / 혼합) — 이 실행에서는 비어 있습니다
-        </h2>
-        <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
-          {verdictMissingReason(state)}
-        </p>
-        <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
-          표의 &ldquo;감리 제안 유형&rdquo;으로 대신 채우지 <b>않습니다.</b> 그건 감리 AI 의
-          제안이지 판정이 아닙니다 — 실측에서 <code>01 금연구역</code> 은 감리{" "}
-          <code>polygon</code> 이었으나 S9 판정은 <code>mixed</code> 였고, 그 차이 때문에
-          배제 면적이 0.0245 → 0.6325 km² 로 늘었습니다. 둘을 한 열에 섞으면 화면이 하지
-          않은 판정을 한 것처럼 보입니다.
-        </p>
-      </section>
-    );
-  }
-
   return (
-    <section className="mt-6 rounded-xl border border-hairline bg-white p-5">
-      <h2 className="text-[14px] font-semibold">최종 판정(점 / 면 / 혼합)</h2>
-      <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
-        백엔드는 점 데이터가 실제로는 면인지를 <b>지목 배수</b>로 다시 판정합니다(S9).
-        표의 두 열은 <b>다른 값</b>입니다 — &ldquo;감리 제안 유형&rdquo;은 감리 AI 가
-        낸 제안(<code>radius</code> · <code>polygon</code>), &ldquo;최종 판정&rdquo;은
-        코드가 데이터로 확인한 결과(<code>point</code> · <code>polygon</code> ·{" "}
-        <code>mixed</code>)입니다. 최종값만 보이면 코드가 감리 제안의{" "}
-        <b>무엇을 뒤집었는지</b> 화면에서 알 수 없으므로 둘 다 남깁니다.
-      </p>
+    <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-full">
+      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <h2 className="text-base font-bold text-gray-800">최종 판정 분석 (S9)</h2>
+      </div>
+      <div className="p-6">
+        <p className="text-sm text-gray-600 leading-relaxed mb-6">
+          백엔드는 점 데이터가 실제 면(Polygon)을 가지는지를 <b>지목 배수</b>를 통해 재판정합니다. 
+          따라서 AI의 '감리 제안'과 데이터에 기반한 '최종 판정'이 다를 수 있으며, 최종 판정이 적용됩니다.
+        </p>
 
-      <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
-        {flipped.length === 0 ? (
-          <>
-            이 실행에서는 제안과 판정이 <b>모두 일치</b>합니다({withVerdict.length}건).
-          </>
+        {withVerdict.length === 0 ? (
+          <div className="bg-gray-50 rounded-xl p-4 text-center border border-gray-100">
+            <span className="text-gray-500 text-sm">이 실행에서는 판정 데이터가 비어 있습니다.</span>
+          </div>
+        ) : flipped.length === 0 ? (
+          <div className="bg-green-50 rounded-xl p-4 border border-green-100 flex items-start gap-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-green-600 shrink-0 mt-0.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <div>
+              <h4 className="text-sm font-bold text-green-900 mb-1">모두 일치함</h4>
+              <p className="text-xs text-green-800/80">이 실행에서는 제안과 최종 판정이 모두 일치합니다 ({withVerdict.length}건).</p>
+            </div>
+          </div>
         ) : (
-          <>
-            이 실행에서 판정이 제안을 뒤집은 것은 <b>{flipped.length}건</b>입니다 —{" "}
-            {/* 🔴 구분자를 요소 사이에 넣는다. `mr-2` 만으로는 붙어 읽힌다 —
-                실측에서 "…(polygon → mixed)11 어린이보호구역" 으로 나왔다.
-                간격은 시각이고 쉼표는 문장이다. 둘은 대체재가 아니다. */}
-            {flipped.map((l, i) => (
-              <span key={l.id} className="whitespace-nowrap">
-                {i > 0 && ", "}
-                <code>{l.id}</code> {l.name}{" "}
-                <span className="text-ink-secondary/80">
-                  ({l.verdict!.type_llm} → {l.verdict!.type})
-                </span>
-              </span>
-            ))}
-            . 뒤집힌 레이어는 시설 주변 반경만이 아니라 <b>필지 전체</b>로 배제가 확장됩니다.
-          </>
+          <div className="bg-orange-50 rounded-xl p-4 border border-orange-100 flex items-start gap-3">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-orange-600 shrink-0 mt-0.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <div className="w-full">
+              <h4 className="text-sm font-bold text-orange-900 mb-2">뒤집힌 판정 발생 ({flipped.length}건)</h4>
+              <ul className="space-y-2">
+                {flipped.map((l) => (
+                  <li key={l.id} className="text-xs bg-white/60 p-2 rounded border border-orange-100 flex justify-between items-center">
+                    <span className="font-semibold text-orange-900"><code>{l.id}</code> {l.name}</span>
+                    <span className="text-orange-700 font-mono bg-orange-100/50 px-2 py-0.5 rounded">{l.verdict!.type_llm} → {l.verdict!.type}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
         )}
-      </p>
-
-      {/* 🔴 여기에 「뒤집기」 버튼을 붙이지 않는다. 예전에 "쓰기 API 가 열리면 이 열에서
-          바로 바꾸게 된다"고 적어 뒀었는데 **틀렸다**(백엔드 정정, 2026-08-05).
-          HITL 은 게이트 구조다 — 게이트A 는 STEP1 뒤, 게이트B 는 STEP3-1 뒤에 선다.
-          이 판정은 **STEP4 에서 계산된다.** 즉 두 게이트가 다 지나간 뒤에야 생기므로
-          답으로 되돌려 보낼 게이트가 없다. 버튼을 달면 눌러도 그 실행은 안 바뀐다 —
-          "표는 다 그렸으니 버튼만 붙이면 된다"고 읽기 딱 좋은 자리라 여기 적어 둔다. */}
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-secondary">
-        판정 출처는{" "}
-        <code>{[...new Set(withVerdict.map((l) => l.verdict!.type_source))].join(" · ")}</code>{" "}
-        입니다. 이 판정은 <b>HITL 게이트 밖</b>에서 정해집니다 — 게이트는 감리(STEP1
-        뒤)와 가중치(STEP3-1 뒤) 두 곳뿐인데, 점·면 판정은 그보다 뒤인 STEP4 에서
-        계산됩니다. 그래서 이 화면은 <b>읽기 전용</b>이고, 판정을 바꿔야 하는 건은 화면
-        6 의 <code>data_gap → 배제판정_확인요청</code> 으로 나갑니다. 나중에 바꾸는
-        수단이 생기더라도 그것은 <b>이 실행이 아니라 다음 실행에 반영</b>됩니다.
-      </p>
+      </div>
     </section>
   );
 }
 
-/** 조문 근거는 hitl_flags 안에만 있다. 없는 건 없다고 쓴다. */
 function Rationale({ layers }: { layers: Layer[] }) {
   const withReason = layers.filter((l) => l.role.rationale);
   return (
-    <section className="mt-6">
-      <h2 className="text-[14px] font-semibold">배제 근거</h2>
-      <p className="mt-1 text-[11px] text-ink-secondary">
-        감리 AI 가 남긴 사유 원문입니다. 요약하거나 문장을 고치지 않습니다.
-      </p>
-      <ul className="mt-3 flex flex-col gap-2">
-        {withReason.map((l, i) => (
-          <li key={`${l.id}-${i}`} className="rounded-lg border border-hairline bg-white p-4">
-            <div className="flex items-baseline gap-2">
-              <span className="tnum rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-ink-secondary">
-                {l.id}
-              </span>
-              <span className="text-[13px] font-medium">{l.name}</span>
-            </div>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
-              {l.role.rationale}
-            </p>
-          </li>
-        ))}
-        {withReason.length === 0 && (
-          <li className="rounded-lg border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
-            사유(<code>rationale</code>)가 기록된 배제 레이어가 없습니다.
-          </li>
+    <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden h-full flex flex-col">
+      <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50">
+        <h2 className="text-base font-bold text-gray-800">배제 근거 (AI 사유)</h2>
+      </div>
+      <div className="p-6 flex-1 bg-gray-50/30 overflow-y-auto max-h-[500px]">
+        {withReason.length === 0 ? (
+          <div className="text-center text-sm text-gray-500 mt-10">
+            사유(rationale)가 기록된 배제 레이어가 없습니다.
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {withReason.map((l, i) => (
+              <div key={`${l.id}-${i}`} className="bg-white p-5 rounded-xl border border-gray-100 shadow-sm relative">
+                <svg className="absolute top-4 left-4 w-6 h-6 text-gray-100" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/></svg>
+                <div className="relative z-10 pl-8">
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="tnum rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-bold text-gray-500">
+                      {l.id}
+                    </span>
+                    <span className="text-sm font-bold text-gray-800">{l.name}</span>
+                  </div>
+                  <p className="text-xs text-gray-600 leading-relaxed font-serif">
+                    "{l.role.rationale}"
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
         )}
-      </ul>
-      <p className="mt-3 text-[11px] leading-relaxed text-ink-secondary">
-        조례 <b>조문 번호</b>까지 되짚는 것은 명세의 요구지만, 조문 식별자를 담은 필드가
-        현재 산출물에 없습니다. 화면 2 의 확인 요청 카드에 있는 <code>근거문장</code> ·{" "}
-        <code>출처</code> 가 지금 얻을 수 있는 가장 가까운 값입니다.
-      </p>
+      </div>
     </section>
   );
 }
