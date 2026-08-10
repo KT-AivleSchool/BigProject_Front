@@ -59,6 +59,18 @@ const nextConfig: NextConfig = {
         source: "/api/v1/auth/:path*",
         destination: `${API_ORIGIN}/api/v1/auth/:path*`,
       },
+      /**
+       * 화면 1 업로드(2026-08-09 백엔드 재작성). 라우트 7개.
+       *
+       * 🔴 `bodySizeLimit` 을 여기서 안 건다 — 업로드는 rewrite 프록시를 그냥
+       *    지나가고(Route Handler 가 아니다) 크기 제한은 백엔드가 정한다.
+       *    프런트가 별도 상한을 두면 백엔드가 받아주는 파일을 프런트가 먼저
+       *    거절하고, 그 거절 문구는 백엔드 정책과 어긋난다.
+       */
+      {
+        source: "/api/v1/upload/:path*",
+        destination: `${API_ORIGIN}/api/v1/upload/:path*`,
+      },
     ];
   },
 };

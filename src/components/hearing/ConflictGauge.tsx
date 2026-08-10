@@ -3,9 +3,26 @@ import React from "react";
 interface ConflictGaugeProps {
   score: number;
   label: string;
+  /**
+   * 백엔드가 실제로 준 값. `css_pro`/`css_con` 은 **`LOW`/`MEDIUM`/`HIGH` 문자열**이고
+   * 숫자가 아니다(`app/core/sim_ai/graph.py:27-28`).
+   *
+   * 🔴 그래서 `score` 는 **바늘 위치일 뿐 점수가 아니다.** 예전엔 이 자리에
+   *    `Math.random()` 으로 만든 두 자리 숫자를 "N 점" 이라고 찍었다 — 서버가 보낸
+   *    적 없는 정밀도다(원칙 4). 값을 준 쪽이 등급만 말했으면 화면도 등급만 말한다.
+   *    `level` 이 오면 숫자 대신 등급을 쓴다.
+   */
+  level?: string;
 }
 
-export function ConflictGauge({ score, label }: ConflictGaugeProps) {
+/** 등급 → 한국어. 모르는 값은 **그대로 보여준다**(뭉개면 새 등급이 생긴 날 사라진다). */
+const LEVEL_KO: Record<string, string> = {
+  LOW: "낮음",
+  MEDIUM: "보통",
+  HIGH: "높음",
+};
+
+export function ConflictGauge({ score, label, level }: ConflictGaugeProps) {
   // 0~100 사이로 값 제한
   const safeScore = Math.min(Math.max(score, 0), 100);
   
@@ -92,8 +109,18 @@ export function ConflictGauge({ score, label }: ConflictGaugeProps) {
         </svg>
       </div>
       <div className="mt-2 text-center">
-        <span className={`tnum text-[28px] font-bold ${scoreColorClass}`}>{Math.round(safeScore)}</span>
-        <span className="ml-1 text-[14px] font-medium text-ink-secondary">점</span>
+        {level ? (
+          <>
+            <span className={`text-[28px] font-bold ${scoreColorClass}`}>
+              {LEVEL_KO[level] ?? level}
+            </span>
+            <span className="ml-2 align-middle font-mono text-[11px] text-ink-secondary">
+              {level}
+            </span>
+          </>
+        ) : (
+          <span className="text-[15px] font-medium text-ink-secondary">— 대기 중</span>
+        )}
       </div>
     </div>
   );
