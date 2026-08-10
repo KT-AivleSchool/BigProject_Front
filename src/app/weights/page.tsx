@@ -75,14 +75,15 @@ export default function Screen3Page() {
         lead="최종 분석에 반영할 지표별 중요도를 설정하는 단계입니다. 지표의 가중치를 조정하여 분석 결과를 세밀하게 제어할 수 있습니다."
       />
 
-      {gate ? (
-        <WeightGate gate={gate} runId={run!.run_id} labels={labels} />
-      ) : (
-        <NoGateNotice run={run ?? null} />
-      )}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4">
+        {gate ? (
+          <WeightGate gate={gate} runId={run!.run_id} labels={labels} />
+        ) : (
+          <NoGateNotice run={run ?? null} />
+        )}
 
-      {(!gate && run?.status !== "running" && run?.status !== "queued" && !(run?.status === "awaiting_hitl" && run?.gate && run.gate.id !== GATE_WEIGHT)) && (
-        <ArtifactView state={ws} what="가중치">
+        {(!gate && run?.status !== "running" && run?.status !== "queued" && !(run?.status === "awaiting_hitl" && run?.gate && run.gate.id !== GATE_WEIGHT)) && (
+          <ArtifactView state={ws} what="가중치">
           {(w) => {
             const sorted = [...w.indicators].sort((a, b) => b.w_final - a.w_final);
             const sum = w.indicators.reduce((s, i) => s + i.w_final, 0);
@@ -100,31 +101,24 @@ export default function Screen3Page() {
           return (
             <>
               <section className="mt-6 grid gap-4 md:grid-cols-4">
-                <Stat label="지표" value={`${w.indicators.length}개`} note="점수를 만드는 축의 수." />
+                <Stat label="지표" value={`${w.indicators.length}개`} />
                 <Stat
                   label="가중치 합"
                   value={fixed(sum, 4)}
                   note={
                     sumOk
-                      ? `1 로 정규화돼 있습니다. (표기가 소수 4자리라 합이 정확히 1 은 아닙니다 — 허용 ±${fixed(sumTol, 5)})`
+                      ? undefined
                       : `🔴 1 이 아닙니다(오차 ${fixed(Math.abs(sum - 1), 5)} > 반올림 허용 ${fixed(sumTol, 5)}). 정규화가 안 된 상태이거나 지표가 빠졌습니다.`
                   }
                 />
                 <Stat
                   label="사람 : 데이터"
                   value={`${fixed(1 - w.alpha, 2)} : ${fixed(w.alpha, 2)}`}
-                  note={`w_final = (1-α)·w_human + α·w_critic, α=${fixed(w.alpha, 2)}. α 가 클수록 데이터(CRITIC)가 이깁니다.`}
                 />
-                {/* `candidate_unit` 은 단위 명사가 아니라 설명 문장이다(실측:
-                    "candidates 레이어 1행 (Point)"). 숫자 뒤에 붙이면 "42,216 candidates
-                    레이어 1행 (Point)" 처럼 읽힌다. 숫자는 숫자대로, 설명은 설명줄로 뺀다. */}
                 <Stat
-                  label="후보"
+                  label="후보 수"
                   value={int(w.n_candidates)}
-                  note={
-                    `1개 = ${w.candidate_unit}.` +
-                    (report.data ? ` 점수화 후 생존 ${int(report.data.counts.survive)}개 (화면 4)` : "")
-                  }
+                  note={report.data ? `점수 산정 후 최종 생존: ${int(report.data.counts.survive)}개` : undefined}
                 />
               </section>
 
@@ -134,7 +128,7 @@ export default function Screen3Page() {
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <h2 className="text-[14px] font-semibold">지표별 가중치</h2>
                   <p className="text-[11px] text-ink-secondary">
-                    가중치가 큰 순. 막대 길이는 <b>w_final</b> 기준입니다.
+                    가중치가 큰 순. 막대 길이는 <b>최종 가중치(w_final)</b> 기준입니다.
                   </p>
                 </div>
                 <ul className="mt-3 flex flex-col gap-2">
@@ -150,20 +144,43 @@ export default function Screen3Page() {
               </section>
 
               <Method w={w} />
+
+              <Method w={w} />
             </>
           );
         }}
       </ArtifactView>
-    )}
+      )}
+      </div>
+
+      {!gate && run?.status === "succeeded" && (
+        <div className="shrink-0 mt-4">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-200 bg-emerald-50/30 p-5 rounded-2xl shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-pulse">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+              </div>
+              <div className="flex flex-col">
+                <span className="text-[14px] font-bold text-emerald-900">
+                  가중치 계산이 완료되었습니다
+                </span>
+                <span className="text-[13px] text-emerald-700/80">
+                  다음 단계에서 후보 위치의 점수를 산정하고 최적 위치를 선정합니다.
+                </span>
+              </div>
+            </div>
+            <Link
+              href="/sites"
+              className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 active:scale-95"
+            >
+              위치 선정 단계로 이동하기
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </Link>
+          </div>
+        </div>
+      )}
 
       <PageFooter screen={SCREEN} />
-      <SourceNote
-        files={[
-          "status.json 의 gate (게이트B)",
-          "weight_set.json",
-          "reviewed.json · clean_report.json (지표 이름)",
-        ]}
-      />
     </PageBody>
   );
 }
@@ -179,145 +196,155 @@ function IndicatorRow({
 }) {
   const pct = max > 0 ? (ind.w_final / max) * 100 : 0;
   const cost = ind.direction === "cost";
+  const excluded = ind.sparse_excluded;
 
   return (
     <li
-      className={`rounded-lg border p-4 ${
-        ind.sparse_excluded ? "border-hairline bg-black/[0.02] opacity-70" : "border-hairline bg-white"
+      className={`group relative overflow-hidden rounded-2xl border transition-all hover:shadow-md ${
+        excluded ? "border-gray-200 bg-gray-50/50 opacity-70 grayscale" : "border-gray-200 bg-white hover:border-blue-300"
       }`}
     >
-      <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
-        <div className="flex items-baseline gap-2">
-          <span className="tnum rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] font-medium text-ink-secondary">
-            {ind.id}
-          </span>
-          <span className="text-[14px] font-medium">{name}</span>
-          <span
-            className={`rounded px-1.5 py-0.5 text-[11px] font-medium ${
-              cost ? "bg-red-50 text-red-700" : "bg-emerald-50 text-emerald-700"
-            }`}
-            title={
-              cost
-                ? "cost — 값이 클수록 점수가 낮아집니다(반전 적용)."
-                : "benefit — 값이 클수록 점수가 높아집니다."
-            }
-          >
-            {cost ? "낮을수록 좋음 (cost)" : "높을수록 좋음 (benefit)"}
-          </span>
-          {ind.sparse_excluded && (
-            <span className="rounded bg-black/[0.06] px-1.5 py-0.5 text-[11px] text-ink-secondary">
-              희소로 제외됨
+      <div className="p-5">
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
+          <div className="flex items-center gap-3">
+            <span className={`inline-flex h-7 items-center justify-center rounded-lg px-2.5 font-mono text-xs font-bold shadow-sm ${
+              excluded ? "bg-gray-200 text-gray-600" : cost ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"
+            }`}>
+              {ind.id}
             </span>
-          )}
+            <span className="text-base font-bold text-gray-900 tracking-tight">{name}</span>
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider ${
+                cost ? "bg-red-50 text-red-700 border border-red-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100"
+              }`}
+              title={
+                cost
+                  ? "cost — 값이 클수록 점수가 낮아집니다(반전 적용)."
+                  : "benefit — 값이 클수록 점수가 높아집니다."
+              }
+            >
+              {cost ? <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M2 12h20"/><path d="m12 5-7 7 7 7"/></svg> 낮을수록 좋음 (cost)</> : <><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M2 12h20"/><path d="m12 5 7 7-7-7"/></svg> 높을수록 좋음 (benefit)</>}
+            </span>
+            {excluded && (
+              <span className="rounded-full bg-gray-200 px-2 py-1 text-[11px] font-bold text-gray-600">
+                희소 제외
+              </span>
+            )}
+          </div>
+          <div className="flex items-baseline gap-1 text-right">
+            <span className="text-xs font-bold uppercase text-gray-400">최종 가중치</span>
+            <b className={`text-2xl font-black ${excluded ? "text-gray-500" : "text-blue-600"}`}>
+              {fixed(ind.w_final, 4)}
+            </b>
+          </div>
         </div>
-        <div className="tnum text-[13px]">
-          <b className="text-[16px]">{fixed(ind.w_final, 4)}</b>
-          <span className="ml-1 text-[11px] text-ink-secondary">w_final</span>
+
+        <div className="mt-4 relative h-3.5 w-full overflow-hidden rounded-full bg-gray-100 shadow-inner">
+          <div
+            className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out ${
+              excluded
+                ? "bg-gray-400"
+                : cost
+                  ? "bg-gradient-to-r from-red-400 to-red-500 shadow-[0_0_10px_rgba(239,68,68,0.5)]"
+                  : "bg-gradient-to-r from-emerald-400 to-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]"
+            }`}
+            style={{ width: `${pct}%` }}
+          />
         </div>
+
+        <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Cell k="전문가 (w_human)" v={fixed(ind.w_human, 4)} sub={ind.w_human_source} />
+          <Cell
+            k="데이터 (w_critic)"
+            v={fixed(ind.w_critic, 4)}
+            sub={
+              ind.w_critic_ci
+                ? `95% CI ${fixed(ind.w_critic_ci.ci_low, 4)}–${fixed(ind.w_critic_ci.ci_high, 4)}`
+                : "CRITIC 미산출"
+            }
+          />
+          <Cell k="집계 반경" v={meters(ind.radius_m)} sub={ind.radius_source} />
+          <Cell k="방향 출처" v={ind.direction_source} sub={ind.direction_llm ?? undefined} />
+        </div>
+
+        {(ind.direction_conflict || ind.radius_rationale || ind.seed_rationale) && (
+          <div className="mt-4 flex flex-col gap-2 rounded-xl bg-gray-50 p-4 border border-gray-100 text-sm">
+            {ind.direction_conflict && (
+              <p className="flex items-start gap-2 text-amber-800">
+                <svg className="mt-0.5 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                <span><strong>방향 충돌:</strong> {ind.direction_conflict}</span>
+              </p>
+            )}
+            {ind.radius_rationale && (
+              <p className="text-gray-600">
+                <strong className="text-gray-700">반경 근거:</strong> {ind.radius_rationale}
+              </p>
+            )}
+            {ind.seed_rationale && (
+              <p className="text-gray-600">
+                <strong className="text-gray-700">가중치 근거:</strong> {ind.seed_rationale}
+              </p>
+            )}
+          </div>
+        )}
       </div>
-
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-black/[0.06]">
-        <div
-          className={`h-full rounded-full ${cost ? "bg-red-400" : "bg-primary"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-
-      <dl className="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[12px]">
-        <Cell k="사람 w_human" v={fixed(ind.w_human, 4)} sub={ind.w_human_source} />
-        {/* 🔴 희소 제외 지표는 w_critic·CI 가 **null 이다**(실측 09).
-            없는 값을 0 으로 찍으면 "데이터가 0 이라고 판단했다"는 거짓말이 된다. */}
-        <Cell
-          k="데이터 w_critic"
-          v={fixed(ind.w_critic, 4)}
-          sub={
-            ind.w_critic_ci
-              ? `95% CI ${fixed(ind.w_critic_ci.ci_low, 4)}–${fixed(ind.w_critic_ci.ci_high, 4)}`
-              : "CRITIC 미산출"
-          }
-        />
-        <Cell k="집계 반경" v={meters(ind.radius_m)} sub={ind.radius_source} />
-        <Cell k="방향 출처" v={ind.direction_source} sub={ind.direction_llm ?? undefined} />
-      </dl>
-
-      {ind.direction_conflict && (
-        <p className="mt-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-900">
-          방향 충돌: {ind.direction_conflict}
-        </p>
-      )}
-      {ind.radius_rationale && (
-        <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
-          반경 근거 · {ind.radius_rationale}
-        </p>
-      )}
-      {ind.seed_rationale && (
-        <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
-          가중치 근거 · {ind.seed_rationale}
-        </p>
-      )}
     </li>
   );
 }
 
 function Cell({ k, v, sub }: { k: string; v: string; sub?: string }) {
   return (
-    <div>
-      <dt className="text-[11px] text-ink-secondary">{k}</dt>
-      <dd className="tnum font-medium">
+    <div className="flex flex-col justify-center rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{k}</dt>
+      <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 font-mono text-sm font-semibold text-gray-900">
         {v}
-        {sub && <span className="ml-1 text-[11px] font-normal text-ink-secondary">{sub}</span>}
+        {sub && <span className="text-[10px] font-medium text-gray-400">{sub}</span>}
       </dd>
     </div>
   );
 }
 
-function Stat({ label, value, note }: { label: string; value: string; note: string }) {
+function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
+  const isWarn = note ? note.includes("🔴") : false;
   return (
-    <div className="glass-panel rounded-xl p-5">
-      <div className="text-[12px] text-ink-secondary">{label}</div>
-      <div className="tnum mt-1 text-[20px] font-semibold">{value}</div>
-      <p className="mt-2 text-[11px] leading-relaxed text-ink-secondary">{note}</p>
+    <div className={`relative overflow-hidden rounded-2xl border p-5 shadow-sm transition-all hover:shadow-md ${
+      isWarn ? "border-red-200 bg-gradient-to-br from-red-50 to-white" : "border-gray-200 bg-gradient-to-br from-gray-50 to-white"
+    }`}>
+      <div className={`absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-10 blur-2xl ${
+        isWarn ? "bg-red-500" : "bg-blue-500"
+      }`}></div>
+      <div className="relative z-10">
+        <div className="text-xs font-bold uppercase tracking-wider text-gray-500">{label}</div>
+        <div className={`mt-2 text-3xl font-black tracking-tight ${isWarn ? "text-red-700" : "text-gray-900"}`}>{value}</div>
+        {note && <p className="mt-3 text-[11px] leading-relaxed text-gray-500">{note}</p>}
+      </div>
     </div>
   );
 }
 
-/**
- * 🔴 불리언 2개를 **그대로 믿고 표시하면 안 된다.** 2026-08-05 이전 판정은
- *    "대화형 루프를 건너뛰었나"(실행 방식)였지 "사람이 확정했나"(사실)가 아니었다 —
- *    fixture·hitl 전 run 이 `{radius: true, weight: false}` 로 똑같이 찍혔다.
- *    믿을 수 있는지는 `value_source` 가 말해 준다(`types.ts` WeightSetDoc.hitl).
- *
- *    못 믿을 때 화면이 할 일은 **값을 고쳐 보여주는 게 아니라 못 믿는다고 말하는 것**이다.
- *    `true` 를 `false` 로 바꿔 그리면 그게 더 큰 거짓말이다(절대원칙 4).
- */
 function HitlState({ hitl }: { hitl: WeightSetDoc["hitl"] }) {
   const src = hitl.value_source;
   const trusted = src === "human" || src === "fixture";
+  
+  // 개발자용 정보가 아닌, 사용자 친화적인 정보만 노출하도록 간소화
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-3 text-[12px]">
-      <Chip ok={hitl.radius_confirmed} label="집계 반경 [R]" trusted={trusted} />
-      <Chip ok={hitl.weight_confirmed} label="가중치 [W]" trusted={trusted} />
-      <span className="text-[11px] text-ink-secondary">
-        산출물의 <code>hitl</code> 값 그대로입니다. 이 화면에서 바꿀 수 없습니다.
-        {src && (
-          <>
-            {" "}
-            판정 근거 <code>value_source: {src}</code>
-            {hitl.weight_sources?.length ? ` · [W] ${hitl.weight_sources.join(", ")}` : ""}
-          </>
-        )}
-      </span>
+    <div className="mt-6 flex flex-col gap-3 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex items-center gap-2">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><path d="m9 12 2 2 4-4"/></svg>
+          <span className="text-sm font-bold text-gray-700">전문가 개입 여부</span>
+        </div>
+        <Chip ok={hitl.radius_confirmed} label="집계 반경 [R]" trusted={trusted} />
+        <Chip ok={hitl.weight_confirmed} label="가중치 [W]" trusted={trusted} />
+      </div>
+      
       {!trusted && (
-        <p className="basis-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-[11px] leading-relaxed text-amber-900">
-          🔴 <b>이 두 값은 믿을 수 없습니다.</b>{" "}
-          {/* `== null` 로 undefined·null 을 같이 잡는다 — 옛 run(키 없음)과 완전
-              대화형 실행(null)은 사유가 다르지만 **둘 다 판정 근거가 없다**. */}
-          {src == null
-            ? "판정 근거(value_source)가 없는 실행입니다. 2026-08-05 백엔드 수정 이전에 만들어졌거나, 고정값 없이 완전 대화형으로 돌아간 실행입니다."
-            : "판정 로직은 고쳐졌지만 러너가 아직 옛 코드였을 때 돌아간 실행입니다(value_source: cli). 서버 재시작(2026-08-05 20:41:53) 전이면 여기에 해당합니다."}{" "}
-          그때는 <b>사람이 확정했는지가 아니라 대화형 루프를 건너뛰었는지</b>를 기록했습니다 —
-          fixture 실행과 hitl 실행이 같은 값으로 찍힙니다. 다시 실행하면 정확한 값이 남습니다.
-        </p>
+        <div className="flex items-start gap-3 rounded-xl border border-gray-100 bg-gray-50 p-3.5 text-sm text-gray-600 mt-2">
+          <svg className="mt-0.5 shrink-0 text-gray-400" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          <span className="text-[13px] leading-relaxed">
+            과거 버전의 분석이거나 자동화된 테스트 모드로 실행되어 전문가의 개입 기록이 없는 결과입니다. 최신 모드로 다시 실행하시면 정확한 개입 기록이 남습니다.
+          </span>
+        </div>
       )}
     </div>
   );
@@ -326,15 +353,17 @@ function HitlState({ hitl }: { hitl: WeightSetDoc["hitl"] }) {
 function Chip({ ok, label, trusted }: { ok: boolean; label: string; trusted: boolean }) {
   return (
     <span
-      className={`rounded-md px-2 py-1 font-medium ${
+      className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-bold shadow-sm transition-all ${
         !trusted
-          ? "bg-black/[0.06] text-ink-secondary line-through decoration-ink-secondary/50"
+          ? "bg-gray-100 text-gray-400 line-through decoration-gray-400/50"
           : ok
-            ? "bg-emerald-50 text-emerald-700"
-            : "bg-amber-50 text-amber-800"
+            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+            : "bg-gray-50 text-gray-600 border border-gray-200"
       }`}
     >
-      {label} {ok ? "사람이 확정함" : "미확정 (엔진 기본값 사용)"}
+      {ok && trusted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+      {!ok && trusted && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>}
+      {label} {ok && trusted ? "(사람이 확정)" : !trusted ? "" : "(기본값 사용)"}
     </span>
   );
 }
@@ -342,10 +371,13 @@ function Chip({ ok, label, trusted }: { ok: boolean; label: string; trusted: boo
 function Method({ w }: { w: WeightSetDoc }) {
   const sparse = w.notes.sparse_excluded_ids;
   return (
-    <section className="mt-6 grid gap-4 md:grid-cols-2">
-      <div className="rounded-xl border border-hairline bg-white p-5">
-        <h2 className="text-[14px] font-semibold">계산 방식</h2>
-        <dl className="mt-3 flex flex-col gap-1.5 text-[12px]">
+    <section className="mt-8 grid gap-6 md:grid-cols-2">
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-center gap-2 mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+          <h2 className="text-base font-bold text-gray-900">계산 방식 및 환경</h2>
+        </div>
+        <dl className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
           <Line k="거리 감쇠" v={`${w.decay.func} · σ비 ${fixed(w.decay.sigma_ratio, 2)}`} />
           <Line k="스케일" v={w.scale} />
           <Line k="데이터 가중" v={w.notes.critic_method} />
@@ -353,24 +385,28 @@ function Method({ w }: { w: WeightSetDoc }) {
           <Line k="엔진" v={w.engine_version} />
           <Line k="생성 시각" v={w.generated_at.replace("T", " ").slice(0, 19)} />
         </dl>
-        <p className="mt-3 text-[11px] leading-relaxed text-ink-secondary">
+        <div className="mt-4 rounded-xl bg-blue-50 p-3 text-xs leading-relaxed text-blue-800 border border-blue-100">
+          <strong className="block mb-1">가중치의 의미:</strong>
           {w.notes.weight_meaning}
-        </p>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-hairline bg-white p-5">
-        <h2 className="text-[14px] font-semibold">제외된 지표</h2>
+      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
+        <div className="flex items-center gap-2 mb-4">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-500"><path d="M2 12h20"/><path d="M12 2v20"/></svg>
+          <h2 className="text-base font-bold text-gray-900">제외된 지표 (희소 임계 미달)</h2>
+        </div>
         {sparse.length > 0 ? (
           <>
-            <p className="mt-2 text-[12px] leading-relaxed text-ink-secondary">
-              값이 거의 없어(희소 임계 {percent(w.notes.sparse_threshold, 2)} 미만) 점수에서
-              빠진 지표입니다. 데이터가 없다는 뜻이지 중요하지 않다는 뜻이 아닙니다.
+            <p className="text-sm leading-relaxed text-gray-600 mb-4">
+              값이 거의 없어(희소 임계 {percent(w.notes.sparse_threshold, 2)} 미만) 점수 산정에서 
+              제외된 지표들입니다. <strong className="text-gray-800">데이터가 적다는 뜻이며, 중요하지 않다는 의미는 아닙니다.</strong>
             </p>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2">
               {sparse.map((id) => (
                 <span
                   key={id}
-                  className="tnum rounded bg-black/[0.06] px-2 py-1 text-[12px] text-ink-secondary"
+                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-sm font-bold text-gray-600 shadow-sm"
                 >
                   {id}
                 </span>
@@ -378,7 +414,10 @@ function Method({ w }: { w: WeightSetDoc }) {
             </div>
           </>
         ) : (
-          <p className="mt-2 text-[12px] text-ink-secondary">없습니다.</p>
+          <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300 mb-2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <p className="text-sm font-medium text-gray-400">제외된 지표가 없습니다.</p>
+          </div>
         )}
       </div>
     </section>
@@ -387,9 +426,9 @@ function Method({ w }: { w: WeightSetDoc }) {
 
 function Line({ k, v }: { k: string; v: string }) {
   return (
-    <div className="flex justify-between gap-4">
-      <dt className="text-ink-secondary">{k}</dt>
-      <dd className="tnum font-medium">{v}</dd>
+    <div className="flex flex-col justify-center rounded-lg bg-gray-50 px-3 py-2 border border-gray-100">
+      <dt className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{k}</dt>
+      <dd className="mt-0.5 font-mono text-sm font-bold text-gray-900 truncate" title={v}>{v}</dd>
     </div>
   );
 }
