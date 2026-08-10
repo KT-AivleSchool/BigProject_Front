@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
+import { useRouter } from "next/navigation";
 
 import { ChatBubble, ChatMessage, ChatRole } from "@/components/hearing/ChatBubble";
 import { ConflictGauge } from "@/components/hearing/ConflictGauge";
@@ -23,7 +24,8 @@ const MOCK_METRICS = [
 
 export default function Screen5Page() {
   const { run } = useRun();
-  
+  const router = useRouter();
+
   const [isStarted, setIsStarted] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -73,7 +75,8 @@ export default function Screen5Page() {
 
     const startStreaming = async () => {
       try {
-        await fetchEventSource("http://127.0.0.1:8000/api/v1/simulation/stream", {
+        const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        await fetchEventSource(`${apiUrl}/api/v1/simulation/stream`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -82,7 +85,7 @@ export default function Screen5Page() {
           signal: controller.signal,
           async onopen(response) {
             if (response.ok && response.headers.get("content-type")?.includes("text/event-stream")) {
-              return; // 성공
+              return;
             } else if (response.headers.get("content-type")?.includes("application/json")) {
               const errorData = await response.json();
               console.error("백엔드 에러 응답:", errorData);
@@ -122,7 +125,6 @@ export default function Screen5Page() {
               }
 
               if (metrics) {
-                // 백엔드에서 받은 실제 평가 지표를 상태에 반영합니다. (고정 점수 대신 범위 내 랜덤 점수 부여)
                 const getJitteredScore = (prevScore: number, level: string) => {
                   const ranges: Record<string, [number, number]> = { "LOW": [15, 28], "MEDIUM": [42, 58], "HIGH": [82, 95] };
                   const range = ranges[level] || [45, 55];
@@ -143,7 +145,6 @@ export default function Screen5Page() {
                 const lastMsg = newMessages.length > 0 ? newMessages[newMessages.length - 1] : null;
                 const prevSender = lastMsg ? (lastMsg.name || "") : "";
                 
-                // 새로운 화자인 경우 말풍선 추가
                 if (sender && sender !== prevSender) {
                   const isSystem = sender.toUpperCase().includes("SYSTEM") || sender === "시스템";
                   
@@ -156,7 +157,6 @@ export default function Screen5Page() {
                     text: text,
                   });
                 } else if (lastMsg) {
-                  // 같은 화자면 텍스트를 이어서 붙임 (스트리밍 토큰 처리)
                   const lastIndex = newMessages.length - 1;
                   newMessages[lastIndex] = { ...lastMsg, text: lastMsg.text + text };
                 }
@@ -169,15 +169,13 @@ export default function Screen5Page() {
             }
           },
           onclose() {
-            // 스트림 정상 종료 시 재연결 방지
             throw new Error("Stream closed normally");
           },
           onerror(err) {
             if (err.message === "Stream closed normally") {
-              throw err; // 정상 종료 시 에러를 던져 무한 재연결(Retry)을 방지합니다.
+              throw err;
             }
             console.error("SSE Connection Error:", err);
-            // 에러 시 재연결 방지
             throw err;
           }
         });
@@ -212,8 +210,16 @@ export default function Screen5Page() {
         lead="AI 에이전트 간의 모의 공청회를 통해 잠재적 갈등 지수와 수용도를 실시간으로 분석합니다."
       />
 
+      <div className="mt-4 flex justify-end">
+        <button
+          onClick={() => router.push("/dynamic-hearing")}
+          className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+        >
+          동적 페르소나 토론 모드 (새 브랜치) 테스트하기
+        </button>
+      </div>
+
       <div className="mt-6 grid grid-cols-1 lg:grid-cols-[1.5fr_1fr] gap-6">
-        
         {/* 좌측: 채팅 패널 */}
         <div className="glass-panel rounded-2xl p-6 flex flex-col h-[700px] relative">
           <div className="flex justify-between items-center mb-6">
@@ -258,15 +264,12 @@ export default function Screen5Page() {
             {messages.map((msg) => (
               <ChatBubble key={msg.id} message={msg} />
             ))}
-            {/* 자동 스크롤 기준점 */}
             <div ref={chatEndRef} />
           </div>
         </div>
 
         {/* 우측: 지표 패널 영역 */}
         <div className="flex flex-col gap-6 h-[700px]">
-          
-          {/* 우측 상단: 갈등 지수 */}
           <div className="glass-panel rounded-2xl p-6 flex-1 flex flex-col">
             <h2 className="text-[18px] font-bold text-ink mb-6">갈등 지수 (Conflict Index)</h2>
             <div className="flex flex-1 items-center justify-around">
@@ -275,7 +278,6 @@ export default function Screen5Page() {
             </div>
           </div>
 
-          {/* 우측 하단: 수용도 */}
           <div className="glass-panel rounded-2xl p-6 flex-1 flex flex-col">
             <h2 className="text-[18px] font-bold text-ink mb-6">수용도 (Acceptance Score)</h2>
             <div className="flex flex-1 items-center justify-around">
@@ -283,7 +285,6 @@ export default function Screen5Page() {
               <AcceptanceCircle score={currentMetrics.conAccept} label="반대측 수용도" color="#ef4444" />
             </div>
           </div>
-          
         </div>
       </div>
 
