@@ -197,6 +197,20 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         applyRun(doc);
         return id;
       } catch (e: unknown) {
+        if (e instanceof ApiError && e.status === 409) {
+          const match = e.detail.match(/run_id=([^)]+)/);
+          if (match && match[1]) {
+            const id = match[1];
+            writeRunId(id);
+            try {
+              const doc = await fetchRun(id);
+              applyRun(doc);
+              return id;
+            } catch (inner) {
+              // Ignore inner error and fall through to original error
+            }
+          }
+        }
         setError(e instanceof Error ? e.message : String(e));
         return null;
       } finally {

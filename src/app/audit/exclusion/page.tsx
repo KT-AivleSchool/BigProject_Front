@@ -54,7 +54,7 @@ export default function Screen2bPage() {
         }
       />
 
-      <div className="mt-8">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4 pb-4">
         <ArtifactView2 a={reviewed} b={clean} what="배제 근거">
           {(rev, cln) => {
             const labels = buildDatasetLabels(rev, cln);
@@ -200,14 +200,6 @@ export default function Screen2bPage() {
         </ArtifactView2>
       </div>
 
-      <SourceNote
-        files={[
-          "reviewed.json (roles[].role=hard_exclusion)",
-          "clean_report.json (rows_after)",
-          "report.json (spatial)",
-          "exclusion.geojson (features[].properties — 좌표는 읽지 않습니다)",
-        ]}
-      />
     </PageBody>
   );
 }

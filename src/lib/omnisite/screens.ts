@@ -69,6 +69,7 @@ const NEEDS: Record<string, ArtifactName[]> = {
 
 export function isScreenReady(run: RunDoc | null, no: string): boolean {
   if (!run) return false;
+  if (no === "1") return true; // 데이터 입력은 run이 생성되어 있으면 완료된 것
   const need = NEEDS[no];
   if (!need || need.length === 0) return false;
   return need.every((n) => Boolean(run.artifacts[n]));

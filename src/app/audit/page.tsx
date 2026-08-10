@@ -47,24 +47,30 @@ export default function Screen2Page() {
         }
       />
 
-      {gate ? (
-        <div className="mt-8">
-          <AuditGate gate={gate} runId={run!.run_id} />
-        </div>
-      ) : (
-        <div className="mt-8">
-          <NoGateNotice run={run ?? null} />
-        </div>
-      )}
+      {/* 내부 스크롤 영역 */}
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4">
+        {gate ? (
+          <div className="mt-4">
+            <AuditGate gate={gate} runId={run!.run_id} />
+          </div>
+        ) : (
+          <div className="mt-4">
+            <NoGateNotice run={run ?? null} />
+          </div>
+        )}
 
-      <div className="mt-8">
-        <ArtifactView state={state} what="감리 결과">
-          {(doc) => <Body doc={doc} />}
-        </ArtifactView>
+        <div className="mt-8">
+          <ArtifactView state={state} what="감리 결과">
+            {(doc) => <Body doc={doc} />}
+          </ArtifactView>
+        </div>
       </div>
 
-      <PageFooter screen={SCREEN} />
-      <SourceNote files={["status.json 의 gate (게이트A)", "<도메인>_audit_result_reviewed.json"]} />
+      {!gate && (
+        <div className="shrink-0 mt-4">
+          <NoGateCTA run={run ?? null} />
+        </div>
+      )}
     </PageBody>
   );
 }
@@ -321,16 +327,74 @@ function KV({ icon, k, v, tone }: { icon: React.ReactNode, k: string; v: string;
   );
 }
 
-function NoGateNotice({ run }: { run: RunDoc | null }) {
+function NoGateCTA({ run }: { run: RunDoc | null }) {
   const status = run?.status;
 
   if (status === "succeeded") {
     return (
-      <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-4 py-2 rounded-lg w-fit border border-gray-200 shadow-sm">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 12h4l3-9 5 18 3-9h5"/></svg>
-        <span>이 분석은 이미 확정되어 <strong>읽기 전용</strong>으로 표시되고 있습니다.</span>
+      <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-200 bg-emerald-50/30 p-5 rounded-2xl shadow-sm">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-pulse">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5"/></svg>
+          </div>
+          <div className="flex flex-col">
+            <span className="text-[14px] font-bold text-emerald-900">
+              감리 확인이 완료되었습니다!
+            </span>
+            <span className="text-[13px] text-emerald-700/80">
+              다음 단계에서 지표별 가중치를 확인하고 조정할 수 있습니다.
+            </span>
+          </div>
+        </div>
+        <Link
+          href="/weights"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 active:scale-95"
+        >
+          가중치 단계로 이동하기
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+        </Link>
       </div>
     );
+  }
+
+  if (status === "awaiting_hitl" && run?.gate) {
+    const target = gateScreen(run.gate.id);
+    if (target && target.no !== "2") {
+      return (
+        <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-200 bg-emerald-50/30 p-5 rounded-2xl shadow-sm">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-pulse">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+            </div>
+            <div className="flex flex-col">
+              <span className="text-[14px] font-bold text-emerald-900">
+                다음 단계({target.name}) 분석이 완료되었습니다!
+              </span>
+              <span className="text-[13px] text-emerald-700/80">
+                AI가 다음 단계를 위한 제안을 준비했습니다. 확인을 위해 이동해주세요.
+              </span>
+            </div>
+          </div>
+          <Link
+            href={target.path}
+            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 active:scale-95"
+          >
+            {target.name} 단계로 바로 이동하기
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </Link>
+        </div>
+      );
+    }
+  }
+
+  return null;
+}
+
+function NoGateNotice({ run }: { run: RunDoc | null }) {
+  const status = run?.status;
+
+  if (status === "succeeded") {
+    return null;
   }
   
   if (status === "running") {
@@ -346,19 +410,7 @@ function NoGateNotice({ run }: { run: RunDoc | null }) {
   if (status === "awaiting_hitl" && run?.gate) {
     const target = gateScreen(run.gate.id);
     if (target && target.no !== "2") {
-      return (
-        <div className="flex flex-col items-center justify-center p-8 bg-yellow-50 rounded-2xl border-2 border-yellow-300 text-center shadow-sm animate-in fade-in slide-in-from-bottom-4">
-          <div className="w-14 h-14 bg-yellow-100 rounded-full flex items-center justify-center mb-3">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="text-yellow-600"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
-          <h3 className="text-base font-bold text-yellow-900 mb-2">다음 단계({target.name}) 분석이 완료되었습니다!</h3>
-          <p className="text-sm text-yellow-800/80 mb-5">AI가 다음 단계를 위한 제안을 준비했습니다. 확인을 위해 이동해주세요.</p>
-          <Link href={target.path} className="inline-flex items-center gap-2 px-6 py-3 bg-yellow-400 text-yellow-900 font-bold text-sm rounded-xl hover:bg-yellow-500 hover:-translate-y-0.5 transition-all shadow-md">
-            {target.name} 단계로 바로 이동하기
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </Link>
-        </div>
-      );
+      return null;
     }
   }
 
