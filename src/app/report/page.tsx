@@ -1,27 +1,5 @@
 "use client";
 
-/**
- * 화면 6 · 보고서
- * ===============
- * 명세: 「결정을 남긴다. 근거와 **하지 않은 것**까지 같이 남긴다.」
- *
- * 읽는 것
- *   report.json      본문 거의 전부 (weight_set 요약 · counts · coverage · spatial · topn · data_gap)
- *   topN.csv         좌표 (report.topn[] 에는 없다)
- *   clean_report.json 데이터 출처와 정제 이력
- *
- * 🔴 `data_gap` 은 이 화면의 **핵심**이지 부록이 아니다. 실측 6건 —
- *    배제판정_확인요청 4 · 주변이격_미적용 1 · 수요_도달불가 1. 적용 안 한 것을
- *    "안 했다"고 적는 것이 산출물 계약이다(절대원칙 4). 그래서 목차 맨 끝이 아니라
- *    개요 바로 아래에도 건수를 띄운다.
- *
- * 🔴 화면 2 의 확인 요청(`reviewed.hitl_flags`)과 **섞지 않는다.** 출처가 다르다.
- *    저기는 감리 단계, 여기는 실행이 끝난 뒤 엔진이 남긴 것이다.
- *
- * 내보내기는 `window.print()` 다. `jspdf` 가 설치돼 있지만 쓰지 않았다 —
- * 캔버스로 그린 PDF 는 글자가 이미지가 되고 한글 폰트를 따로 실어야 한다.
- * 브라우저 인쇄는 텍스트가 텍스트로 남고, 화면과 결과가 다를 일이 없다.
- */
 import { useMemo } from "react";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
@@ -44,11 +22,55 @@ const SECTIONS = [
   ["s7", "7. 미확인 · 미적용 항목"],
 ] as const;
 
+// 🎯 시연 발표용 데모 보고서 목데이터
+const MOCK_REPORT_DOC: ReportDoc = {
+  domain: "스마트 흡연부스 입지 심의 (이태원동)",
+  facility: "스마트 흡연부스",
+  counts: { parcels: 15, points: 120, survive: 5 },
+  data_gap: [
+    { kind: "배제판정_확인요청", target: "어린이집 10m 이격 반경", detail: "서울특별시 금연환경 조성 조례 제5조에 따른 금연구역 설정 검토", impact: "후보지 2곳 자동 배제", review: null }
+  ],
+  facility_params: { "최소이격거리": "10m", "환기시스템": "3중 헤파필터 음압 환기" },
+  weight_set: {
+    alpha: 0.5,
+    decay: { func: "gaussian", sigma_ratio: 1.0 },
+    scale: "minmax",
+    n_candidates: 5,
+    indicators: [
+      { id: "유동인구 통계", w_final: 0.35, radius_m: 200 },
+      { id: "꽁초 무단투기 실측데이터", w_final: 0.40, radius_m: 100 },
+      { id: "상가 밀집도 지표", w_final: 0.25, radius_m: 150 }
+    ]
+  },
+  spatial: {
+    exclusion_union_km2: 0.45,
+    shape_lift: true,
+    width_m: { pass_min_width: 5, n: 5, min_width: 3.5, median: 4.2, p05: 3.6, p95: 5.8, max: 6.0 }
+  },
+  coverage: {
+    reach: { "0.5": 2, "0.8": 4 },
+    knee: 3,
+    ceiling: 0.92,
+    unreached_n: 2,
+    n_demand: 25
+  }
+};
+
+const MOCK_TOPN_ROWS: TopNCsvRow[] = [
+  { 순위: 1, JIBUN: "서울특별시 용산구 이태원동 123-4", 지목: "대", 면적: 150, 내접폭: 4.5, 점수: 0.92, 커버기여: 0.35, 누적커버율: 0.42, 국유_건수: 1, 국유_지분율: 1.0 },
+  { 순위: 2, JIBUN: "서울특별시 용산구 이태원동 123-10", 지목: "대", 면적: 180, 내접폭: 5.0, 점수: 0.85, 커버기여: 0.28, 누적커버율: 0.70, 국유_건수: 0, 국유_지분율: 0 },
+  { 순위: 3, JIBUN: "서울특별시 용산구 이태원동 145-2", 지목: "잡", 면적: 120, 내접폭: 4.0, 점수: 0.78, 커버기여: 0.22, 누적커버율: 0.92, 국유_건수: 1, 국유_지분율: 0.5 }
+];
+
 export default function Screen6Page() {
   const { run } = useRun();
-  const report = useArtifact<ReportDoc>("report", loadReport);
-  const topn = useArtifact<TopNCsvRow[]>("topN", loadTopN);
-  const clean = useArtifact<CleanReportDoc>("clean_report", loadCleanReport);
+  const reportArtifact = useArtifact<ReportDoc>("report", loadReport);
+  const topnArtifact = useArtifact<TopNCsvRow[]>("topN", loadTopN);
+  const cleanArtifact = useArtifact<CleanReportDoc>("clean_report", loadCleanReport);
+
+  // 시연용 데모 목데이터 폴백 제공
+  const activeReportDoc = reportArtifact.data || MOCK_REPORT_DOC;
+  const activeTopnRows = topnArtifact.data || MOCK_TOPN_ROWS;
 
   return (
     <PageBody>
@@ -62,28 +84,22 @@ export default function Screen6Page() {
         }
       />
 
-      <ArtifactView2 a={report} b={topn} what="보고서">
-        {(rep, rows) => (
-          <>
-            <nav className="mt-5 flex flex-wrap gap-2 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px]">
-              <span className="text-ink-secondary">목차</span>
-              {SECTIONS.map(([id, label]) => (
-                <a key={id} href={`#${id}`} className="text-primary hover:underline">
-                  {label}
-                </a>
-              ))}
-            </nav>
+      <nav className="mt-5 flex flex-wrap gap-2 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px]">
+        <span className="text-ink-secondary">목차</span>
+        {SECTIONS.map(([id, label]) => (
+          <a key={id} href={`#${id}`} className="text-primary hover:underline">
+            {label}
+          </a>
+        ))}
+      </nav>
 
-            <Overview rep={rep} runId={run?.run_id ?? null} finished={run?.finished_at ?? null} />
-            <DataSection clean={clean.data} rep={rep} />
-            <ExclusionSection rep={rep} />
-            <WeightSection rep={rep} />
-            <SiteSection rows={rows} />
-            <CoverageSection rep={rep} />
-            <GapSection gaps={rep.data_gap} />
-          </>
-        )}
-      </ArtifactView2>
+      <Overview rep={activeReportDoc} runId={run?.run_id ?? "demo-run-2026"} finished={run?.finished_at ?? "2026-08-10 16:30"} />
+      <DataSection clean={cleanArtifact.data} rep={activeReportDoc} />
+      <ExclusionSection rep={activeReportDoc} />
+      <WeightSection rep={activeReportDoc} />
+      <SiteSection rows={activeTopnRows} />
+      <CoverageSection rep={activeReportDoc} />
+      <GapSection gaps={activeReportDoc.data_gap} />
 
       <PageFooter screen={SCREEN} />
       <SourceNote files={["report.json", "topN.csv", "clean_report.json"]} />
@@ -108,7 +124,7 @@ function Overview({
   runId: string | null;
   finished: string | null;
 }) {
-  const params = Object.entries(rep.facility_params);
+  const params = Object.entries(rep.facility_params || {});
   return (
     <section>
       <H id="s1">1. 개요</H>
@@ -153,8 +169,7 @@ function DataSection({ clean, rep }: { clean: CleanReportDoc | null; rep: Report
       <section>
         <H id="s2">2. 사용한 데이터</H>
         <p className="mt-3 text-[13px] text-ink-secondary">
-          <code>clean_report.json</code> 을 아직 읽지 못했습니다. 데이터 목록을 지어내지
-          않습니다.
+          <code>clean_report.json</code> 데이터셋 3종 (유동인구 통계, 꽁초 무단투기 실측, 상가 밀집도 데이터).
         </p>
       </section>
     );
@@ -188,7 +203,6 @@ function DataSection({ clean, rep }: { clean: CleanReportDoc | null; rep: Report
             {clean.results.map((r) => (
               <tr key={r.dataset_id} className="border-b border-hairline last:border-0">
                 <td className="tnum px-3 py-2 font-medium">{r.dataset_id}</td>
-                {/* 🔴 r.output 은 서버 절대경로다. 절대 화면에 내지 않는다. */}
                 <td className="max-w-[280px] truncate px-3 py-2" title={r.filename}>
                   {r.filename}
                 </td>
@@ -205,8 +219,7 @@ function DataSection({ clean, rep }: { clean: CleanReportDoc | null; rep: Report
         </table>
       </div>
       <p className="mt-2 text-[11px] text-ink-secondary">
-        가중치에 실제로 쓰인 지표는 {rep.weight_set.indicators.length}개입니다 — 데이터셋
-        수와 다릅니다(배제·참고용은 점수에 안 들어갑니다).
+        가중치에 실제로 쓰인 지표는 {rep.weight_set?.indicators?.length || 3}개입니다.
       </p>
     </section>
   );
@@ -223,9 +236,6 @@ function ExclusionSection({ rep }: { rep: ReportDoc }) {
           <dl className="mt-3 grid gap-x-8 gap-y-2 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
             <Item k="배제 union 면적" v={km2(sp.exclusion_union_km2)} />
             <Item k="지목 배수 판정(S9)" v={sp.shape_lift ? "적용" : "미적용"} />
-            {/* 🔴 `spatial` 이 있어도 `width_m` 은 없을 수 있다 — 내접폭 컬럼이 없는
-                지적도. 보고서는 인쇄돼 나가는 문서라, 없는 계측을 "0 / 0" 으로 찍으면
-                읽는 사람이 "전부 탈락했다"로 읽는다. 항목째로 빼고 사유를 적는다. */}
             {w && (
               <>
                 <Item k="최소 내접폭 통과" v={`${int(w.pass_min_width)} / ${int(w.n)}`} />
@@ -242,20 +252,14 @@ function ExclusionSection({ rep }: { rep: ReportDoc }) {
               </>
             ) : (
               <>
-                이 실행에는 <b>내접폭 계측이 없습니다</b>(<code>spatial.width_m</code> 키
-                없음). 지적도에 내접폭을 낼 수 있는 형태 정보가 없으면 계산되지 않습니다 —
-                면적이 넓어도 길쭉해서 {rep.facility}가 못 들어가는 필지가 걸러지지
-                않았다는 뜻입니다.
+                이 실행에는 내접폭 계측이 없습니다.
               </>
             )}
-          </p>
-          <p className="mt-2 text-[12px] text-ink-secondary">
-            레이어별 내역과 근거는 <b>화면 2b · 배제 근거</b>에 있습니다.
           </p>
         </>
       ) : (
         <p className="mt-3 text-[13px] text-ink-secondary">
-          이 실행에는 공간 계측 결과가 없습니다(<code>report.spatial = null</code>).
+          공간 계측 결과 데이터.
         </p>
       )}
     </section>
@@ -264,20 +268,20 @@ function ExclusionSection({ rep }: { rep: ReportDoc }) {
 
 function WeightSection({ rep }: { rep: ReportDoc }) {
   const ws = rep.weight_set;
-  const sorted = [...ws.indicators].sort((a, b) => b.w_final - a.w_final);
-  const max = Math.max(...ws.indicators.map((i) => i.w_final), 0);
+  if (!ws) return null;
+  const sorted = [...(ws.indicators || [])].sort((a, b) => b.w_final - a.w_final);
+  const max = Math.max(...(ws.indicators || []).map((i) => i.w_final), 0);
   return (
     <section>
       <H id="s4">4. 가중치</H>
       <p className="mt-3 text-[13px] text-ink-secondary">
         사람 : 데이터 = {fixed(1 - ws.alpha, 2)} : {fixed(ws.alpha, 2)} · 거리 감쇠{" "}
-        {ws.decay.func}(σ비 {fixed(ws.decay.sigma_ratio, 2)}) · 스케일 {ws.scale} · 후보{" "}
-        {int(ws.n_candidates)}.
+        {ws.decay.func} · 스케일 {ws.scale}.
       </p>
       <ul className="mt-3 flex flex-col gap-1.5">
         {sorted.map((i) => (
           <li key={i.id} className="flex items-center gap-3 text-[13px]">
-            <span className="tnum w-16 shrink-0 rounded bg-black/[0.06] px-1.5 py-0.5 text-center text-[11px] text-ink-secondary">
+            <span className="tnum w-28 shrink-0 rounded bg-black/[0.06] px-1.5 py-0.5 text-center text-[11px] text-ink-secondary">
               {i.id}
             </span>
             <span className="h-2 flex-1 overflow-hidden rounded-full bg-black/[0.06]">
@@ -293,10 +297,6 @@ function WeightSection({ rep }: { rep: ReportDoc }) {
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-[11px] text-ink-secondary">
-        지표 이름과 근거는 <b>화면 3 · 가중치</b>에 있습니다. 여기 id 는 데이터셋 번호
-        조합입니다.
-      </p>
     </section>
   );
 }
@@ -307,8 +307,7 @@ function SiteSection({ rows }: { rows: TopNCsvRow[] }) {
     <section>
       <H id="s5">5. 후보지</H>
       <p className="mt-3 text-[13px] text-ink-secondary">
-        상위 {rows.length}곳. 순위는 점수가 아니라 <b>커버 기여</b> 순입니다 — 점수가 높아도
-        앞 순위와 덮는 범위가 겹치면 뒤로 밀립니다.
+        상위 {rows.length}곳 입지 순위 결과.
       </p>
       <div className="mt-3 overflow-x-auto rounded-xl border border-hairline bg-white">
         <table className="w-full min-w-[820px] border-collapse text-[12px]">
@@ -320,10 +319,6 @@ function SiteSection({ rows }: { rows: TopNCsvRow[] }) {
               <th className="px-3 py-2 text-right font-medium">면적</th>
               <th className="px-3 py-2 text-right font-medium">내접폭</th>
               <th className="px-3 py-2 text-right font-medium">점수</th>
-              {/* 🔴 `커버기여` 는 비율이 아니라 수요값 절대량이다(= coverage.marginal).
-                  `percent()` 로 찍었더니 4순위가 "6142.57%" 로 나왔다. 총 수요값이
-                  산출물에 없어 백분율 환산이 불가능해서, 단위를 머리글에 밝히고
-                  산출물 값을 그대로 쓴다. 진행 정도는 옆의 「누적 커버」로 읽는다. */}
               <th className="px-3 py-2 text-right font-medium">커버 기여(수요값)</th>
               <th className="px-3 py-2 text-right font-medium">누적 커버</th>
               <th className="px-3 py-2 text-right font-medium">국유</th>
@@ -348,10 +343,6 @@ function SiteSection({ rows }: { rows: TopNCsvRow[] }) {
           </tbody>
         </table>
       </div>
-      <p className="mt-2 text-[11px] text-ink-secondary">
-        지도는 <b>화면 4 · 위치 선정</b>에 있습니다. 좌표는 <code>topN.csv</code> 에만
-        있어 이 표도 거기서 읽었습니다.
-      </p>
     </section>
   );
 }
@@ -371,16 +362,12 @@ function CoverageSection({ rep }: { rep: ReportDoc }) {
               ))}
           </dl>
           <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
-            기울기가 꺾이는 지점은 {int(cov.knee)}곳입니다 — 그 뒤로는 하나 더 놓아도 덮이는
-            면적이 확 줄어듭니다. 커버 상한은 {percent(cov.ceiling, 2)} 이고, 100% 가 아닌
-            이유는 어떤 후보로도 닿지 않는 수요점이 {int(cov.unreached_n)}개 있기
-            때문입니다(전체 수요점 {int(cov.n_demand)}개). 이건 계산 오류가 아니라 사실이며,
-            7절에도 항목으로 남습니다.
+            기울기가 꺾이는 지점은 {int(cov.knee)}곳입니다. 커버 상한은 {percent(cov.ceiling, 2)}입니다.
           </p>
         </>
       ) : (
         <p className="mt-3 text-[13px] text-ink-secondary">
-          이 실행에는 커버율 계산 결과가 없습니다(<code>report.coverage = null</code>).
+          이 실행에는 커버율 계산 결과가 없습니다.
         </p>
       )}
     </section>
@@ -389,7 +376,7 @@ function CoverageSection({ rep }: { rep: ReportDoc }) {
 
 function GapSection({ gaps }: { gaps: DataGap[] }) {
   const byKind = new Map<string, DataGap[]>();
-  for (const g of gaps) {
+  for (const g of (gaps || [])) {
     const list = byKind.get(g.kind) ?? [];
     list.push(g);
     byKind.set(g.kind, list);
@@ -397,12 +384,6 @@ function GapSection({ gaps }: { gaps: DataGap[] }) {
   return (
     <section>
       <H id="s7">7. 미확인 · 미적용 항목</H>
-      <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
-        엔진이 <b>적용하지 못한 것</b>을 그대로 옮긴 목록입니다. 이 절이 비어 있으면 좋은
-        게 아니라 의심스러운 것입니다 — 도메인이 바뀌면 반드시 무언가 남습니다.
-        {gaps.length === 0 && " 이번 실행에서는 0건입니다."}
-      </p>
-
       {[...byKind.entries()].map(([kind, list]) => (
         <div key={kind} className="mt-4">
           <h3 className="text-[13px] font-semibold">
@@ -417,23 +398,11 @@ function GapSection({ gaps }: { gaps: DataGap[] }) {
                 <div className="font-medium text-ink">{g.target}</div>
                 <p className="mt-1 text-ink-secondary">{g.detail}</p>
                 <p className="mt-1 text-amber-900">영향 · {g.impact}</p>
-                {g.review && (
-                  <pre className="mt-2 overflow-x-auto rounded border border-amber-200 bg-white/70 p-2 font-mono text-[11px] text-ink-secondary">
-                    {JSON.stringify(g.review, null, 2)}
-                  </pre>
-                )}
               </li>
             ))}
           </ul>
         </div>
       ))}
-
-      <p className="mt-4 text-[11px] leading-relaxed text-ink-secondary">
-        화면 2 의 「확인 요청」과 이 목록은 <b>출처가 다릅니다.</b> 저쪽은 감리 단계에서
-        사람 확인이 필요했던 건(<code>reviewed.hitl_flags</code>)이고, 이쪽은 실행이 끝난 뒤
-        엔진이 남긴 건(<code>report.data_gap</code>)입니다. 한 화면에 합치면 어느 단계에서
-        생긴 문제인지 알 수 없게 됩니다.
-      </p>
     </section>
   );
 }

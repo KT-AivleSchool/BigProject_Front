@@ -215,10 +215,10 @@ export function DiscussionStep({
                 새 안건으로 다시 시작하기
               </button>
               <button 
-                onClick={() => router.push('/report')}
+                onClick={() => router.push('/hearing-pdf')}
                 className="btn-primary text-[13px]"
               >
-                최종 보고서 작성하기
+                최종 심의 보고서 (PDF/HWPX) 확인
               </button>
             </div>
           )}
