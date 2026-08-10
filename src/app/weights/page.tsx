@@ -144,8 +144,6 @@ export default function Screen3Page() {
               </section>
 
               <Method w={w} />
-
-              <Method w={w} />
             </>
           );
         }}
