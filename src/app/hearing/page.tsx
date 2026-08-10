@@ -1,7 +1,9 @@
 "use client";
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
+import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { ApiError, NetworkError } from "@/lib/omnisite/client";
@@ -74,12 +76,28 @@ export default function Screen5Page() {
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   /**
-   * 🔴 **선정 위치는 `candidates[0]`(rank 1) 이다.** `score` 로 다시 정렬하지 않는다 —
-   *    MCLP 커버 그리디라 순위와 점수가 어긋난다(실측 4위 0.7793 > 1위 0.7703).
+   * 화면 4 에서 고른 위치. `undefined` = 아직 안 읽음 · `null` = 고른 적 없음.
+   * 둘을 섞으면 읽기도 전에 "화면 4 에서 고르세요" 가 한 번 깜빡인다.
    */
-  // `?? null` 은 `noUncheckedIndexedAccess` 때문이다 — 인덱스 접근은 항상
-  // `| undefined` 다. `!` 로 지우지 않는다: 빈 배열이면 진짜로 없는 것이다.
-  const selected: Candidate | null = candidates?.[0] ?? null;
+  const [pick, setPick] = useState<SitePick | null | undefined>(undefined);
+
+  /**
+   * 🔴 **토론할 위치는 화면 4 에서 사람이 고른 그 점이다.** 예전엔 여기서
+   *    `candidates[0]`(rank 1)을 집었는데, `rank == 1` 은 **추천이지 결정이
+   *    아니다**(2026-08-10 사람 결정). 지금은 화면 4 가 넘긴 `PNU` 로 찾는다.
+   *
+   * 🔴 못 찾으면 **rank 로 되짚지 않고 `null` 로 둔다.** 화면 4 의 표는 run
+   *    산출물이고 이 목록은 DB 적재분이라 서로 다른 실행일 수 있다 — 그때
+   *    같은 순위를 집으면 **고른 것과 다른 필지**로 5분짜리 토론이 돌아간다.
+   *    안 터지고 값만 틀리는 종류라 화면이 대신 멈춰줘야 한다(원칙 1·4).
+   */
+  const selected: Candidate | null =
+    pick && candidates ? (candidates.find((c) => c.pnu === pick.pnu) ?? null) : null;
+
+  /** 화면 4 를 거치지 않고 바로 들어온 경우. */
+  const pickMissing = pick === null;
+  /** 골랐는데 적재 목록에 없는 경우 — 그 사이 STEP4 가 다시 돌았을 수 있다. */
+  const pickUnmatched = Boolean(pick) && candidates !== null && selected === null;
 
   // 세션 복원
   useEffect(() => {
@@ -98,6 +116,9 @@ export default function Screen5Page() {
     } catch (e) {
       console.error("세션 스토리지 복구 실패", e);
     }
+    // 🔴 렌더 중에 읽지 않는다 — sessionStorage 는 서버 프리렌더에 없어서
+    //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다(화면1 과 같은 이유).
+    setPick(readSitePick());
   }, []);
 
   useEffect(() => {
@@ -204,7 +225,7 @@ export default function Screen5Page() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            // 🔴 하드코딩하지 않는다. STEP4 Top-N 의 rank 1 이다.
+            // 🔴 하드코딩하지 않는다. 화면 4 에서 고른 필지(PNU 로 이은 것)다.
             parcel_id: selected.parcel_id,
             facility_type: selected.facility_type,
             audit_data: {},
@@ -357,6 +378,9 @@ export default function Screen5Page() {
           failure={candFailure}
           candidates={candidates}
           selected={selected}
+          pick={pick}
+          pickMissing={pickMissing}
+          pickUnmatched={pickUnmatched}
           onRetry={() => void loadCandidates()}
         />
       </div>
@@ -412,8 +436,10 @@ export default function Screen5Page() {
               </button>
               <p className="mt-4 text-[13px] text-ink-secondary">
                 {selected
-                  ? `선정 위치(rank 1, parcel_id ${selected.parcel_id})로 시뮬레이션을 시작합니다.`
-                  : "후보점을 먼저 불러와야 시작할 수 있습니다."}
+                  ? `화면 4 에서 고른 위치(${selected.rank}순위, parcel_id ${selected.parcel_id})로 시뮬레이션을 시작합니다.`
+                  : pickMissing
+                    ? "화면 4 에서 공청회를 열 위치를 먼저 고르세요."
+                    : "후보점을 먼저 불러와야 시작할 수 있습니다."}
               </p>
               {selected && (
                 <p className="mt-1 text-[12px] text-ink-secondary">
@@ -472,7 +498,7 @@ export default function Screen5Page() {
       <PageFooter screen={SCREEN} />
       <SourceNote
         files={[
-          "GET /api/v1/simulation/candidates?domain=<도메인> (STEP4 Top-N · rank 1 = 선정 위치)",
+          "GET /api/v1/simulation/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
           "POST /api/v1/simulation/stream (SSE)",
         ]}
       />
@@ -496,6 +522,10 @@ export default function Screen5Page() {
  * 화면이 **어느 점으로 토론하는지 숨기지 않는다.** 예전에는 `parcel_id: 1` 이
  * 코드에 박혀 있어 STEP4 를 다시 돌려도 늘 같은 점이었는데, 화면에는 그 사실이
  * 어디에도 안 나왔다.
+ *
+ * 지금은 그 자리에 **화면 4 의 선택**이 들어온다. 그래서 상태가 셋 더 있다:
+ * 안 골랐다 · 골랐는데 목록에 없다 · 골랐고 이었다. 셋을 한 문구로 뭉치면
+ * 사람이 무엇을 해야 하는지 알 수 없다.
  */
 function CandidatePanel({
   domain,
@@ -503,6 +533,9 @@ function CandidatePanel({
   failure,
   candidates,
   selected,
+  pick,
+  pickMissing,
+  pickUnmatched,
   onRetry,
 }: {
   domain: string | null;
@@ -510,6 +543,9 @@ function CandidatePanel({
   failure: Failure | null;
   candidates: Candidate[] | null;
   selected: Candidate | null;
+  pick: SitePick | null | undefined;
+  pickMissing: boolean;
+  pickUnmatched: boolean;
   onRetry: () => void;
 }) {
   if (!domain) {
@@ -553,13 +589,67 @@ function CandidatePanel({
     );
   }
 
+  if (pickMissing) {
+    return (
+      <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-[13px] text-amber-900">
+        <p className="font-semibold">공청회를 열 위치가 아직 정해지지 않았습니다.</p>
+        <p className="mt-1">
+          화면 4(위치 선정)에서 지도나 후보 목록의 한 곳을 고르고 「이 위치로 갈등 예측
+          실행」을 누르세요.
+          <span className="ml-1 text-amber-800/80">
+            (1순위를 자동으로 집지 않습니다 — 순위는 추천이지 결정이 아닙니다)
+          </span>
+        </p>
+        <Link
+          href="/sites"
+          className="mt-3 inline-block rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-[12px] font-bold text-amber-800 hover:bg-amber-50"
+        >
+          화면 4 로 이동
+        </Link>
+      </div>
+    );
+  }
+
+  if (pickUnmatched && pick) {
+    return (
+      <div className="rounded-2xl border border-red-200 bg-red-50 px-5 py-4 text-[13px] text-red-900">
+        <p className="font-semibold">고른 위치를 적재된 후보 목록에서 찾지 못했습니다.</p>
+        <p className="mt-1">
+          화면 4 에서 고른 것: <b>{pick.jibun}</b> ({pick.rank}순위 ·{" "}
+          <span className="font-mono">PNU {pick.pnu}</span>
+          {pick.run_id ? ` · run ${pick.run_id}` : ""})
+        </p>
+        <p className="mt-1">
+          지금 서버에 적재된 후보는 {candidates?.length ?? 0}건인데 그 안에 이 PNU 가 없습니다.
+          화면 4 가 보던 실행과 DB 에 적재된 실행이 다를 때 이렇게 됩니다.
+          <b> 순위가 같은 다른 필지로 대신 돌리지 않습니다</b> — 그러면 고른 곳이 아닌 땅으로
+          토론이 돌아갑니다.
+        </p>
+        <div className="mt-3 flex gap-2">
+          <button
+            onClick={onRetry}
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-[12px] font-bold text-red-700 hover:bg-red-50"
+          >
+            후보 목록 다시 불러오기
+          </button>
+          <Link
+            href="/sites"
+            className="rounded-lg border border-red-300 bg-white px-3 py-1.5 text-[12px] font-bold text-red-700 hover:bg-red-50"
+          >
+            화면 4 에서 다시 고르기
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!selected) return null;
 
   return (
     <div className="rounded-2xl border border-blue-200 bg-blue-50/50 px-5 py-4">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
-          rank 1 · 선정 위치
+          rank {selected.rank} · 화면 4 에서 선택
         </span>
         <span className="text-[15px] font-bold text-ink">{selected.jibun}</span>
         <span className="font-mono text-[12px] text-ink-secondary">
@@ -573,8 +663,9 @@ function CandidatePanel({
         <Kv k="run" v={selected.run_id} />
       </div>
       <p className="mt-2 text-[11px] text-ink-secondary">
-        후보 {candidates?.length ?? 0}건 중 rank 1. 점수 내림차순이 아니라 <b>MCLP 커버
-        기여도</b> 순서이므로 점수가 더 높은 하위 순위가 있을 수 있습니다.
+        후보 {candidates?.length ?? 0}건 중 화면 4 에서 고른 {selected.rank}순위입니다(PNU 로
+        이었습니다). 순위는 점수 내림차순이 아니라 <b>MCLP 커버 기여도</b> 순서이므로 점수가 더
+        높은 하위 순위가 있을 수 있습니다.
         {selected.land_id === null && " land_id 는 NULL 입니다(공간조인 미매칭 — 정상)."}
       </p>
     </div>
