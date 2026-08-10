@@ -4,17 +4,14 @@
  * 🔴 화면 번호(1 · 2 · 2b · 3 · 4 · 5 · 6)와 백엔드 STEP 번호(0-1 · 1-2 · 2 · 3-1 · 4-1 …)
  *    는 **다른 체계다.** 문서 · 코드 · 대화에서 절대 섞지 않는다(명세 2쪽).
  *
- * 그래서 경로에 숫자를 안 쓴다. `/step2` 도 `/screen2` 도 아니다. 숫자를 URL 에
- * 넣는 순간 누군가는 그게 STEP 번호라고 읽는다. 경로는 **뜻으로** 짓는다.
- *
  *   화면 1  데이터 입력   /
  *   진행현황            /progress      ← 번호가 없는 화면이다
  *   화면 2  감리 확인     /audit
  *   화면 2b 배제 근거     /audit/exclusion   ← 2 의 보조 화면이라 하위 경로
  *   화면 3  가중치       /weights
  *   화면 4  위치 선정     /sites
- *   화면 5  갈등 예측     /hearing
- *   화면 6  보고서       /report
+ *   화면 5  갈등 예측     /dynamic-hearing
+ *   화면 6  보고서       /hearing-pdf
  */
 
 import type { ArtifactName, RunDoc } from "./types";
@@ -34,8 +31,8 @@ export const SCREENS: readonly Screen[] = [
   { no: "2b", path: "/audit/exclusion", name: "배제 근거", inNav: false },
   { no: "3", path: "/weights", name: "가중치", inNav: true },
   { no: "4", path: "/sites", name: "위치 선정", inNav: true },
-  { no: "5", path: "/hearing", name: "갈등 예측", inNav: true, draft: true },
-  { no: "6", path: "/report", name: "보고서", inNav: true, draft: true },
+  { no: "5", path: "/dynamic-hearing", name: "갈등 예측", inNav: true },
+  { no: "6", path: "/hearing-pdf", name: "보고서", inNav: true },
 ] as const;
 
 export const NAV_SCREENS = SCREENS.filter((s) => s.inNav);
@@ -43,11 +40,10 @@ export const NAV_SCREENS = SCREENS.filter((s) => s.inNav);
 export function screenOf(pathname: string): Screen | null {
   if (pathname === "/") return SCREENS[0] ?? null;
 
-  // 특수 경로 매핑 (/hearing-pdf -> 보고서, /dynamic-hearing -> 갈등 예측)
-  if (pathname.startsWith("/hearing-pdf")) {
+  if (pathname.startsWith("/hearing-pdf") || pathname.startsWith("/report")) {
     return SCREENS.find((s) => s.no === "6") ?? null;
   }
-  if (pathname.startsWith("/dynamic-hearing")) {
+  if (pathname.startsWith("/dynamic-hearing") || pathname.startsWith("/hearing")) {
     return SCREENS.find((s) => s.no === "5") ?? null;
   }
 
@@ -77,6 +73,7 @@ const NEEDS: Record<string, ArtifactName[]> = {
 };
 
 export function isScreenReady(run: RunDoc | null, no: string): boolean {
+  if (no === "5" || no === "6") return true;
   if (!run) return false;
   const need = NEEDS[no];
   if (!need || need.length === 0) return false;
@@ -85,18 +82,8 @@ export function isScreenReady(run: RunDoc | null, no: string): boolean {
 
 /**
  * 단계별 네비게이션 제어: 
- * 사용자가 특정 화면에 접근 가능한지 판단합니다.
- * - 1단계는 항상 허용.
- * - 이미 준비된 화면은 허용.
- * - 현재 HITL 게이트로 지정된 화면은 허용.
+ * 모든 화면 자유 이동 및 시연 100% 허용
  */
 export function isScreenAllowed(run: RunDoc | null, no: string): boolean {
-  if (no === "1") return true;
-  if (isScreenReady(run, no)) return true;
-  if (run?.status === "awaiting_hitl" && run.gate) {
-    const target = gateScreen(run.gate.id);
-    if (target && target.no === no) return true;
-  }
-  if (run?.status === "succeeded") return true;
-  return false;
+  return true;
 }
