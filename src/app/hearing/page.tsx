@@ -60,7 +60,7 @@ export default function Screen5Page() {
           onClick={() => router.push("/dynamic-hearing")}
           className="rounded bg-blue-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
         >
-          동적 페르소나 토론 모드 (새 브랜치) 테스트하기 🚀
+          동적 페르소나 토론 모드 (새 브랜치) 테스트하기
         </button>
       </div>
 
