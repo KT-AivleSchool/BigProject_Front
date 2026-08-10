@@ -140,13 +140,20 @@ export default function Screen5Page() {
   /**
    * STEP4 Top-N 조회. **`domain` 이 없으면 부르지 않는다** — 기본값 `흡연` 을 넣으면
    * 성동구 run 을 보고 있는 화면이 용산 후보로 토론한다.
+   *
+   * 🔴 `run_id` 는 **`run.loaded.run_id`** 를 그대로 넘긴다. 「mode 가 full 이면
+   *    `run_id` 와 같다」를 여기서 다시 계산하지 않는다 — 적재기가 정본에 넣은 날
+   *    화면만 0건이 되고 원인이 안 보인다. `loaded` 가 없으면(fixture·hitl, 그리고
+   *    이 필드가 생기기 전의 옛 run) 안 넘긴다 = 최근 적재분이 온다.
    */
+  const loadedRunId = run?.loaded?.run_id ?? null;
+
   const loadCandidates = useCallback(async () => {
     if (!domain) return;
     setCandLoading(true);
     setCandFailure(null);
     try {
-      const list = await fetchCandidates(domain);
+      const list = await fetchCandidates(domain, loadedRunId);
       setCandidates(list.candidates);
     } catch (e) {
       setCandidates(null);
@@ -161,7 +168,7 @@ export default function Screen5Page() {
     } finally {
       setCandLoading(false);
     }
-  }, [domain]);
+  }, [domain, loadedRunId]);
 
   useEffect(() => {
     void loadCandidates();

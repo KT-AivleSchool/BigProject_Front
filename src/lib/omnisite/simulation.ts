@@ -55,12 +55,23 @@ export interface CandidateList {
  * 🔴 `limit` 은 **화면에 몇 개를 그릴지**일 뿐 N 을 정하지 않는다. N 은 STEP4 의
  *    `--topn`(기본 20)이 정한다.
  *
+ * 🔴 `runId` 는 **`run.loaded.run_id` 를 그대로 넘긴다.** 안 넘기면 서버가 그 도메인의
+ *    **가장 최근 적재분**을 준다 — 같은 도메인을 두 번 돌리면 화면 4 에서 고른 점이
+ *    이전 실행 것이라 목록에 없거나, 있어도 rank 가 겹쳐 다른 필지를 가리킨다.
+ *    「mode 가 full 이면 run_id 와 같다」를 여기서 다시 계산하지 않는다 — 어디에
+ *    적재됐는지는 적재한 쪽만 안다(`RunLoaded` 주석).
+ *
  * 후보가 0건이면 서버가 **404 + 적재 명령**을 준다(빈 배열이 아니다). 그래서
  * 여기서 빈 배열로 바꾸지 않는다 — "후보 없음"과 "적재 안 함"을 구분하려고
  * 서버가 일부러 갈라놓은 것을 프런트에서 도로 뭉개면 안 된다.
  */
-export function fetchCandidates(domain: string, limit?: number): Promise<CandidateList> {
+export function fetchCandidates(
+  domain: string,
+  runId?: string | null,
+  limit?: number,
+): Promise<CandidateList> {
   const q = new URLSearchParams({ domain });
+  if (runId) q.set("run_id", runId);
   if (limit !== undefined) q.set("limit", String(limit));
   return getJson<CandidateList>(`${BASE}/candidates?${q.toString()}`);
 }
