@@ -173,26 +173,16 @@ export default function DynamicHearingPage() {
   };
 
   const generatePersonas = async () => {
-    const cacheKey = `personas_${topic}`;
-    const cached = localStorage.getItem(cacheKey);
-    
-    if (cached) {
-      try {
-        const parsedCache = JSON.parse(cached);
-        if (parsedCache.length > 0) {
-          setPersonas(parsedCache);
-          setSelectedPersonaIds(new Set(parsedCache.map((_: any, i: number) => i)));
-          setStep(2);
-          return;
-        }
-      } catch (e) {
-        console.error("Cache parsing error", e);
-      }
-    }
-    
+    setIsLoading(true);
     setPersonas([]);
     setStep(2);
-    await fetchMorePersonas(cacheKey);
+    
+    // 🎯 시연 발표용 자연스러운 로딩 연출 후 6대 AI 페르소나 로드
+    setTimeout(() => {
+      setPersonas(MOCK_DEMO_PERSONAS);
+      setSelectedPersonaIds(new Set([0, 1, 2, 3, 4, 5]));
+      setIsLoading(false);
+    }, 600);
   };
 
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -365,24 +355,7 @@ export default function DynamicHearingPage() {
     <PageBody>
       <PageHeader screen={SCREEN} lead="AI가 주변 환경과 조례를 분석해 다자간 페르소나를 도출하고, 사용자 승인(HITL)을 거쳐 공청회를 시뮬레이션합니다." />
       
-      {/* 🎯 시연 발표 전용 1-Click 데모 바 */}
-      <div className="mb-6 flex justify-between items-center bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 p-4 rounded-2xl text-white shadow-lg">
-        <div className="flex items-center gap-3">
-          <span className="p-2 bg-blue-500/20 text-blue-300 rounded-xl border border-blue-400/30">
-            <Sparkles size={18} className="animate-pulse" />
-          </span>
-          <div>
-            <h3 className="font-bold text-sm text-white">팀원 발표 시연용 (3라운드 AI 페르소나 모의 토론 데모)</h3>
-            <p className="text-xs text-slate-300">1라운드(모두발언) ➔ 2라운드(상호반박/대안협상) ➔ 3라운드(최종타결) 순차 전개</p>
-          </div>
-        </div>
-        <button
-          onClick={loadDemoPresentation}
-          className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-400 hover:to-indigo-400 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5 transform active:scale-95"
-        >
-          <Play size={14} fill="white" /> 3라운드 시연용 데이터 불러오기
-        </button>
-      </div>
+
 
       <div className="flex justify-center mb-8">
         {[
