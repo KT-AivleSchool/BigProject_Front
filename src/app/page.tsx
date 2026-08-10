@@ -1,8 +1,8 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PageBody, PageHeader } from "@/components/ui/Page";
+import { UploadPanel } from "@/components/upload/UploadPanel";
 import { MODE_FIXTURE, MODE_HITL } from "@/lib/omnisite/pipeline";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
@@ -10,19 +10,17 @@ import { SCREENS } from "@/lib/omnisite/screens";
 const SCREEN = SCREENS[0]!;
 
 export default function Screen1Page() {
-  const router = useRouter();
   const { run, starting, error, start } = useRun();
-  
+
   const [typedDomain, setTypedDomain] = useState<string | null>(null);
   const domain = typedDomain ?? run?.domain ?? "";
   const setDomain = setTypedDomain;
   const [region, setRegion] = useState("");
   const [facility, setFacility] = useState("");
   const [intent, setIntent] = useState("");
-  const [tab, setTab] = useState<"data" | "law">("data");
   const [mode, setMode] = useState<string>(MODE_HITL);
   const [inputError, setInputError] = useState<string | null>(null);
-  
+
   const domainRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const el = domainRef.current;
@@ -39,8 +37,7 @@ export default function Screen1Page() {
     }
     setInputError(null);
     if (fromDom.trim() && fromDom !== typedDomain) setTypedDomain(fromDom);
-    const id = await start(value, mode);
-    // if (id) router.push(PROGRESS_PATH); // No longer redirect, sidebar handles it.
+    await start(value, mode);
   }
 
   return (
@@ -51,58 +48,13 @@ export default function Screen1Page() {
       />
 
       <div className="mt-8 max-w-5xl mx-auto flex flex-col gap-8 pb-12">
-        {/* Step 1: 데이터 업로드 (Swapped) */}
+        {/* Step 1: 분석 기본 정보
+            🔴 업로드보다 **앞**에 둔다. 업로드 API 7개가 전부 `domain` 을 요구하므로
+               도메인 없이 열리는 업로드 상자는 누를 수 없는 버튼과 같다. */}
         <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
           <div className="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
             <div className="flex items-center gap-3">
               <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">1</div>
-              <h2 className="text-lg font-bold text-gray-800">데이터 및 문서 업로드</h2>
-            </div>
-            <p className="mt-1 ml-11 text-sm text-gray-500">분석에 필요한 공간 데이터나 참고할 법규 문서를 업로드합니다.</p>
-          </div>
-          
-          <div className="p-8">
-            <div className="flex gap-2 p-1 rounded-xl bg-gray-100/80 max-w-sm mb-6">
-              {(
-                [
-                  ["data", "📊 분석 데이터 (SHP, CSV)"],
-                  ["law", "📄 조례·법규 (PDF, HWP)"],
-                ] as const
-              ).map(([k, label]) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setTab(k)}
-                  className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                    tab === k ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-
-            <div className="w-full rounded-xl border-2 border-dashed border-gray-300 bg-gray-50/50 py-16 px-6 text-center hover:bg-gray-50 hover:border-blue-400 transition-colors group cursor-pointer">
-              <div className="w-16 h-16 mx-auto bg-white rounded-full shadow-sm border border-gray-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="17 8 12 3 7 8"></polyline>
-                  <line x1="12" y1="3" x2="12" y2="15"></line>
-                </svg>
-              </div>
-              <h3 className="text-base font-bold text-gray-800">클릭하여 파일 선택 또는 드래그 앤 드롭</h3>
-              <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                {tab === 'data' ? 'SHP, CSV, XLSX, GEOJSON 형식의 공간 데이터를 업로드할 수 있습니다.' : 'PDF, HWP, DOCX 등 참고할 지자체 조례 및 법규 문서를 업로드합니다.'}
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Step 2: 분석 대상 정의 (Swapped) */}
-        <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">2</div>
               <h2 className="text-lg font-bold text-gray-800">분석 기본 정보</h2>
             </div>
             <p className="mt-1 ml-11 text-sm text-gray-500">어떤 지역의 어떤 시설을 분석할지 정의합니다.</p>
@@ -126,12 +78,45 @@ export default function Screen1Page() {
                 </p>
               )}
             </div>
-            <Field label="분석 지역 (선택)" placeholder="예) 서울특별시 용산구" value={region} onChange={setRegion} />
-            <Field label="시설 유형 (선택)" placeholder="예) 흡연부스" value={facility} onChange={setFacility} />
+            <Field
+              label="시설 유형 (조례 업로드에 쓰입니다)"
+              placeholder="예) 흡연부스"
+              value={facility}
+              onChange={setFacility}
+              note="조례를 벡터 DB에 넣을 때 이 값으로 태깅합니다. 비워두면 서버가 STEP1 감리 확정본에서 읽고, 그것도 없으면 400을 돌려줍니다 — 프런트가 임의로 채우지 않습니다."
+            />
+            <Field
+              label="분석 지역 (선택)"
+              placeholder="예) 서울특별시 용산구"
+              value={region}
+              onChange={setRegion}
+              note="⚠ 실행 API 는 아직 이 값을 받지 않습니다 (POST /runs 는 {domain, mode} 뿐)."
+            />
             <div className="sm:col-span-2">
-              <Field label="사용자 의도 (선택)" placeholder="분석 시 특별히 고려해야 할 사항을 자유롭게 입력하세요" value={intent} onChange={setIntent} />
+              <Field
+                label="사용자 의도 (선택)"
+                placeholder="분석 시 특별히 고려해야 할 사항을 자유롭게 입력하세요"
+                value={intent}
+                onChange={setIntent}
+                note="⚠ 실행 API 는 아직 이 값을 받지 않습니다 (POST /runs 는 {domain, mode} 뿐)."
+              />
             </div>
           </div>
+        </section>
+
+        {/* Step 2: 데이터 업로드 — 실제 배선 (`UploadPanel`) */}
+        <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">2</div>
+              <h2 className="text-lg font-bold text-gray-800">데이터 및 문서 업로드</h2>
+            </div>
+            <p className="mt-1 ml-11 text-sm text-gray-500">
+              조례는 <code className="font-mono text-xs">data_임시/&lt;도메인&gt;/law/</code>, 데이터는{" "}
+              <code className="font-mono text-xs">.../data/</code> 로 갑니다 — 파이프라인이 실제로 읽는 폴더입니다.
+            </p>
+          </div>
+          <UploadPanel domain={domain} facilityType={facility} />
         </section>
 
         {/* Step 3: 실행 */}
@@ -187,11 +172,18 @@ function Field({
   placeholder,
   value,
   onChange,
+  note,
 }: {
   label: string;
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
+  /**
+   * 이 값이 **어디로 가는지**. 안 적으면 사용자는 입력한 값이 서버로 간다고
+   * 읽는다 — `분석 지역`·`사용자 의도` 는 실제로는 아무 데도 안 간다.
+   * 화면이 말하지 않으면 화면이 거짓말한 것이다(원칙 4).
+   */
+  note?: string;
 }) {
   return (
     <div>
@@ -202,6 +194,7 @@ function Field({
         placeholder={placeholder}
         className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors bg-gray-50 hover:bg-white text-sm"
       />
+      {note && <p className="mt-1.5 text-xs leading-relaxed text-gray-500">{note}</p>}
     </div>
   );
 }

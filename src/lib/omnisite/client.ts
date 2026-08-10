@@ -44,6 +44,15 @@ async function readDetail(res: Response): Promise<string> {
   try {
     const j = JSON.parse(text) as { detail?: unknown };
     if (typeof j.detail === "string") return j.detail;
+    // 🔴 `detail` 이 **객체**인 경우가 있다 — 업로드 422 는
+    //    `{message, domain, saved_to, files[]}` 를 통째로 넣는다
+    //    (`app/api/v1/upload.py:483-488`). 전엔 이 분기가 없어서 본문 전체가
+    //    300자에서 잘렸고, 하필 `message` 가 앞에 없으면 사유가 안 보였다.
+    if (j.detail && typeof j.detail === "object") {
+      const d = j.detail as { message?: unknown };
+      if (typeof d.message === "string") return d.message;
+      return JSON.stringify(j.detail).slice(0, 300);
+    }
   } catch {
     /* JSON 이 아니면 본문 그대로 쓴다 */
   }
@@ -84,6 +93,25 @@ export async function postJson<T>(url: string, body: unknown): Promise<T> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  return (await res.json()) as T;
+}
+
+/**
+ * multipart/form-data POST (업로드).
+ *
+ * 🔴 `Content-Type` 을 **직접 넣지 않는다.** FormData 를 주면 브라우저가
+ *    `multipart/form-data; boundary=...` 를 만들어 붙이는데, 우리가 헤더를
+ *    먼저 박으면 boundary 가 빠져 서버가 파트를 하나도 못 읽는다.
+ *    (증상: 파일을 붙였는데 422 `files: Field required`)
+ */
+export async function postForm<T>(url: string, form: FormData): Promise<T> {
+  const res = await request(url, { method: "POST", body: form });
+  return (await res.json()) as T;
+}
+
+/** DELETE. 실패는 `ApiError` 로 던진다 — 204 를 안 주는 엔드포인트라 본문을 읽는다. */
+export async function deleteJson<T>(url: string): Promise<T> {
+  const res = await request(url, { method: "DELETE" });
   return (await res.json()) as T;
 }
 
