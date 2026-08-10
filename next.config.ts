@@ -71,6 +71,27 @@ const nextConfig: NextConfig = {
         source: "/api/v1/upload/:path*",
         destination: `${API_ORIGIN}/api/v1/upload/:path*`,
       },
+      /**
+       * 화면 5 B안(다인 토론)·HWPX 내려받기. 프런트 PR #57 ↔ 백엔드 PR #224.
+       * 백엔드 `main.py:171-180` 에 `stakeholders` 2개 · `report` 1개가 있다.
+       *
+       * 🔴 PR 원본은 `process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"`
+       *    으로 **브라우저에서 직접** 백엔드를 불렀다. 세 가지가 걸린다 —
+       *    ⓐ 백엔드 오리진이 번들에 박힌다(위 주석의 이유 그대로)
+       *    ⓑ `allow_origins=["*"]` 라는 **개발용** CORS 설정에 의존한다
+       *    ⓒ `localhost` 는 IPv6 `::1` 로 먼저 풀리는데 백엔드는 2026-08-09
+       *       보안 조치로 `127.0.0.1` 에만 바인딩돼 있다(백엔드 CLAUDE.md 함정).
+       *    그래서 나머지 넷과 **같은 방식**으로 접는다. 새 화면만 다른 규칙을
+       *    쓰면 백엔드 주소가 바뀔 때 여기만 남는다.
+       */
+      {
+        source: "/api/v1/stakeholders/:path*",
+        destination: `${API_ORIGIN}/api/v1/stakeholders/:path*`,
+      },
+      {
+        source: "/api/v1/report/:path*",
+        destination: `${API_ORIGIN}/api/v1/report/:path*`,
+      },
     ];
   },
 };
