@@ -62,31 +62,32 @@ export default function Screen6Page() {
         }
       />
 
-      <ArtifactView2 a={report} b={topn} what="보고서">
-        {(rep, rows) => (
-          <>
-            <nav className="mt-5 flex flex-wrap gap-2 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px]">
-              <span className="text-ink-secondary">목차</span>
-              {SECTIONS.map(([id, label]) => (
-                <a key={id} href={`#${id}`} className="text-primary hover:underline">
-                  {label}
-                </a>
-              ))}
-            </nav>
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4 pb-4">
+        <ArtifactView2 a={report} b={topn} what="보고서">
+          {(rep, rows) => (
+            <>
+              <nav className="flex flex-wrap gap-2 rounded-lg border border-hairline bg-white px-4 py-3 text-[12px]">
+                <span className="text-ink-secondary">목차</span>
+                {SECTIONS.map(([id, label]) => (
+                  <a key={id} href={`#${id}`} className="text-primary hover:underline">
+                    {label}
+                  </a>
+                ))}
+              </nav>
 
-            <Overview rep={rep} runId={run?.run_id ?? null} finished={run?.finished_at ?? null} />
-            <DataSection clean={clean.data} rep={rep} />
-            <ExclusionSection rep={rep} />
-            <WeightSection rep={rep} />
-            <SiteSection rows={rows} />
-            <CoverageSection rep={rep} />
-            <GapSection gaps={rep.data_gap} />
-          </>
-        )}
-      </ArtifactView2>
+              <Overview rep={rep} runId={run?.run_id ?? null} finished={run?.finished_at ?? null} />
+              <DataSection clean={clean.data} rep={rep} />
+              <ExclusionSection rep={rep} />
+              <WeightSection rep={rep} />
+              <SiteSection rows={rows} />
+              <CoverageSection rep={rep} />
+              <GapSection gaps={rep.data_gap} />
+            </>
+          )}
+        </ArtifactView2>
+      </div>
 
       <PageFooter screen={SCREEN} />
-      <SourceNote files={["report.json", "topN.csv", "clean_report.json"]} />
     </PageBody>
   );
 }

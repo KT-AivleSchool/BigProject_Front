@@ -53,8 +53,9 @@ export default function Screen5Page() {
         lead="놓기 전에 반대를 미리 듣는다. 사람 대신 에이전트가 공청회를 연다."
       />
 
-      <div className="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-[12px] leading-relaxed text-amber-900">
-        <p className="text-[13px] font-semibold">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4">
+        <div className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-4 text-[12px] leading-relaxed text-amber-900">
+          <p className="text-[13px] font-semibold">
           이 화면은 아직 서버에 연결돼 있지 않습니다 — <b>코드가 없어서가 아니라 라우터가
           등록돼 있지 않아서입니다.</b>
         </p>
@@ -141,20 +142,20 @@ export default function Screen5Page() {
         </p>
       </section>
 
-      <p className="mt-4 text-[12px] text-ink-secondary">
-        현재 실행:{" "}
-        {run ? (
-          <span className="tnum font-medium text-ink">
-            {run.run_id} · {run.domain} · {run.status}
-          </span>
-        ) : (
-          "없음"
-        )}{" "}
-        — 시뮬레이션은 이 실행의 결과(화면 4 후보지)를 입력으로 받게 됩니다.
-      </p>
+        <p className="mt-4 text-[12px] text-ink-secondary">
+          현재 실행:{" "}
+          {run ? (
+            <span className="tnum font-medium text-ink">
+              {run.run_id} · {run.domain} · {run.status}
+            </span>
+          ) : (
+            "없음"
+          )}{" "}
+          — 시뮬레이션은 이 실행의 결과(화면 4 후보지)를 입력으로 받게 됩니다.
+        </p>
+      </div>
 
       <PageFooter screen={SCREEN} />
-      <SourceNote files={["(없음) — 시뮬레이션 엔드포인트가 계약에 없습니다"]} />
     </PageBody>
   );
 }

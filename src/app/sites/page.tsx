@@ -64,160 +64,141 @@ export default function Screen4Page() {
     <PageBody>
       <PageHeader
         screen={SCREEN}
-        lead="수요 커버리지를 최대로 만드는 조합 — 순위는 점수가 아니라 커버 기여로 정해진다."
+        lead="선택된 후보지들이 얼마나 많은 수요를 감당할 수 있는지(커버율)를 확인합니다. 최종 순위는 단순 점수가 아닌 실질적인 수요 해결 기여도를 기준으로 결정됩니다."
       />
 
-      <ArtifactView2 a={grid} b={topn} what="점수 격자와 후보지">
-        {(g, rows) => {
-          if (g.crs !== "EPSG:4326") {
-            // 좌표계 추측은 이 프로젝트에서 실제로 사고가 났던 지점이다.
-            // 다르면 그리지 않는다. 억지로 그리면 지도가 조용히 틀린다.
-            return (
-              <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-5 py-6 text-[13px] text-red-800">
-                <p className="font-medium">지도를 그리지 않았습니다.</p>
-                <p className="mt-1">
-                  <code>score_grid.crs</code> 가 <code>{g.crs}</code> 입니다. 이 화면은
-                  EPSG:4326(경위도)만 그립니다. 다른 좌표계를 경위도로 읽으면 마커가 조용히
-                  엉뚱한 곳에 찍힙니다.
-                </p>
-              </div>
-            );
-          }
-          const sel = rows.find((r) => r.순위 === selected) ?? null;
-
-          return (
-            <>
-              <Toolbar
-                grid={g}
-                showGrid={showGrid}
-                setShowGrid={setShowGrid}
-                showExcluded={showExcluded}
-                setShowExcluded={setShowExcluded}
-                basemap={basemap}
-                setBasemap={setBasemap}
-                panel={panel}
-                setPanel={setPanel}
-              />
-
-              {/*
-                🔴 **액자.** 지도·사이드바·범례를 한 상자에 가둔다. 예전엔 지도가
-                문서 흐름에 그냥 놓여 있었고, `globals.css` 의 `.map-canvas` 가
-                `position:absolute; inset:0` 이라 **뷰포트 전체를 덮어** 아래의
-                사이드바와 「갈등 예측 실행」 버튼을 가렸다(2026-08-05 실측).
-                그 규칙은 지웠고, 여기서는 높이를 **뷰포트에 묶어** 어떤 창
-                크기에서도 액자 아래가 남도록 한다 — `56vh` 상한이 그 몫이다.
-                고정 560px 이면 세로가 짧은 노트북에서 다시 버튼이 밀려난다.
-              */}
-              <section className="overflow-hidden rounded-b-xl border border-hairline bg-white">
-                {/* 경고도 **액자 안**에 둔다. 지도에 대한 말이므로 지도에 붙어 있어야
-                    한다 — 액자 밖에 두면 도구줄과 지도 사이가 벌어져 액자가 끊긴다. */}
-                {basemap && tileFailed && (
-                  <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900">
-                    배경 지도 타일을 받지 못했습니다(외부 망 차단이거나 타일 서버 응답 없음).
-                    <b> 격자와 후보지는 그대로 정확합니다</b> — 배경만 없습니다. 「배경 지도」를
-                    꺼도 됩니다.
+      <div className="flex-1 flex flex-col min-h-0 pr-2 mt-4 pb-4">
+        <ArtifactView2 a={grid} b={topn} what="점수 격자와 후보지">
+          {(g, rows) => {
+            if (g.crs !== "EPSG:4326") {
+              // 좌표계 추측은 이 프로젝트에서 실제로 사고가 났던 지점이다.
+              // 다르면 그리지 않는다. 억지로 그리면 지도가 조용히 틀린다.
+              return (
+                <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-5 py-6 text-[13px] text-red-800">
+                  <p className="font-medium">지도를 그리지 않았습니다.</p>
+                  <p className="mt-1">
+                    <code>score_grid.crs</code> 가 <code>{g.crs}</code> 입니다. 이 화면은
+                    EPSG:4326(경위도)만 그립니다. 다른 좌표계를 경위도로 읽으면 마커가 조용히
+                    엉뚱한 곳에 찍힙니다.
                   </p>
-                )}
+                </div>
+              );
+            }
+            const sel = rows.find((r) => r.순위 === selected) ?? null;
 
-                <div
-                  className={`grid ${panel ? "md:grid-cols-[minmax(0,1fr)_360px]" : ""}`}
-                >
-                  <div className="relative h-[clamp(340px,56vh,600px)]">
-                    <GridMap
-                      grid={g}
-                      topn={rows}
-                      selected={selected}
-                      onSelect={select}
-                      showExcluded={showExcluded}
-                      showGrid={showGrid}
-                      basemap={basemap}
-                      onTileError={() => setTileFailed(true)}
-                    />
+            return (
+              <>
+                <Toolbar
+                  grid={g}
+                  showGrid={showGrid}
+                  setShowGrid={setShowGrid}
+                  showExcluded={showExcluded}
+                  setShowExcluded={setShowExcluded}
+                  basemap={basemap}
+                  setBasemap={setBasemap}
+                  panel={panel}
+                  setPanel={setPanel}
+                />
+
+                <Coverage report={report.data} nTop={rows.length} />
+
+                <section className="flex-1 min-h-0 flex flex-col mt-3 overflow-hidden rounded-xl border border-hairline bg-white">
+                  {basemap && tileFailed && (
+                    <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900 shrink-0">
+                      배경 지도 타일을 받지 못했습니다(외부 망 차단이거나 타일 서버 응답 없음).
+                      <b> 격자와 후보지는 그대로 정확합니다</b> — 배경만 없습니다. 「배경 지도」를
+                      꺼도 됩니다.
+                    </p>
+                  )}
+
+                  <div
+                    className={`flex-1 min-h-0 grid ${panel ? "md:grid-cols-[minmax(0,1fr)_360px]" : ""}`}
+                  >
+                    <div className="relative h-full min-h-0">
+                      <GridMap
+                        grid={g}
+                        topn={rows}
+                        selected={selected}
+                        onSelect={select}
+                        showExcluded={showExcluded}
+                        showGrid={showGrid}
+                        basemap={basemap}
+                        onTileError={() => setTileFailed(true)}
+                      />
+                    </div>
+
+                    {panel && (
+                      <aside
+                        className="flex h-full flex-col min-h-0 border-hairline md:border-l"
+                      >
+                        <div className="flex shrink-0 gap-1 border-b border-hairline px-2 pt-2">
+                          <Tab on={tab === "list"} onClick={() => setTab("list")}>
+                            후보 {rows.length}곳
+                          </Tab>
+                          <Tab on={tab === "detail"} onClick={() => setTab("detail")}>
+                            {sel ? `${sel.순위}순위 상세` : "상세"}
+                          </Tab>
+                        </div>
+
+                        <div className="min-h-0 flex-1 overflow-y-auto p-3">
+                          {tab === "list" ? (
+                            <TopList rows={rows} selected={selected} onSelect={select} />
+                          ) : sel ? (
+                            <Detail
+                              row={sel}
+                              prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
+                              rows={rows}
+                              minSep={minSepM(report.data)}
+                              onClose={() => select(null)}
+                            />
+                          ) : (
+                            /* 빈 탭을 그냥 비워 두지 않는다 — 「고장인가」와 「아직 안 골랐나」를
+                               화면만 보고 구분할 수 있어야 한다. */
+                            <div className="flex flex-col items-center justify-center h-full text-center p-6 text-gray-400">
+                              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3 opacity-50"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                              <p className="text-[12px] leading-relaxed">
+                                아직 선택된 후보지가 없습니다.<br/>지도의 번호 마커를 누르거나<br/>후보 리스트에서 항목을 선택하시면<br/>여기에 세부 정보가 나타납니다.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </aside>
+                    )}
                   </div>
 
-                  {panel && (
-                    <aside
-                      /* 지도와 **같은 높이**로 묶는다. 스크롤은 **탭 내용에만** 건다 —
-                         `aside` 전체에 걸면 탭 머리가 같이 밀려 올라가 어느 탭인지
-                         모르는 채 스크롤하게 된다. */
-                      className="flex h-[clamp(340px,56vh,600px)] flex-col border-hairline md:border-l"
+                  <Legend grid={g} />
+                </section>
+
+                <div className="shrink-0 mt-4 mb-2">
+                  <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-gray-200 bg-gray-50/80 p-5 rounded-2xl shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-500">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-[14px] font-bold text-gray-800">
+                          최적 위치 선정이 완료되었습니다
+                        </span>
+                        <span className="text-[13px] text-gray-500">
+                          다음 단계인 공청회 시뮬레이션(갈등 예측) 기능은 현재 준비 중입니다.
+                        </span>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      disabled
+                      className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gray-300 px-8 py-3.5 text-sm font-bold text-gray-500 cursor-not-allowed shadow-sm transition-all"
                     >
-                      <div className="flex shrink-0 gap-1 border-b border-hairline px-2 pt-2">
-                        <Tab on={tab === "list"} onClick={() => setTab("list")}>
-                          후보 {rows.length}곳
-                        </Tab>
-                        <Tab on={tab === "detail"} onClick={() => setTab("detail")}>
-                          {sel ? `${sel.순위}순위 상세` : "상세"}
-                        </Tab>
-                      </div>
-
-                      <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                        {tab === "list" ? (
-                          <TopList rows={rows} selected={selected} onSelect={select} />
-                        ) : sel ? (
-                          <Detail
-                            row={sel}
-                            prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
-                            rows={rows}
-                            minSep={minSepM(report.data)}
-                            onClose={() => select(null)}
-                          />
-                        ) : (
-                          /* 빈 탭을 그냥 비워 두지 않는다 — 「고장인가」와 「아직 안 골랐나」를
-                             화면만 보고 구분할 수 있어야 한다. */
-                          <p className="px-1 text-[12px] leading-relaxed text-ink-secondary">
-                            아직 고른 후보지가 없습니다. 지도의 번호 마커를 누르거나
-                            「후보 {rows.length}곳」 탭에서 한 줄을 고르면 여기에 세부 정보가
-                            나옵니다.
-                          </p>
-                        )}
-                      </div>
-                    </aside>
-                  )}
+                      갈등 예측 실행 (준비 중)
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                    </button>
+                  </div>
                 </div>
-
-                <Legend grid={g} />
-              </section>
-
-              {/*
-                커버율은 **한 후보의 성질이 아니라 조합 전체의 성질**이다. 지도 옆에
-                두면 "지금 고른 후보의 커버율" 처럼 읽히고, 실제로 사이드바 스크롤을
-                길게 만든 주범이기도 했다. 액자 아래 가로로 펼치면 곡선과 수치가
-                나란히 놓여 세로 길이도 줄어든다.
-              */}
-              <Coverage report={report.data} nTop={rows.length} />
-            </>
-          );
-        }}
-      </ArtifactView2>
-
-      {/*
-        명세 화면 4 의 주 동작은 「갈등 예측 실행」이다. **버튼을 살려두지 않는다** —
-        화면 5(공청회 시뮬레이션)는 백엔드 배선이 끝나지 않았고 담당이 넘어갔다.
-        누르면 아무 일도 안 일어나는 버튼은 "실행됐나?" 를 사람이 확인할 수 없게
-        만든다(절대원칙 1·4). 자리와 사유만 남기고, 넘어가는 길은 「갈등 예측 ▶」로
-        열어 둔다 — 명세는 확정 전에도 다음 화면으로 갈 수 있어야 한다고 정했다.
-      */}
-      <PageFooter
-        screen={SCREEN}
-        action={
-          <button
-            type="button"
-            disabled
-            title="화면 5 공청회 시뮬레이션을 실행하는 API 가 아직 없습니다. 이 화면에서 고른 후보를 넘기는 경로도 정해지지 않았습니다."
-            className="btn-secondary cursor-not-allowed text-[13px] opacity-45"
-          >
-            갈등 예측 실행 (미배선)
-          </button>
-        }
-      />
-      <SourceNote
-        files={[
-          "score_grid.json",
-          "topN.csv (좌표 유일 출처)",
-          "report.json (coverage · facility_params)",
-        ]}
-      />
+              </>
+            );
+          }}
+        </ArtifactView2>
+      </div>
     </PageBody>
   );
 }
@@ -245,9 +226,9 @@ function Toolbar({
 }) {
   const excluded = grid.cells.reduce((n, c) => n + (c[3] === 1 ? 1 : 0), 0);
   return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-t-xl border border-b-0 border-hairline bg-white px-4 py-3 text-[12px]">
-      <Toggle on={showGrid} set={setShowGrid} label={`점수 격자 (${int(grid.count)}칸)`} />
-      <Toggle on={showExcluded} set={setShowExcluded} label={`배제 칸 (${int(excluded)})`} />
+    <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-hairline bg-white px-4 py-3 text-[12px] shrink-0">
+      <Toggle on={showGrid} set={setShowGrid} label={`분석 격자망 (${int(grid.count)}칸)`} />
+      <Toggle on={showExcluded} set={setShowExcluded} label={`설치 불가 지역 (${int(excluded)}칸)`} />
       <Toggle on={basemap} set={setBasemap} label="배경 지도" />
       <span className="ml-auto flex items-center gap-3 text-ink-secondary">
         <span>휠 확대 · 끌어서 이동 · 마커 클릭</span>
@@ -305,65 +286,47 @@ function Tab({
 }
 
 function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) {
-  if (!report) {
-    return (
-      <div className="mt-4 rounded-xl border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
-        커버율은 <code>report.json</code> 에서 읽습니다. 아직 못 읽었습니다.
-      </div>
-    );
-  }
+  if (!report) return null;
   const cov = report.coverage;
-  if (!cov) {
-    return (
-      <div className="mt-4 rounded-xl border border-hairline bg-white p-4 text-[12px] text-ink-secondary">
-        이 실행에는 커버율 계산 결과가 없습니다(<code>report.coverage = null</code>).
-      </div>
-    );
-  }
+  if (!cov) return null;
+  
   const atTop = cov.cumulative[nTop - 1] ?? null;
   const reach = Object.entries(cov.reach).sort((a, b) => Number(a[0]) - Number(b[0]));
 
   return (
-    <section className="mt-4 rounded-xl border border-hairline bg-white p-4">
-      <h2 className="text-[13px] font-semibold">커버율</h2>
-      {/* 가로 2단. 좁은 화면에서는 자동으로 다시 세로로 쌓인다 — 액자 밖이라
-          여기서는 세로로 길어져도 지도나 버튼을 가리지 않는다. */}
-      <div className="mt-2 grid gap-x-8 gap-y-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-        <div>
-          <div className="flex items-baseline gap-2">
-            <b className="tnum text-[24px]">{percent(atTop, 1)}</b>
-            <span className="text-[12px] text-ink-secondary">상위 {nTop}곳 설치 시</span>
+    <section className="mt-3 rounded-xl border border-hairline bg-white p-4 shrink-0 shadow-sm">
+      <div className="flex flex-col lg:flex-row gap-8 items-center">
+        {/* Left: Big Number & Chart */}
+        <div className="flex items-center gap-6 w-full lg:w-1/2">
+          <div className="shrink-0 text-center">
+            <div className="text-[12px] text-ink-secondary mb-1">상위 {nTop}곳 설치 시 커버율</div>
+            <div className="tnum text-[32px] font-black text-blue-600 leading-none">{percent(atTop, 1)}</div>
           </div>
-          <CoverageChart cumulative={cov.cumulative} knee={cov.knee} nTop={nTop} />
+          <div className="flex-1 h-[60px]">
+            <CoverageChart cumulative={cov.cumulative} knee={cov.knee} nTop={nTop} />
+          </div>
         </div>
 
-        <dl className="grid grid-cols-2 gap-x-6 gap-y-1 self-center text-[12px]">
-          {reach.map(([target, n]) => (
-            <div key={target} className="flex justify-between gap-3">
-              <dt className="text-ink-secondary">{percent(Number(target), 0)} 덮으려면</dt>
-              <dd className="tnum font-medium">{int(n)}곳</dd>
+        {/* Right: Stats */}
+        <div className="w-full lg:w-1/2 flex flex-col justify-center">
+          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[12px]">
+            {reach.map(([target, n]) => (
+              <div key={target} className="flex justify-between gap-3 border-b border-gray-50 pb-1">
+                <dt className="text-ink-secondary">전체 수요의 {percent(Number(target), 0)}를 해결하려면</dt>
+                <dd className="tnum font-bold text-gray-800">{int(n)}곳 필요</dd>
+              </div>
+            ))}
+            <div className="flex justify-between gap-3 border-b border-gray-50 pb-1">
+              <dt className="text-ink-secondary" title="더 이상 후보지를 늘려도 커버율이 크게 오르지 않는 효율성 한계점입니다.">효율성 감소 시작점 (가성비 한계)</dt>
+              <dd className="tnum font-bold text-gray-800">{int(cov.knee)}곳</dd>
             </div>
-          ))}
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-secondary">기울기 꺾이는 지점</dt>
-            <dd className="tnum font-medium">{int(cov.knee)}곳</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-secondary">상한</dt>
-            <dd className="tnum font-medium">{percent(cov.ceiling, 2)}</dd>
-          </div>
-          <div className="flex justify-between gap-3">
-            <dt className="text-ink-secondary">못 닿는 수요점</dt>
-            <dd className="tnum font-medium">{int(cov.unreached_n)}개</dd>
-          </div>
-        </dl>
+            <div className="flex justify-between gap-3 border-b border-gray-50 pb-1">
+              <dt className="text-ink-secondary" title={`물리적으로 도달 불가능한 수요점: ${int(cov.unreached_n)}개`}>최대 해결 가능 수요 (커버율 한계)</dt>
+              <dd className="tnum font-bold text-gray-800">{percent(cov.ceiling, 2)}</dd>
+            </div>
+          </dl>
+        </div>
       </div>
-
-      <p className="mt-3 text-[11px] leading-relaxed text-ink-secondary">
-        상한이 100% 가 아닌 것은 버그가 아니라 사실입니다 — 배제구역 안에만 있어 어떤
-        후보로도 닿지 않는 수요점이 {int(cov.unreached_n)}개 있습니다. 수요점{" "}
-        {int(cov.n_demand)}개 · 커버 쌍 {int(cov.cover_pairs)}쌍으로 계산했습니다.
-      </p>
     </section>
   );
 }
@@ -389,7 +352,7 @@ function CoverageChart({
   const xAt = (i: number) => ((i - 1) / (n - 1)) * W;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 h-[90px] w-full" role="img" aria-label="커버율 곡선">
+    <svg viewBox={`0 0 ${W} ${H}`} className="h-full w-full" preserveAspectRatio="none" role="img" aria-label="커버율 곡선">
       <polyline points={pts} fill="none" stroke="#0075de" strokeWidth={2} />
       {knee >= 1 && knee <= n && (
         <line x1={xAt(knee)} y1={0} x2={xAt(knee)} y2={H} stroke="#c0392b" strokeWidth={1} strokeDasharray="3 3" />
@@ -416,7 +379,7 @@ function TopList({
   return (
     <div>
       <p className="text-[11px] leading-relaxed text-ink-secondary">
-        순위는 <b>커버 기여</b> 순입니다 — 점수가 높아도 앞 순위와 겹치면 뒤로 밀립니다.
+        최종 순위는 <b>실질적인 수요 해결 기여도</b>에 따라 결정됩니다. (단순 점수가 높아도 주변에 다른 우수 후보지가 있어 상권이 겹치면 순위가 밀릴 수 있습니다.)
       </p>
       <ul className="mt-2 flex flex-col gap-1">
         {sorted.map((r) => {
@@ -538,23 +501,23 @@ function Detail({
       </div>
 
       <dl className="mt-3 flex flex-col gap-1 text-[12px]">
-        <Row k="점수" v={fixed(row.점수, 4)} />
-        <Row k="커버 기여" v={`${fixed(row.커버기여, 4)} (수요값)`} />
+        <Row k="단순 평가 점수" v={fixed(row.점수, 4)} />
+        <Row k="수요 해결 기여도" v={`${fixed(row.커버기여, 4)}`} />
         <Row
-          k="커버율 증가"
+          k="실질 커버율 상승폭"
           v={`+${fixed(deltaCover * 100, 2)}%p${prev ? "" : " (0 에서)"}`}
         />
-        <Row k="누적 커버율" v={percent(row.누적커버율, 2)} />
-        <Row k="지목" v={row.지목} />
-        <Row k="면적" v={areaM2(row.면적)} />
-        <Row k="내접폭" v={`${fixed(row.내접폭, 2)} m`} />
+        <Row k="현재까지 누적 커버율" v={percent(row.누적커버율, 2)} />
+        <Row k="토지 지목" v={row.지목} />
+        <Row k="부지 면적" v={areaM2(row.면적)} />
+        <Row k="내접폭 (실제 설치 가능 폭)" v={`${fixed(row.내접폭, 2)} m`} />
         <Row
-          k="최소 이격 기준"
+          k="타 시설과의 최소 이격 기준"
           v={minSep === null ? "—" : `${fixed(minSep, 0)} m`}
         />
         <Row
-          k="가장 가까운 후보"
-          v={near === null ? "다른 후보 없음" : `${fixed(near.m, 0)} m · ${near.rank}순위`}
+          k="인접한 타 추천 후보지"
+          v={near === null ? "주변에 후보지 없음" : `${fixed(near.m, 0)} m 거리에 ${near.rank}순위 있음`}
         />
         <Row k="국유지 필지" v={`${int(row.국유_건수)}건 · 지분 ${percent(row.국유_지분율, 1)}`} />
         <Row k="지번 일치" v={row.국유_지번일치 ? "예" : "아니오"} />
@@ -592,24 +555,23 @@ function Legend({ grid }: { grid: ScoreGridDoc }) {
   return (
     /* 액자의 **아래 테두리**다. 위쪽 도구줄과 짝을 이룬다 — 지도를 설명하는 글이
        지도에서 떨어져 문서 흐름에 흩어지면 무엇에 대한 범례인지 흐려진다. */
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-hairline bg-canvas-soft px-4 py-2.5 text-[12px] text-ink-secondary">
+    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-hairline bg-gray-50 px-4 py-2.5 text-[12px] text-gray-600">
       <span className="flex items-center gap-2">
-        <span className="h-3 w-24 rounded" style={{ background: "linear-gradient(90deg,#e9edf2,#0075de)" }} />
-        점수 {fixed(grid.score_min, 3)} → {fixed(grid.score_max, 3)}
+        <span className="h-3 w-24 rounded shadow-inner" style={{ background: "linear-gradient(90deg,#e9edf2,#0075de)" }} />
+        <span className="font-medium">종합 평가 점수</span> (낮음 {fixed(grid.score_min, 3)} → 높음 {fixed(grid.score_max, 3)})
       </span>
-      <span className="flex items-center gap-1.5">
-        <span className="h-3 w-3 rounded" style={{ background: "rgba(190,60,60,0.30)" }} />
-        배제 칸
+      <span className="flex items-center gap-1.5 font-medium">
+        <span className="h-3 w-3 rounded shadow-sm" style={{ background: "rgba(190,60,60,0.30)" }} />
+        설치 불가 지역 (배제)
       </span>
-      <span className="flex items-center gap-1.5">
-        <span className="grid h-4 w-4 place-items-center rounded-full border-2 border-primary bg-white text-[9px] font-semibold text-primary">
+      <span className="flex items-center gap-1.5 font-medium">
+        <span className="grid h-4 w-4 place-items-center rounded-full border-2 border-primary bg-white text-[9px] font-bold text-primary shadow-sm">
           1
         </span>
-        Top-N 후보지
+        최종 추천 후보지
       </span>
-      <span className="ml-auto">
-        격자 사각형은 산출물의 <b>중심점</b>과 <code>spacing_m={grid.spacing_m}</code> 로
-        화면에서 만든 것입니다 — 산출물에 폴리곤은 없습니다.
+      <span className="ml-auto text-gray-400 text-[11px]">
+        지도 상의 사각형은 분석의 기준이 되는 {grid.spacing_m}m 단위 격자 구역을 나타냅니다.
       </span>
     </div>
   );

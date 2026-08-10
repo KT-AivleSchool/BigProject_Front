@@ -39,12 +39,19 @@ export function GateFrame({
         <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
       </div>
 
+      <div className="flex items-center gap-3 mb-5 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl shadow-sm relative z-10 animate-in fade-in slide-in-from-top-2">
+        <span className="relative flex h-3 w-3 shrink-0">
+          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+          <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
+        </span>
+        <div className="text-sm leading-relaxed">
+          <strong className="text-amber-700 mr-1.5">[HITL 작동 중]</strong> 
+          AI가 전문가(사용자)님의 승인 및 개입을 기다리며 분석을 일시 중단했습니다. 확인을 완료해야 다음 단계가 진행됩니다.
+        </div>
+      </div>
+
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4 relative z-10">
         <h2 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-          <span className="relative flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-          </span>
           {gate.label}
         </h2>
         <span className="text-xs font-semibold text-blue-800 bg-blue-100/50 px-3 py-1.5 rounded-full border border-blue-200/50 shadow-sm">
@@ -65,25 +72,30 @@ export function GateFrame({
         </div>
       )}
 
-      <div className="mt-8 flex flex-wrap items-center justify-between gap-4 border-t border-blue-100 pt-5 relative z-10">
-        <span className="text-[12px] leading-relaxed text-blue-800/70 max-w-lg">
-          답변을 검토한 뒤 <strong>한 번에 제출</strong>해주세요. <br className="hidden sm:block" />일부만 제출할 경우 전체 분석 파이프라인의 정확도가 떨어질 수 있습니다.
-        </span>
+      <div className="sticky bottom-6 mt-10 flex flex-wrap items-center justify-between gap-4 border-2 border-blue-200 bg-white/95 backdrop-blur-md p-5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 animate-pulse">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+          <span className="text-[13px] leading-relaxed text-blue-900 max-w-lg font-medium">
+            항목들을 꼼꼼히 확인하셨나요? 우측 버튼을 눌러 <strong>{gate.label}</strong>을(를) 승인하고 다음 분석을 계속 진행합니다.
+          </span>
+        </div>
         <button
           type="button"
           onClick={onSubmit}
           disabled={submitting}
-          className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-6 py-3 text-sm font-bold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:pointer-events-none"
+          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-blue-500/30 disabled:opacity-50 disabled:pointer-events-none"
         >
           {submitting ? (
             <>
               <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-              제출 중...
+              제출 및 승인 중...
             </>
           ) : (
             <>
               {submitLabel}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
             </>
           )}
         </button>

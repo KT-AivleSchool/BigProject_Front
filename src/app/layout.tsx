@@ -22,11 +22,11 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ko" className="h-full antialiased">
-      <body className="min-h-full flex flex-col">
+      <body className="h-full flex flex-col overflow-hidden">
         <RunProvider>
           <Header />
-          <div className="flex flex-1 relative">
-            <main className="flex-1 flex flex-col">
+          <div className="flex flex-1 relative min-h-0">
+            <main className="flex-1 flex flex-col min-w-0 min-h-0">
               {children}
             </main>
             <ProgressSidebar />
