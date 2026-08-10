@@ -377,6 +377,22 @@ export default function Screen5Page() {
         lead="AI 에이전트 간의 모의 공청회를 통해 잠재적 갈등 지수와 수용도를 실시간으로 분석합니다."
       />
 
+      {/*
+        🔴 **임시 진입점이다.** 토론 방식은 두 갈래다 — 이 화면(A 대립 토론)과
+           `/dynamic-hearing`(B 다인 토론). 화면 4 에서 고른 위치로 **어느 쪽을
+           돌릴지 고르는 분기 UI 는 동현님 작업분**이라 여기서 만들지 않는다.
+           그때까지 B 를 URL 로만 닿게 두면 병합된 화면이 없는 것처럼 보이므로
+           링크만 남긴다 — 분기 UI 가 들어오면 **이 블록을 지운다.**
+      */}
+      <div className="mt-4 flex justify-end">
+        <Link
+          href="/dynamic-hearing"
+          className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+        >
+          다인 토론 모드(B) 열기 — 분기 UI 연결 전 임시
+        </Link>
+      </div>
+
       {/* 선정 위치 — 어느 점으로 토론하는지 먼저 밝힌다 */}
       <div className="mt-6">
         <CandidatePanel
