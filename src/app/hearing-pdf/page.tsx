@@ -69,7 +69,8 @@ export default function HearingPdfReportPage() {
   const handleDownloadHwpx = async () => {
     setIsDownloading(true);
     try {
-      const response = await fetch("http://localhost:8000/api/v1/report/download/hwpx", {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiBase}/api/v1/report/download/hwpx`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)

@@ -48,10 +48,12 @@ export default function DynamicHearingPage() {
     await fetchMorePersonas(cacheKey);
   };
 
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
   const fetchMorePersonas = async (cacheKey?: string) => {
     setIsLoading(true);
     try {
-      const res = await fetch("http://localhost:8000/api/v1/stakeholders/generate", {
+      const res = await fetch(`${API_BASE}/api/v1/stakeholders/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -109,7 +111,7 @@ export default function DynamicHearingPage() {
     setDiscussionStatus(null);
     try {
       const activePersonas = personas.filter((_, idx) => selectedPersonaIds.has(idx));
-      const response = await fetch("http://localhost:8000/api/v1/stakeholders/dynamic/discuss/stream", {
+      const response = await fetch(`${API_BASE}/api/v1/stakeholders/dynamic/discuss/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -185,13 +187,11 @@ export default function DynamicHearingPage() {
           }
         }
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      setMessages([
-        { speaker: "SYSTEM", text: "해당 엔드포인트가 백엔드에 아직 구현되지 않았거나, 연결이 지연되었습니다.\n가상의 스트리밍 세션으로 대체합니다." },
-        { speaker: "상인대표", text: "스마트 흡연부스가 생기면 상점 주변에 담배꽁초가 크게 줄어들 것으로 기대합니다. 반드시 도입되어야 합니다." },
-        { speaker: "주민대표", text: "상인들 입장에서는 좋겠지만, 부스 근처를 지나가야 하는 아이들과 주민들은 간접흡연 피해를 고스란히 받게 됩니다. 환기구 방향은 어떻게 하실 건가요?" },
-        { speaker: "보건소 담당자", text: "환기구에는 3중 정화 필터를 달 예정이며, 보행로와 반대 방향으로 배기구를 설계하여 주민 피해를 최소화할 계획입니다." }
+      setMessages(prev => [
+        ...prev,
+        { speaker: "SYSTEM (오류)", text: `백엔드 실시간 토론 연결 실패: ${e?.message || "서버 통신 중 오류가 발생했습니다."}` }
       ]);
     }
     setIsDiscussing(false);
