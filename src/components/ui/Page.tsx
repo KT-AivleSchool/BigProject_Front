@@ -30,7 +30,7 @@ export function PageHeader({
 }) {
   const idx = NAV_SCREENS.findIndex((s) => s.no === screen.no);
   return (
-    <div className="flex flex-wrap items-end justify-between gap-4 border-b border-hairline pb-4">
+    <div className="shrink-0 flex flex-wrap items-end justify-between gap-4 border-b border-hairline pb-4">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-[19px] font-semibold tracking-tight">
@@ -62,7 +62,7 @@ export function PageFooter({
   if (!action) return null;
 
   return (
-    <div className="mt-8 flex items-center justify-end gap-4 border-t border-hairline pt-4">
+    <div className="shrink-0 mt-4 flex items-center justify-end gap-4 pt-4">
       {action}
     </div>
   );
@@ -70,15 +70,19 @@ export function PageFooter({
 
 export function PageBody({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-5 py-7">{children}</div>
+    <div className="mx-auto w-full max-w-[1200px] px-5 pt-7 pb-2 h-full flex flex-col min-h-0">
+      {children}
+    </div>
   );
 }
 
 /** 산출물 출처 각주. 명세가 모든 화면 하단에 요구한다. */
 export function SourceNote({ files }: { files: string[] }) {
   return (
-    <p className="mt-6 text-[11px] text-ink-secondary/80">
-      읽는 산출물 · {files.join("  ·  ")}
-    </p>
+    <div className="shrink-0 bg-white pt-3 pb-2 border-t border-hairline mt-4">
+      <p className="text-[11px] text-ink-secondary/80">
+        읽는 산출물 · {files.join("  ·  ")}
+      </p>
+    </div>
   );
 }
