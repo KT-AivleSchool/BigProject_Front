@@ -29,7 +29,7 @@
  *      `false` 로 읽게 되므로 **반드시 `engine` 으로 먼저 가른다.**
  */
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, NetworkError, apiErrorCode, getJson } from "./client";
+import { ApiError, NetworkError, getJson } from "./client";
 import { useRun } from "./RunProvider";
 
 /** 🔴 복수형이 정본이다 — 이유는 `simulation.ts` 머리말. */
@@ -159,8 +159,7 @@ export function fetchHearingByUrl<T>(resultUrl: string): Promise<T> {
  */
 function describeFailure(e: unknown): string {
   if (e instanceof ApiError) {
-    const code = apiErrorCode(e);
-    return `HTTP ${e.status}${code ? ` [${code}]` : ""} — ${e.detail}`;
+    return `HTTP ${e.status} — ${e.detail}`;
   }
   if (e instanceof NetworkError) return e.message;
   return String(e);

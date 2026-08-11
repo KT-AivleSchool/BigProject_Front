@@ -115,3 +115,22 @@ export async function getText(url: string): Promise<string> {
   // utf-8-sig BOM 제거 — pandas 가 `utf-8-sig` 로 쓴다.
   return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }
+
+/**
+ * multipart/form-data POST (업로드).
+ *
+ * 🔴 `Content-Type` 을 **직접 넣지 않는다.** FormData 를 주면 브라우저가
+ *    `multipart/form-data; boundary=...` 를 만들어 붙이는데, 우리가 헤더를
+ *    먼저 박으면 boundary 가 빠져 서버가 파트를 하나도 못 읽는다.
+ *    (증상: 파일을 붙였는데 422 `files: Field required`)
+ */
+export async function postForm<T>(url: string, form: FormData): Promise<T> {
+  const res = await request(url, { method: "POST", body: form });
+  return (await res.json()) as T;
+}
+
+/** DELETE. 실패는 `ApiError` 로 던진다 — 204 를 안 주는 엔드포인트라 본문을 읽는다. */
+export async function deleteJson<T>(url: string): Promise<T> {
+  const res = await request(url, { method: "DELETE" });
+  return (await res.json()) as T;
+}
