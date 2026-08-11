@@ -50,7 +50,8 @@ export default function Screen1Page() {
         lead="분석할 지역과 시설을 정의하고, 필요한 데이터를 업로드하여 AI 최적화 파이프라인을 시작합니다."
       />
 
-      <div className="mt-8 max-w-5xl mx-auto flex flex-col gap-8 pb-12">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4">
+        <div className="max-w-5xl mx-auto flex flex-col gap-8 pb-12 mt-4">
         {isReadOnly && run && (
           <div className="bg-blue-50 border border-blue-200 text-blue-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between shadow-sm">
             <div className="flex items-center gap-3">
@@ -220,6 +221,7 @@ export default function Screen1Page() {
             </div>
           </div>
         </section>
+        </div>
       </div>
 
     </PageBody>
