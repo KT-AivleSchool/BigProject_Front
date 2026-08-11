@@ -26,7 +26,6 @@ import {
   submitAuditGate,
   submitWeightGate,
 } from "./pipeline";
-import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
 import { clearRunId, readRunId, writeRunId } from "./runStore";
 import { gateScreen } from "./gate";
@@ -46,11 +45,7 @@ interface RunContextValue {
   error: string | null;
   /** 진행 중 단계가 시작된 뒤 흐른 시간(초). 진행률 계산에 쓴다. */
   runningElapsedSec: number;
-  /**
-   * 실행 시작. `full` 은 실행 조건(`user_input` 필수 · `topn`)을 같이 보낸다 —
-   * 계약 8-2. 다른 모드에 넘기면 `createRun` 이 버린다(보내면 400 이다).
-   */
-  start: (domain: string, mode?: string, full?: FullParams) => Promise<string | null>;
+  start: (domain: string, mode?: string) => Promise<string | null>;
   /**
    * 게이트 답변. 성공하면 서버가 돌려준 status 를 그대로 현재 run 으로 삼는다 —
    * 그 순간 `running` 이므로 폴링이 저절로 재개된다.
@@ -72,6 +67,9 @@ interface RunContextValue {
    */
   refresh: () => Promise<void>;
   reset: () => void;
+  /** 과거 run을 읽기 전용으로 불러옵니다. */
+  loadHistoricalRun: (runId: string) => Promise<void>;
+  isReadOnly: boolean;
 }
 
 const RunContext = createContext<RunContextValue | null>(null);
@@ -107,6 +105,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runningElapsedSec, setRunningElapsedSec] = useState(0);
+  const [isReadOnly, setIsReadOnly] = useState(false);
 
   /** 진행 중 단계가 바뀐 시각. 단계별 경과 시간을 재려고 둔다. */
   const stepStartedAt = useRef<{ id: string; at: number } | null>(null);
@@ -145,7 +144,10 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
       if (!id) return;
       try {
         const doc = await fetchRun(id);
-        if (!cancelled) applyRun(doc);
+        if (!cancelled) {
+          applyRun(doc);
+          setIsReadOnly(false);
+        }
       } catch (e: unknown) {
         if (cancelled) return;
         // 404 는 "서버에서 사라진 run" 이다. 조용히 넘기지 않고 알린 뒤 지운다.
@@ -192,30 +194,17 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   }, [run]);
 
   const start = useCallback(
-    async (domain: string, mode: string = MODE_FIXTURE, full?: FullParams) => {
+    async (domain: string, mode: string = MODE_FIXTURE) => {
       setStarting(true);
       setError(null);
       try {
-        const id = await createRun(domain, mode, full);
+        const id = await createRun(domain, mode);
         writeRunId(id);
         const doc = await fetchRun(id);
         applyRun(doc);
+        setIsReadOnly(false);
         return id;
       } catch (e: unknown) {
-        if (e instanceof ApiError && e.status === 409) {
-          const match = e.detail.match(/run_id=([^)]+)/);
-          if (match && match[1]) {
-            const id = match[1];
-            writeRunId(id);
-            try {
-              const doc = await fetchRun(id);
-              applyRun(doc);
-              return id;
-            } catch (inner) {
-              // Ignore inner error and fall through to original error
-            }
-          }
-        }
         setError(e instanceof Error ? e.message : String(e));
         return null;
       } finally {
@@ -262,6 +251,32 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     clearRunId();
     setRun(null);
     setError(null);
+    setIsReadOnly(false);
+  }, []);
+
+  const loadHistoricalRun = useCallback(async (runId: string) => {
+    try {
+      const doc = await fetchRun(runId);
+      setRun(doc);
+      writeRunId(runId); // 현재 보고 있는 run_id를 변경
+      setIsReadOnly(true);
+      setError(null);
+      
+      // §7-5 과거 run 진입 시 기존 상태 비움 처리
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("omnisite.sitePick.v1");
+        sessionStorage.removeItem("omnisite.personas.v2");
+        sessionStorage.removeItem("omnisite.hearingB.v1");
+        
+        sessionStorage.removeItem("sim_messages");
+        sessionStorage.removeItem("sim_metrics");
+        sessionStorage.removeItem("sim_started");
+        sessionStorage.removeItem("sim_finished");
+        sessionStorage.removeItem("sim_parcel");
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
   }, []);
 
   return (
@@ -277,6 +292,8 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         answerWeight,
         refresh,
         reset,
+        loadHistoricalRun,
+        isReadOnly,
       }}
     >
       {children}

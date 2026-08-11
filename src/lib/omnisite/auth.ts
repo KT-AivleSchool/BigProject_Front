@@ -1,3 +1,5 @@
+import { postJson } from "./client";
+
 export interface UserRegister {
   email: string;
   password: string;
@@ -56,5 +58,16 @@ export function setAuthUser(user: UserResponse | null) {
     localStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
   } else {
     localStorage.removeItem(AUTH_USER_KEY);
+  }
+}
+
+export async function refreshAuthToken(): Promise<TokenResponse | null> {
+  try {
+    const res = await postJson<TokenResponse>("/api/v1/auth/refresh", {});
+    setAuthToken(res.access_token);
+    return res;
+  } catch (e) {
+    console.error("Failed to refresh token", e);
+    return null;
   }
 }
