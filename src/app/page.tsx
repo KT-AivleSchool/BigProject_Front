@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PageBody, PageHeader } from "@/components/ui/Page";
+import { UploadPanel } from "@/components/upload/UploadPanel";
 import { MODE_FIXTURE, MODE_HITL } from "@/lib/omnisite/pipeline";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
@@ -19,7 +20,6 @@ export default function Screen1Page() {
   const [region, setRegion] = useState("");
   const [facility, setFacility] = useState("");
   const [intent, setIntent] = useState("");
-  const [tab, setTab] = useState<"data" | "law">("data");
   const [mode, setMode] = useState<string>(MODE_HITL);
   const [inputError, setInputError] = useState<string | null>(null);
   
@@ -104,40 +104,8 @@ export default function Screen1Page() {
                 <p className="mt-1 ml-11 text-sm text-gray-500">분석에 필요한 공간 데이터나 참고할 법규 문서를 업로드합니다.</p>
               </div>
               
-              <div className="p-8">
-                <div className="flex gap-2 p-1 rounded-xl bg-gray-100/80 max-w-sm mb-6">
-                  {(
-                    [
-                      ["data", "📊 분석 데이터 (SHP, CSV)"],
-                      ["law", "📄 조례·법규 (PDF, HWP)"],
-                    ] as const
-                  ).map(([k, label]) => (
-                    <button
-                      key={k}
-                      type="button"
-                      onClick={() => setTab(k)}
-                      className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-medium transition-all duration-200 ${
-                        tab === k ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="w-full rounded-xl border-2 border-dashed border-gray-300 bg-gray-50/50 py-16 px-6 text-center hover:bg-gray-50 hover:border-blue-400 transition-colors group cursor-pointer">
-                  <div className="w-16 h-16 mx-auto bg-white rounded-full shadow-sm border border-gray-100 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
-                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-blue-500">
-                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                      <polyline points="17 8 12 3 7 8"></polyline>
-                      <line x1="12" y1="3" x2="12" y2="15"></line>
-                    </svg>
-                  </div>
-                  <h3 className="text-base font-bold text-gray-800">클릭하여 파일 선택 또는 드래그 앤 드롭</h3>
-                  <p className="text-sm text-gray-500 mt-2 max-w-sm mx-auto leading-relaxed">
-                    {tab === 'data' ? 'SHP, CSV, XLSX, GEOJSON 형식의 공간 데이터를 업로드할 수 있습니다.' : 'PDF, HWP, DOCX 등 참고할 지자체 조례 및 법규 문서를 업로드합니다.'}
-                  </p>
-                </div>
+              <div className="p-6">
+                <UploadPanel domain={domain} facilityType={facility} />
               </div>
             </section>
 
