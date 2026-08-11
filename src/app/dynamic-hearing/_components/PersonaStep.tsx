@@ -82,21 +82,28 @@ export function PersonaStep({
                 </div>
                 
                 <div className="pr-8">
+                  {/*
+                    🔴 등급이 비면 **`C` 를 지어내지 않는다**(2026-08-11). 백엔드
+                    `_map_persona:211` 이 이미 기본 `"C"` 를 넣는데 여기서 또
+                    `|| 'C'` 를 하고 있었다 — 두 겹이 같은 값을 채우니, 서버가
+                    등급을 못 낸 경우와 진짜 C등급이 화면에서 구분되지 않는다.
+                    빈 값은 「미상」으로 **비었다고 말한다**(원칙 4).
+                  */}
                   <div className="inline-block px-2.5 py-1 rounded bg-black/[0.04] text-[11px] font-semibold mb-3 text-ink-secondary border border-hairline">
-                    중요도: {p.importance_grade || 'C'}
+                    중요도: {p.importance_grade || '미상'}
                   </div>
-                  <h3 className="font-semibold text-[16px] text-ink mb-1.5">[{p.role}] {p.name}</h3>
-                  <div className="text-[12px] font-medium text-ink-secondary mb-3 line-clamp-3 leading-relaxed">{p.description}</div>
+                  <h3 className="font-semibold text-[16px] text-ink mb-1.5">[{p.stakeholder_type}] {p.display_name}</h3>
+                  <div className="text-[12px] font-medium text-ink-secondary mb-3 line-clamp-3 leading-relaxed">{p.relationship_to_topic}</div>
 
                   {/*
-                    추천 사유. 🔴 `description`(주제와의 이해관계)과 **다른 값**이라 자리도 나눈다 —
-                    합쳐 놓으면 토론 프롬프트로 되돌아가는 값(`description`)에 사유가 섞여 들어간다.
-                    이 값은 고를 때 보라고 화면에만 남는다(`personaCache.ts` 의 `reason`).
+                    추천 사유. 🔴 `relationship_to_topic`(주제와의 이해관계)과 **다른 값**이라
+                    자리도 나눈다 — 합쳐 놓으면 토론 프롬프트로 되돌아가는 값에 사유가 섞인다.
+                    이 값은 고를 때 보라고 화면에만 남는다(`personaCache.ts`).
                   */}
-                  {p.reason && (
+                  {p.recommendation_reason && (
                     <div className="mb-3 text-[11px] leading-relaxed text-ink-secondary/80 border-l-2 border-hairline pl-2 line-clamp-3">
                       <span className="font-semibold">추천 사유 </span>
-                      {p.reason}
+                      {p.recommendation_reason}
                     </div>
                   )}
 

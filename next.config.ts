@@ -81,6 +81,24 @@ const nextConfig: NextConfig = {
         source: "/api/v1/pipeline/:path*",
         destination: `${API_ORIGIN}/api/v1/pipeline/:path*`,
       },
+      /**
+       * 화면 5·6. 백엔드가 **같은 라우터를 두 prefix 로** 등록한다
+       * (`main.py:161-170`) — 단수 `/simulation` · 복수 `/simulations`.
+       *
+       * 🔴 **복수형이 정본이다**(2026-08-11 백엔드 회신). 응답 안의 자기 링크
+       *    (`result_url`·`pdf_url`·SSE `saved`)가 전부 복수형이라, 단수만 열어 두면
+       *    **서버가 준 URL 을 그대로 fetch 할 수 없다.** 실제로 `hearings.ts` 가
+       *    한동안 prefix 를 치환하고 있었다 — 경로 규칙이 서버와 프런트 두 곳에
+       *    생기는 자리였다.
+       *
+       * ⚠ 단수도 남겨 둔다(백엔드가 호환용으로 유지한다). 여기서 지우면 단수로
+       *   부르는 요청이 **백엔드 404 가 아니라 Next 404 페이지**로 떨어져 사유가
+       *   안 보인다. 프런트 코드는 복수형만 쓴다(`simulation.ts` 머리말).
+       */
+      {
+        source: "/api/v1/simulations/:path*",
+        destination: `${API_ORIGIN}/api/v1/simulations/:path*`,
+      },
       {
         source: "/api/v1/simulation/:path*",
         destination: `${API_ORIGIN}/api/v1/simulation/:path*`,

@@ -358,14 +358,23 @@ export default function DynamicHearingPage() {
           topic: currentScope.topic,
           purpose: currentScope.purpose,
         });
-        // 필드 이름은 `/discuss` 가 되읽는 이름에 맞춘다(personaCache.ts 주석 참고).
+        /**
+         * 🔴 **개명하지 않는다**(2026-08-11 백엔드 회신). 예전엔 여기서
+         *    `display_name→name` · `stakeholder_type→role` ·
+         *    `relationship_to_topic→description` 으로 바꿔 담았다. 그 사설 어휘가
+         *    `/discuss` 로 되돌아가 페르소나가 전부 `"페르소나 0"` 이 된 사고의
+         *    원인이었다. 정본은 응답의 이름 그대로다(`personaCache.ts` 주석).
+         *
+         * 그래도 통째로 넘기지 않고 **여섯 개만 고른다** — 응답의 나머지
+         * (`evidence_confidence` 등)는 쓰는 곳이 없다. 들고 다니면 쓰이는 줄 안다.
+         */
         const mapped: Persona[] = res.map((p) => ({
-          role: p.stakeholder_type,
-          name: p.display_name,
-          description: p.relationship_to_topic,
+          display_name: p.display_name,
+          stakeholder_type: p.stakeholder_type,
+          relationship_to_topic: p.relationship_to_topic,
           importance_grade: p.importance_grade,
           keywords: p.keywords ?? [],
-          reason: p.recommendation_reason,
+          recommendation_reason: p.recommendation_reason,
         }));
         const updated = [...base, ...mapped];
         setPersonas(updated);
@@ -745,7 +754,7 @@ export default function DynamicHearingPage() {
             topic,
             purpose,
           },
-          participants: activePersonas.map((p) => `[${p.role}] ${p.name}`),
+          participants: activePersonas.map((p) => `[${p.stakeholder_type}] ${p.display_name}`),
           status: statusRef.current,
           serverId: saveRef.current.id,
           resultUrl: saveRef.current.url,
@@ -874,7 +883,7 @@ export default function DynamicHearingPage() {
       <PageFooter screen={SCREEN} />
       <SourceNote
         files={[
-          "GET /api/v1/simulation/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
+          "GET /api/v1/simulations/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
           "audit_result_reviewed.json (시설·지역 · 조례 근거문장)",
           "POST /api/v1/stakeholders/generate",
           "POST /api/v1/stakeholders/dynamic/discuss/stream (SSE)",

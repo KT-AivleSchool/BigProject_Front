@@ -27,31 +27,40 @@
  * 읽을 때 모양 검사 · 안 맞으면 없는 셈. 여기에 **범위(scope)** 를 더 얹는다 —
  * 저장할 때의 (도메인 · 적재 run · PNU · 주제 · 목적)이 지금과 다르면 남의 값이다.
  */
-const KEY = "omnisite.personas.v1";
+/**
+ * 🔴 `v1` → `v2` (2026-08-11). 필드 이름이 통째로 바뀌었다(아래 `Persona`).
+ *    키를 안 올리면 옛 탭의 `v1` 값이 새 코드로 읽혀 **모양 검사에서 전부 탈락**해
+ *    「캐시가 왜 자꾸 비지?」가 된다. 버전을 올리면 그냥 없는 값이다.
+ */
+const KEY = "omnisite.personas.v2";
 
 /**
- * 화면이 그리는 페르소나 1건. `/generate` 응답을 화면 모양으로 접은 것이다.
+ * 화면이 그리는 페르소나 1건. **`/generate` 응답의 필드 이름 그대로**다.
  *
- * 🔴 **필드 이름을 마음대로 짓지 않는다.** 이 다섯은 `/dynamic/discuss/stream` 이
- *    되읽는 이름이다(`stakeholders.py:64-72`): `name→display_name` ·
- *    `role→stakeholder_type` · `description→relationship_to_topic` ·
- *    `importance_grade` · `keywords→interests`. 그래서 `description` 에는
- *    `relationship_to_topic`(주제와의 이해관계)이 들어가야 왕복이 맞는다 —
- *    보기 좋다고 `recommendation_reason` 을 넣으면 토론 프롬프트의
- *    「이해관계」 자리에 「추천 사유」가 들어간다.
+ * 🔴 예전엔 여기서 `display_name→name` · `stakeholder_type→role` ·
+ *    `relationship_to_topic→description` 으로 **개명**했다. 그러고 `/discuss` 에
+ *    그 사설 이름으로 되돌려 보냈는데, 백엔드 어댑터가 그걸 못 읽어 페르소나가
+ *    전부 `"페르소나 0" / "unknown" / "관계 없음"` 이 된 사고가 있었다
+ *    (`stakeholders.py:183-214` 주석). 지금 백엔드는 두 벌을 다 받지만
+ *    (`display_name or name`), 그건 **한시적 별칭**이다.
  *
- * `reason` 은 왕복하지 않는다. 사람이 고를 때 보라고 화면에만 남긴다.
+ * 2026-08-11 백엔드 회신으로 정본이 확정됐다 — `display_name` ·
+ * `stakeholder_type` · `relationship_to_topic`. `name`·`role`·`description` 은
+ * **어느 스키마에도 없던** 우리 쪽 사설 어휘였다. 그래서 개명을 없앴다.
+ * 이제 이 타입은 왕복(응답 → 화면 → 요청) 내내 **한 어휘**다.
+ *
+ * `recommendation_reason` 은 왕복하지 않는다. 사람이 고를 때 보라고 화면에만 남긴다.
  * 응답의 나머지(`evidence_confidence`·`related_candidate_ids`·`evidence_ids`)는
  * 쓰는 곳이 없어 **버린다** — 안 쓰는 값을 들고 다니면 쓰이는 줄 알게 된다.
  */
 export interface Persona {
-  role: string;
-  name: string;
-  description: string;
+  display_name: string;
+  stakeholder_type: string;
+  relationship_to_topic: string;
   importance_grade: string;
   keywords: string[];
   /** 추천 근거. 화면 표시 전용 — 백엔드로 되돌려 보내지 않는다. */
-  reason: string;
+  recommendation_reason: string;
 }
 
 /**
@@ -86,11 +95,11 @@ function isPersona(v: unknown): v is Persona {
   if (typeof v !== "object" || v === null) return false;
   const p = v as Persona;
   return (
-    typeof p.role === "string" &&
-    typeof p.name === "string" &&
-    typeof p.description === "string" &&
+    typeof p.stakeholder_type === "string" &&
+    typeof p.display_name === "string" &&
+    typeof p.relationship_to_topic === "string" &&
     typeof p.importance_grade === "string" &&
-    typeof p.reason === "string" &&
+    typeof p.recommendation_reason === "string" &&
     Array.isArray(p.keywords)
   );
 }
