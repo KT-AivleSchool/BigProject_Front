@@ -32,7 +32,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ApiError, NetworkError, getJson } from "./client";
 import { useRun } from "./RunProvider";
 
-const BASE = "/api/v1/simulation";
+/** 🔴 복수형이 정본이다 — 이유는 `simulation.ts` 머리말. */
+const BASE = "/api/v1/simulations";
 
 /** 목록의 A 행. `result_url` 은 **최신이 아닌 건에서 `null`** 이다(아래 주석). */
 export interface HearingItemA {
@@ -129,13 +130,15 @@ export function fetchHearings(
 }
 
 /**
- * B 1건. **`result_url` 원문을 그대로 받는다** — 경로를 프런트가 조립하면 규칙이
- * 두 곳에 생긴다. 다만 서버는 복수형(`/api/v1/simulations/…`)으로 주고 우리 rewrite
- * 는 단수형만 열려 있어(`simulation.ts` 머리말), **prefix 만** 단수형으로 바꾼다.
- * 바꾼 사실은 숨기지 않는다 — 이 함수 밖에서는 원문을 그대로 들고 다닌다.
+ * 결과 1건. **`result_url` 원문을 그대로 부른다** — 경로를 프런트가 조립하면
+ * 규칙이 두 곳에 생긴다.
+ *
+ * 🔴 예전엔 여기서 prefix 를 단수형으로 **치환**했다(rewrite 가 단수형만 열려
+ *    있었다). 2026-08-11 백엔드 회신으로 복수형이 정본임이 확정돼 rewrite 를
+ *    복수형으로 열고 치환을 없앴다 — 서버가 준 URL 을 손대지 않는 게 원래 뜻이다.
  */
 export function fetchHearingByUrl<T>(resultUrl: string): Promise<T> {
-  return getJson<T>(resultUrl.replace("/api/v1/simulations/", "/api/v1/simulation/"));
+  return getJson<T>(resultUrl);
 }
 
 // ── 화면 5 완료 판정 ───────────────────────────────────────────

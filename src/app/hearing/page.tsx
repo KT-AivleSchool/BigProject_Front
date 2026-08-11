@@ -457,8 +457,8 @@ export default function Screen5Page() {
       <PageFooter screen={SCREEN} />
       <SourceNote
         files={[
-          "GET /api/v1/simulation/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
-          "POST /api/v1/simulation/stream (SSE)",
+          "GET /api/v1/simulations/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
+          "POST /api/v1/simulations/stream (SSE)",
         ]}
       />
 
