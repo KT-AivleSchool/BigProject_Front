@@ -96,6 +96,30 @@ function isLive(run: RunDoc | null): boolean {
   return run?.status === "queued" || run?.status === "running";
 }
 
+/**
+ * 실행 요청 실패 문구.
+ *
+ * 🔴 **401 에만 「무엇을 하면 되는지」를 덧붙인다.** `POST /pipeline/runs` 는
+ *    2026-08-12 부터 `Authorization` 을 본다 — 헤더가 **없으면** 예전처럼 202
+ *    익명 run 이고, 헤더가 **있는데 죽었으면**(만료·위조·로그아웃) 401 이다.
+ *    만료를 조용히 익명으로 흘리지 않은 건 백엔드 쪽 의도다: 그러면 화면은
+ *    로그인 상태인데 마이페이지에서만 그 run 이 안 보인다.
+ *
+ * 🔴 서버 문구를 **바꾸지 않고 앞에 그대로 둔다.** 401 의 사유는 셋(만료·위조·
+ *    로그아웃)인데 우리는 어느 쪽인지 모른다 — 우리가 문장을 지어내면 「만료됐다」고
+ *    단정하게 된다. 덧붙이는 건 사유가 아니라 **다음 동작**이고, 그 동작은 셋 다
+ *    같다(연장하거나 다시 로그인).
+ *
+ * 🔴 여기서 재발급을 시도하지 않는다 — `client.ts:100-106` 과 같은 이유다.
+ *    RTR 이라 재발급이 실패하면 그 사용자의 **모든 세션이 지워진다.**
+ */
+function startFailureText(e: unknown): string {
+  if (e instanceof ApiError && e.status === 401) {
+    return `${e.detail} — 헤더의 ⟳ 로 로그인을 연장한 뒤 다시 실행해 주세요. 연장이 안 되면 다시 로그인하면 됩니다.`;
+  }
+  return e instanceof Error ? e.message : String(e);
+}
+
 export function RunProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -205,7 +229,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         setIsReadOnly(false);
         return id;
       } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(startFailureText(e));
         return null;
       } finally {
         setStarting(false);
