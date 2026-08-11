@@ -94,11 +94,26 @@ export function DiscussionStep({
                 </div>
               )}
             </div>
+            {/**
+              * 🔴 예전엔 `LIVE` 가 **조건 없이** 박혀 있었다. 토론이 끝나도,
+              *    끊겨도, 실패해도 초록불이 깜빡였다 — 화면이 모르는 것을
+              *    안다고 말하는 셈이다(원칙 4). 상태는 이미 `isDiscussing` 으로
+              *    넘어와 있었고 쓰지 않았을 뿐이다.
+              *    끝난 뒤를 「완료」로 단정하지도 않는다 — 중간에 끊겨도
+              *    `isDiscussing` 은 false 다. 그래서 「스트리밍 종료」다.
+              */}
             <div className="flex flex-col items-end gap-3">
-              <div className="flex items-center gap-2.5 text-[12px] font-semibold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-md border border-emerald-100 shadow-sm">
-                <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
-                LIVE
-              </div>
+              {isDiscussing ? (
+                <div className="flex items-center gap-2.5 text-[12px] font-semibold bg-emerald-50 text-emerald-600 px-3 py-1.5 rounded-md border border-emerald-100 shadow-sm">
+                  <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></div>
+                  LIVE
+                </div>
+              ) : (
+                <div className="flex items-center gap-2.5 text-[12px] font-semibold bg-slate-100 text-slate-500 px-3 py-1.5 rounded-md border border-slate-200 shadow-sm">
+                  <div className="w-2 h-2 rounded-full bg-slate-400"></div>
+                  스트리밍 종료
+                </div>
+              )}
             </div>
           </div>
           
@@ -137,7 +152,15 @@ export function DiscussionStep({
               if (!selectedSpeaker) return true;
               return msg.speaker.includes(selectedSpeaker) || msg.speaker === selectedSpeaker;
             }).map((msg, idx, filteredArray) => {
-              const isSystem = msg.speaker.toLowerCase().includes('system') || msg.speaker.toLowerCase().includes('fact_checker') || msg.speaker.toLowerCase().includes('supervisor');
+              /**
+               * 🔴 **이름으로 추측하지 않는다**(2026-08-11). 예전엔
+               * `speaker.toLowerCase().includes('system'|'fact_checker'|'supervisor')`
+               * 였는데, 사람 이름에 우연히 걸리면 주민 발언이 시스템 말풍선이 된다.
+               * 백엔드가 `speaker.kind` 를 주므로 그걸 그대로 쓴다
+               * (`persona`·`moderator`·`factchecker`·`unknown`, 프런트 안내는 `frontend`).
+               * `kind` 가 없는 옛 기록은 `persona` 처럼 그린다 — 모르면 사람 쪽이다.
+               */
+              const isSystem = ['moderator', 'factchecker', 'frontend'].includes(msg.kind ?? '');
               
               const getAvatarColor = (name: string) => {
                 const colors = ["bg-blue-500", "bg-emerald-500", "bg-amber-500", "bg-rose-500", "bg-indigo-500", "bg-cyan-500", "bg-pink-500"];
@@ -241,17 +264,34 @@ export function DiscussionStep({
               <div className="space-y-5">
                 <div className="glass-panel-deep p-4 rounded-xl border border-hairline">
                   <h4 className="text-[12px] font-semibold text-primary mb-2">현재 진행 상태</h4>
-                  <div className="text-[14px] font-semibold text-ink">{discussionStatus.reporter?.topic || '주제 수집 중...'}</div>
+                  {/*
+                    🔴 예전엔 `discussionStatus.report?.topic` 을 읽었다 — **항상 undefined** 라
+                       토론이 끝나도 「주제 수집 중...」이 박혀 있었다. `report` 이벤트의
+                       `final_scenarios` 안에 `topic` 이 들어 있을 거라고 **가정**한 것인데,
+                       실제 B 계약에 그런 키가 없다.
+
+                       애초에 서버가 줄 값이 아니다. `topic` 은 이 화면의 `SetupStep` 에서
+                       **사람이 직접 쓴 안건 문자열**이고, 프런트가 요청 본문으로 실어 보낸다
+                       (`page.tsx` 의 `{parcel_id, topic, purpose, personas}`). 서버엔 출처가
+                       없다 — `facility_type`·`region` 은 후보점 행에서 조회되는 **대상**이지
+                       안건이 아니다(같은 후보점으로 다른 안건의 토론을 또 열 수 있다).
+
+                       값은 이미 prop 으로 들어와 있고 `:93` 의 `🎯 {topic}` 은 그걸 잘 쓰고
+                       있었다. 같은 파일에서 한 줄은 맞고 한 줄만 없는 키를 보고 있었다.
+                  */}
+                  <div className="text-[14px] font-semibold text-ink">{topic}</div>
                 </div>
               
               <div className="glass-panel p-4 rounded-xl border border-hairline">
                 <h3 className="text-[12px] font-semibold text-ink-secondary mb-1">현재 진행 라운드</h3>
-                <div className="text-[24px] font-bold text-primary tnum">{discussionStatus.round_count} <span className="text-[13px] text-ink-secondary font-medium">Round</span></div>
+                {/* `round_count`(옛 LangGraph 상태) → `round`(evaluation 이벤트). 없으면 `—`. */}
+                <div className="text-[24px] font-bold text-primary tnum">{discussionStatus.round ?? '—'} <span className="text-[13px] text-ink-secondary font-medium">Round</span></div>
               </div>
 
               <div className="glass-panel p-4 rounded-xl border border-hairline space-y-3">
                 <h3 className="text-[12px] font-semibold text-ink mb-2 border-b border-hairline pb-2">페르소나별 수용도 분석</h3>
-                {Object.entries(discussionStatus.evaluations || {}).map(([key, val]: any, idx) => {
+                {/* `evaluations` → `acceptance`(evaluation 이벤트). 값은 0~1 숫자만 들어온다. */}
+                {Object.entries(discussionStatus.acceptance || {}).map(([key, val]: any, idx) => {
                   const personaId = key.replace('_acceptance', '');
                   const pIdx = parseInt(personaId.replace('persona_', ''));
                   const displayName = !isNaN(pIdx) && activePersonas[pIdx] ? activePersonas[pIdx].name : personaId;
@@ -269,15 +309,15 @@ export function DiscussionStep({
                 )})}
               </div>
 
-              {discussionStatus.reporter && (
+              {discussionStatus.report && (
                 <div className="glass-panel-deep p-5 rounded-xl border border-primary/20 shadow-sm relative overflow-hidden">
                   <div className="absolute top-0 left-0 w-1.5 h-full bg-primary rounded-l-xl"></div>
                   <div className="text-primary text-[11px] font-bold mb-1.5 tracking-tight">최종 시나리오 도출</div>
-                  <h3 className="text-[16px] font-bold text-ink mb-2">{discussionStatus.reporter.scenario_title}</h3>
-                  <p className="text-[12px] text-ink-secondary leading-relaxed mb-4">{discussionStatus.reporter.summary}</p>
+                  <h3 className="text-[16px] font-bold text-ink mb-2">{discussionStatus.report.scenario_title}</h3>
+                  <p className="text-[12px] text-ink-secondary leading-relaxed mb-4">{discussionStatus.report.summary}</p>
                   <div className="bg-canvas-soft rounded-lg p-3 text-[12px] border border-hairline">
                     <span className="font-semibold text-ink block mb-1">권장 후속 조치</span>
-                    <span className="text-ink-secondary">{discussionStatus.reporter.next_action}</span>
+                    <span className="text-ink-secondary">{discussionStatus.report.next_action}</span>
                   </div>
                 </div>
               )}
