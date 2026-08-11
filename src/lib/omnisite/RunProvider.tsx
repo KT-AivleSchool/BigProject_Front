@@ -26,6 +26,7 @@ import {
   submitAuditGate,
   submitWeightGate,
 } from "./pipeline";
+import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
 import { clearRunId, readRunId, writeRunId } from "./runStore";
 import { gateScreen } from "./gate";
@@ -45,7 +46,11 @@ interface RunContextValue {
   error: string | null;
   /** 진행 중 단계가 시작된 뒤 흐른 시간(초). 진행률 계산에 쓴다. */
   runningElapsedSec: number;
-  start: (domain: string, mode?: string) => Promise<string | null>;
+  /**
+   * 실행 시작. `full` 은 실행 조건(`user_input` 필수 · `topn`)을 같이 보낸다 —
+   * 계약 8-2. 다른 모드에 넘기면 `createRun` 이 버린다(보내면 400 이다).
+   */
+  start: (domain: string, mode?: string, full?: FullParams) => Promise<string | null>;
   /**
    * 게이트 답변. 성공하면 서버가 돌려준 status 를 그대로 현재 run 으로 삼는다 —
    * 그 순간 `running` 이므로 폴링이 저절로 재개된다.
@@ -218,17 +223,37 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   }, [run]);
 
   const start = useCallback(
-    async (domain: string, mode: string = MODE_FIXTURE) => {
+    async (domain: string, mode: string = MODE_FIXTURE, full?: FullParams) => {
       setStarting(true);
       setError(null);
       try {
-        const id = await createRun(domain, mode);
+        const id = await createRun(domain, mode, full);
         writeRunId(id);
         const doc = await fetchRun(id);
         applyRun(doc);
         setIsReadOnly(false);
         return id;
       } catch (e: unknown) {
+        // 🔴 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 이미
+        //    잡고 있다. 그 run 은 살아 있으므로 새로 만들 게 아니라 **되붙는다.**
+        //    id 는 서버가 `detail` 에 적어준 것만 쓴다(프런트가 짐작하지 않는다).
+        if (e instanceof ApiError && e.status === 409) {
+          const match = e.detail.match(/run_id=([^)]+)/);
+          if (match && match[1]) {
+            const id = match[1];
+            writeRunId(id);
+            try {
+              const doc = await fetchRun(id);
+              applyRun(doc);
+              setIsReadOnly(false);
+              return id;
+              // 되붙기까지 실패하면 원래 409 문구를 그대로 띄운다 — 여기서
+              // 새 사유를 지어내면 진짜 원인(점유)이 화면에서 사라진다.
+            } catch {
+              /* 아래 공통 처리로 흘린다 */
+            }
+          }
+        }
         setError(startFailureText(e));
         return null;
       } finally {
