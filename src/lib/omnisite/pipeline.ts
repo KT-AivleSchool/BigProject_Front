@@ -1,9 +1,8 @@
 /**
  * 파이프라인 실행 API — `pipeline_run_contract.md` 가 유일한 기준.
  * =============================================================
- * 엔드포인트는 **5개다.** 실측(2026-08-05, app/api/v1/pipeline.py):
+ * 엔드포인트는 **4개다.** 실측(2026-08-05, app/api/v1/pipeline.py):
  *
- *   GET  /api/v1/pipeline/runs                        → 내 분석 및 미할당 내역 목록 조회
  *   POST /api/v1/pipeline/runs                        → 202 {run_id}
  *   GET  /api/v1/pipeline/runs/{run_id}               → status.json 원문
  *   GET  /api/v1/pipeline/runs/{run_id}/artifacts/{n} → 산출물 파일 원본
@@ -33,7 +32,15 @@
  *      걸려 조용히 뒤집히고, `direction_source` 가 산출물에서 사라진다.
  *    - 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 잡고 있다.
  *
- *    - 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 잡고 있다.
+ * 🔴 **run 목록 API 는 아직 없다.**(실측 2026-08-12: `GET /pipeline/runs?mine=true`
+ *    → **405 Method Not Allowed**. 없는 경로가 아니라 `POST /runs` 가 같은 경로를
+ *    점유해 **메서드에서** 막힌다 — 404 로 적으면 "없는 걸 만드는 문제" 로 읽히는데
+ *    실제로는 "있는 경로에 메서드를 더하는 문제" 다.)
+ *    그래서 방금 만든 run_id 를 프런트가 직접 기억해야 한다(`runStore.ts`).
+ *    서버가 유일한 진실인데 목록을 못 물어보므로, 브라우저에 남은 id 는 항상
+ *    서버에 되물어 확인한 뒤 쓴다.
+ *    아래 `fetchRuns` 는 **그 405 가 200 이 되는 날을 위해 미리 배선한 것**이고,
+ *    지금은 마이페이지가 실패를 화면에 그대로 띄운다(삼키지 않는다).
  */
 import { getJson, postJson, getText } from "./client";
 import { parseCsv } from "./csv";
@@ -64,17 +71,47 @@ export interface RunMeta {
 }
 
 /**
- * 계약 2절. `mode` 는 이 둘뿐이다.
+ * 계약 2절 · 8절. `mode` 는 이 **셋**이다.
  *
  * - `fixture` 무입력 완주. 회귀 검증용. 게이트가 **안 선다.**
  * - `hitl`    게이트A·B 에서 멈춘다. 화면 2 · 3 에서 답해야 이어진다.
+ * - `full`    STEP0(프로파일링)부터 DB 적재까지 10칸. 업로드한 도메인 전용.
+ *
+ * 🔴 **`fixture`·`hitl` 은 `datasets/<도메인>_FIX/` 픽스처를 요구한다.**
+ *    없으면 `POST /runs` 가 400 이다. 화면이 미리 막지 못하는 이유는
+ *    `GET /upload/domains` 응답에 픽스처 유무가 없기 때문이다(실측 2026-08-10:
+ *    `domain`·`law_files`·`data_files`·`has_audit_reviewed` 넷뿐). 그래서
+ *    서버 400 문구를 그대로 띄운다 — 프런트가 규칙을 흉내 내면 서버와 갈린다.
+ *
+ * 🔴 **`full` 에는 게이트가 있다.** `_PLAN[MODE_FULL]` 에 `gate:audit`·
+ *    `gate:weight` 가 들어 있다 — 즉 업로드 경로에는 "자동 완주" 가 **없다.**
  *
  * 🔴 목록을 프런트가 정하지 않는다 — 서버가 모르는 값을 보내면 400 이고 문구도
- *    서버가 준다. 여기 있는 두 상수는 **버튼 라벨을 붙이기 위한 것**이지 화이트
+ *    서버가 준다. 여기 있는 세 상수는 **버튼 라벨을 붙이기 위한 것**이지 화이트
  *    리스트가 아니다. (모드가 늘면 서버가 먼저 알고, 화면은 그다음이다)
  */
 export const MODE_FIXTURE = "fixture";
 export const MODE_HITL = "hitl";
+export const MODE_FULL = "full";
+
+/**
+ * `full` 전용 실행 조건 (계약 8-2).
+ *
+ * 🔴 **다른 모드에서 보내면 400 이다.** 받아놓고 안 쓰는 인자를 만들지 않으려고
+ *    백엔드가 일부러 막아뒀다 — 호출자가 "반영됐다" 고 읽으면 안 되기 때문이다.
+ *    그래서 `createRun` 이 mode 를 보고 넣을지 말지 정한다.
+ */
+export interface FullParams {
+  /** 사용자 의도. STEP0.5 가 여기서 시설·지역을 확정한다. 빈 값 → 400. */
+  user_input: string;
+  /** STEP4 가 뽑을 후보 개수 = 화면4 목록 길이. 서버 기본 20 · 범위 1~200. */
+  topn?: number;
+}
+
+/** 계약 8-2 의 `topn` 기본값. 서버(`TOPN_DEFAULT`)와 같은 값이다. */
+export const TOPN_DEFAULT = 20;
+/** 계약 8-2 의 상한. 벗어나면 서버가 400. */
+export const TOPN_MAX = 200;
 
 export async function fetchRuns(mine: boolean = true): Promise<{ runs: RunMeta[] }> {
   return getJson<{ runs: RunMeta[] }>(`${BASE}/runs?mine=${mine}`);
@@ -83,11 +120,17 @@ export async function fetchRuns(mine: boolean = true): Promise<{ runs: RunMeta[]
 export async function createRun(
   domain: string,
   mode: string = MODE_FIXTURE,
+  full?: FullParams,
 ): Promise<string> {
-  const { run_id } = await postJson<{ run_id: string }>(`${BASE}/runs`, {
-    domain,
-    mode,
-  });
+  // full 이 아닌데 조건을 들고 있으면 **여기서 버린다.** 그대로 보내면 400 이고,
+  // 사용자에겐 "의도를 적었는데 서버가 거부했다" 로 보인다 — 화면이 안 보낼 값을
+  // 입력받고 있었다는 게 진짜 사유다. 그건 화면 쪽에서 막는다(page.tsx).
+  const body: Record<string, unknown> = { domain, mode };
+  if (mode === MODE_FULL && full) {
+    body.user_input = full.user_input;
+    if (full.topn !== undefined) body.topn = full.topn;
+  }
+  const { run_id } = await postJson<{ run_id: string }>(`${BASE}/runs`, body);
   return run_id;
 }
 

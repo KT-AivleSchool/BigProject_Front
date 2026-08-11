@@ -7,8 +7,8 @@
  *
  * 🔴 옛 판(`uploads/regulations/`)은 **파이프라인이 안 읽는 곳**에 저장했다.
  *    올려도 STEP1 감리가 못 봤고 200 이 떨어져서 안 걸렸다. 지금은
- *      조례   → `data_임시/<도메인>/law/`  (= `load_ordinance()` 가 읽는 폴더)
- *      데이터 → `data_임시/<도메인>/data/` (= `profile_folder()` 가 읽는 폴더)
+ *      조례   → `datasets/<도메인>/law/`  (= `load_ordinance()` 가 읽는 폴더)
+ *      데이터 → `datasets/<도메인>/data/` (= `profile_folder()` 가 읽는 폴더)
  *    프런트가 경로를 알 필요는 없지만, 응답의 `saved_to` 를 **화면에 남긴다** —
  *    "어디에 저장됐는지" 가 옛 판에서 틀렸던 바로 그 값이다(원칙 4).
  */
