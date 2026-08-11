@@ -3,10 +3,9 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
-import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
-import { useRun } from "@/lib/omnisite/RunProvider";
+import { type SitePick } from "@/lib/omnisite/sitePick";
 import { SCREENS } from "@/lib/omnisite/screens";
-import { ApiError, NetworkError } from "@/lib/omnisite/client";
+import { useSelectedSite, type Failure } from "@/lib/omnisite/useSelectedSite";
 import {
   Candidate,
   FIRST_PACKET_TIMEOUT_MS,
@@ -14,7 +13,6 @@ import {
   STREAM_URL,
   StreamPacket,
   errorTitle,
-  fetchCandidates,
 } from "@/lib/omnisite/simulation";
 
 import { ChatBubble, ChatMessage, ChatRole } from "@/components/hearing/ChatBubble";
@@ -49,22 +47,22 @@ const EMPTY_METRICS: Metrics = {
   conAccept: null,
 };
 
-/** 화면에 띄울 실패. `code` 는 서버 `error_code`, `detail` 은 서버 문구 원문. */
-interface Failure {
-  code: string;
-  detail: string;
-}
-
 const SS_KEYS = ["sim_messages", "sim_metrics", "sim_started", "sim_finished", "sim_parcel"];
 
 export default function Screen5Page() {
-  const { run } = useRun();
-  const domain = run?.domain ?? null;
-
-  // ── 후보점 ────────────────────────────────────────────────
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
-  const [candFailure, setCandFailure] = useState<Failure | null>(null);
-  const [candLoading, setCandLoading] = useState(false);
+  /**
+   * 🔴 「토론할 위치」 배선은 **`useSelectedSite()` 한 곳**이다(2026-08-11 이관).
+   *    예전엔 같은 규칙이 이 파일 안에 인라인으로 한 벌 더 있었다 — 도메인 기본값
+   *    금지 · `run.loaded.run_id` 그대로 넘기기 · **PNU 로 잇기** · 못 이으면
+   *    되짚지 않기. B(`/dynamic-hearing`)가 그 훅을 쓰고 A 만 사본을 들고 있었는데,
+   *    사본은 **import 가 멀쩡하고 값만 갈리는 종류**의 사고를 낸다(백엔드 함정표
+   *    `dummy/gam4_spatial_ops.py` 와 같다). 옮긴 것이지 새로 쓴 게 아니다 —
+   *    아래에서 없어진 코드는 훅 안에 **같은 문장 그대로** 있다.
+   */
+  const site = useSelectedSite();
+  const { domain, candidates, selected, pick, pickMissing, pickUnmatched } = site;
+  const candLoading = site.loading;
+  const candFailure = site.failure;
 
   const [isStarted, setIsStarted] = useState(false);
   const [isFinished, setIsFinished] = useState(false);
@@ -74,30 +72,6 @@ export default function Screen5Page() {
   /** 실제로 `/stream` 에 넘긴 후보. 복원된 대화가 어느 점의 것인지 밝히려고 남긴다. */
   const [usedParcelId, setUsedParcelId] = useState<number | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
-
-  /**
-   * 화면 4 에서 고른 위치. `undefined` = 아직 안 읽음 · `null` = 고른 적 없음.
-   * 둘을 섞으면 읽기도 전에 "화면 4 에서 고르세요" 가 한 번 깜빡인다.
-   */
-  const [pick, setPick] = useState<SitePick | null | undefined>(undefined);
-
-  /**
-   * 🔴 **토론할 위치는 화면 4 에서 사람이 고른 그 점이다.** 예전엔 여기서
-   *    `candidates[0]`(rank 1)을 집었는데, `rank == 1` 은 **추천이지 결정이
-   *    아니다**(2026-08-10 사람 결정). 지금은 화면 4 가 넘긴 `PNU` 로 찾는다.
-   *
-   * 🔴 못 찾으면 **rank 로 되짚지 않고 `null` 로 둔다.** 화면 4 의 표는 run
-   *    산출물이고 이 목록은 DB 적재분이라 서로 다른 실행일 수 있다 — 그때
-   *    같은 순위를 집으면 **고른 것과 다른 필지**로 5분짜리 토론이 돌아간다.
-   *    안 터지고 값만 틀리는 종류라 화면이 대신 멈춰줘야 한다(원칙 1·4).
-   */
-  const selected: Candidate | null =
-    pick && candidates ? (candidates.find((c) => c.pnu === pick.pnu) ?? null) : null;
-
-  /** 화면 4 를 거치지 않고 바로 들어온 경우. */
-  const pickMissing = pick === null;
-  /** 골랐는데 적재 목록에 없는 경우 — 그 사이 STEP4 가 다시 돌았을 수 있다. */
-  const pickUnmatched = Boolean(pick) && candidates !== null && selected === null;
 
   // 세션 복원
   useEffect(() => {
@@ -116,9 +90,8 @@ export default function Screen5Page() {
     } catch (e) {
       console.error("세션 스토리지 복구 실패", e);
     }
-    // 🔴 렌더 중에 읽지 않는다 — sessionStorage 는 서버 프리렌더에 없어서
-    //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다(화면1 과 같은 이유).
-    setPick(readSitePick());
+    // 🔴 화면 4 의 선택(`readSitePick`)은 여기서 안 읽는다 — `useSelectedSite()`
+    //    안에서 같은 이유(하이드레이션)로 `useEffect` 에 담아 읽는다.
   }, []);
 
   useEffect(() => {
@@ -136,43 +109,6 @@ export default function Screen5Page() {
   useEffect(() => {
     if (usedParcelId !== null) sessionStorage.setItem("sim_parcel", String(usedParcelId));
   }, [usedParcelId]);
-
-  /**
-   * STEP4 Top-N 조회. **`domain` 이 없으면 부르지 않는다** — 기본값 `흡연` 을 넣으면
-   * 성동구 run 을 보고 있는 화면이 용산 후보로 토론한다.
-   *
-   * 🔴 `run_id` 는 **`run.loaded.run_id`** 를 그대로 넘긴다. 「mode 가 full 이면
-   *    `run_id` 와 같다」를 여기서 다시 계산하지 않는다 — 적재기가 정본에 넣은 날
-   *    화면만 0건이 되고 원인이 안 보인다. `loaded` 가 없으면(fixture·hitl, 그리고
-   *    이 필드가 생기기 전의 옛 run) 안 넘긴다 = 최근 적재분이 온다.
-   */
-  const loadedRunId = run?.loaded?.run_id ?? null;
-
-  const loadCandidates = useCallback(async () => {
-    if (!domain) return;
-    setCandLoading(true);
-    setCandFailure(null);
-    try {
-      const list = await fetchCandidates(domain, loadedRunId);
-      setCandidates(list.candidates);
-    } catch (e) {
-      setCandidates(null);
-      if (e instanceof ApiError) {
-        // 404 는 "적재 안 함" 이다. 서버가 적재 명령까지 문구에 넣어 준다 — 그대로 쓴다.
-        setCandFailure({ code: `HTTP ${e.status}`, detail: e.detail });
-      } else if (e instanceof NetworkError) {
-        setCandFailure({ code: "NETWORK", detail: e.message });
-      } else {
-        setCandFailure({ code: "UNKNOWN", detail: String(e) });
-      }
-    } finally {
-      setCandLoading(false);
-    }
-  }, [domain, loadedRunId]);
-
-  useEffect(() => {
-    void loadCandidates();
-  }, [loadCandidates]);
 
   const pushSystem = useCallback((text: string) => {
     setMessages((prev) => [
@@ -233,9 +169,10 @@ export default function Screen5Page() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             // 🔴 하드코딩하지 않는다. 화면 4 에서 고른 필지(PNU 로 이은 것)다.
+            //    `audit_data` 는 2026-08-11 계약에서 빠졌다 — 감리 근거는 요청이
+            //    아니라 서버가 `parcel_id` 로 조회한다(`StreamRequest` 주석).
             parcel_id: selected.parcel_id,
             facility_type: selected.facility_type,
-            audit_data: {},
           }),
           signal: controller.signal,
           /**
@@ -364,7 +301,7 @@ export default function Screen5Page() {
     setMetrics(EMPTY_METRICS);
     setFailure(null);
     setUsedParcelId(null);
-    void loadCandidates();
+    site.reload();
   }
 
   const staleParcel =
@@ -378,18 +315,17 @@ export default function Screen5Page() {
       />
 
       {/*
-        🔴 **임시 진입점이다.** 토론 방식은 두 갈래다 — 이 화면(A 대립 토론)과
-           `/dynamic-hearing`(B 다인 토론). 화면 4 에서 고른 위치로 **어느 쪽을
-           돌릴지 고르는 분기 UI 는 동현님 작업분**이라 여기서 만들지 않는다.
-           그때까지 B 를 URL 로만 닿게 두면 병합된 화면이 없는 것처럼 보이므로
-           링크만 남긴다 — 분기 UI 가 들어오면 **이 블록을 지운다.**
+        여기는 **A 대립 토론**이다. 다른 방식(B 다인 토론)으로 가려면 고르는 화면으로
+        돌아간다 — B 를 직접 가리키던 임시 링크는 지웠다(2026-08-11 분기 UI 도입).
+        🔴 「B 열기」로 두지 않는 이유: 방식이 셋째로 늘면 이 화면에도 링크가 하나 더
+           붙는다. **고르는 일은 고르는 화면 한 곳에서만** 한다.
       */}
       <div className="mt-4 flex justify-end">
         <Link
-          href="/dynamic-hearing"
-          className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100"
+          href="/hearing/select"
+          className="rounded-lg border border-hairline bg-white px-4 py-2 text-sm font-medium text-ink-secondary hover:text-ink"
         >
-          다인 토론 모드(B) 열기 — 분기 UI 연결 전 임시
+          토론 방식 다시 고르기
         </Link>
       </div>
 
@@ -404,7 +340,7 @@ export default function Screen5Page() {
           pick={pick}
           pickMissing={pickMissing}
           pickUnmatched={pickUnmatched}
-          onRetry={() => void loadCandidates()}
+          onRetry={site.reload}
         />
       </div>
 

@@ -78,11 +78,20 @@ export function fetchCandidates(
 
 // ── /stream (SSE) ────────────────────────────────────────────────
 
-/** `/stream` 요청 본문. `audit_data` 는 서버가 받아만 두고 비어 있어도 된다. */
+/**
+ * `/stream` 요청 본문.
+ *
+ * 🔴 `audit_data` 를 지웠다(2026-08-11, 백엔드 계약 변경). 프런트는 늘 `{}` 를
+ *    보내고 있었고 서버는 그걸 쓰지 않았다 — 감리 근거는 요청이 아니라 서버가
+ *    `parcel_id` 로 `booth_candidates → (domain, run_id)` 를 잡아 `audit_rules`
+ *    에서 읽는다. 요청에 자리를 남겨두면 「여기에 넣으면 반영된다」로 읽히고,
+ *    실제로 넣어도 **말없이 버려진다**(원칙 4).
+ *    서버는 이제 제거된 키가 오면 **400 + 사유**다(422 가 아니다 — 왜 못 쓰는지를
+ *    문구로 준다). 그래서 이 필드는 옵셔널로 남기지 않고 **없앤다.**
+ */
 export interface StreamRequest {
   parcel_id: number;
   facility_type: string;
-  audit_data: Record<string, unknown>;
 }
 
 /**

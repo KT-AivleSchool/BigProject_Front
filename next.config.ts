@@ -34,6 +34,36 @@ const nextConfig: NextConfig = {
   turbopack: { root: __dirname },
 
   /**
+   * rewrite 프록시가 응답을 포기하는 시각.
+   *
+   * 🔴 **기본값 30초가 우리 상한을 전부 덮어쓰고 있었다**(2026-08-11 실측).
+   *    `node_modules/next/dist/server/lib/router-utils/proxy-request.js:33` 이
+   *    `proxyTimeout || 30000` 이다. 이건 프록시→백엔드 소켓의 **무음 상한**이라
+   *    LLM 이 생각하는 동안(응답 헤더도 안 옴) 그대로 걸린다.
+   *
+   *    증상이 고약하다 — 프록시가 끊으면 브라우저에는 **500 "Internal Server
+   *    Error"** 가 온다. 백엔드는 멀쩡히 계속 돌아 200 을 만들어내는데 화면은
+   *    "페르소나를 발굴하지 못했습니다 / HTTP 500" 을 띄운다. 서버가 실패했다고
+   *    **없는 사실을 말하는** 것이다(원칙 4). 실측:
+   *      · `POST /stakeholders/generate` 29.2s → 200 · 30.0s → **500** (같은 요청)
+   *      · 백엔드에 직접 curl 하면 35.4s 200. 죽인 쪽은 백엔드가 아니다
+   *      · Next 로그에는 `Failed to proxy … ECONNRESET (socket hang up)` 만 남는다
+   *
+   * 🔴 값의 근거는 **`simulation.ts` 의 `FIRST_PACKET_TIMEOUT_MS`(5분)** 다.
+   *    거기 적힌 실측이 「첫 SSE 패킷까지 264.2초」(PGVector 초기화가 프로세스당
+   *    1회)인데, 프록시가 30초에 끊으면 **그 5분은 한 번도 쓰인 적이 없다.**
+   *    타임아웃을 두 군데가 각자 정하면 짧은 쪽이 조용히 이긴다.
+   *
+   *    그래서 여기 값은 「멈춤을 판정하는 값」이 아니라 **「판정을 프런트에
+   *    맡기기 위해 비켜 주는 값」** 이다 — 프런트 상한(5분)보다 크기만 하면 된다.
+   *    멈춤 판정은 화면이 한다(`arm(IDLE_TIMEOUT_MS)` · 첫 패킷 5분). 그쪽은
+   *    사유를 화면에 적을 수 있지만 프록시는 500 밖에 못 말한다.
+   *    ⚠ `FIRST_PACKET_TIMEOUT_MS` 를 올리면 **이 값도 같이 올린다.**
+   *    (`import` 로 묶지 않은 이유: 이 파일은 CJS 로 로드된다 — 위 `__dirname` 주석)
+   */
+  experimental: { proxyTimeout: 6 * 60 * 1000 },
+
+  /**
    * 동일 출처 프록시.
    *
    * 왜 CORS 직접 호출이 아닌가 — 백엔드 `main.py` 의 `allow_origins=["*"]` 는

@@ -71,6 +71,12 @@ export default function Screen4Page() {
    * 🔴 `rank == 1` 을 화면 5 가 알아서 쓰던 것을 여기서 끊는다 — 추천은 추천이고,
    *    어디로 공청회를 열지는 사람이 정한다(2026-08-10 사람 결정).
    *    이으는 키는 `PNU` 다. `순위` 는 실행마다 뜻이 달라 다른 필지를 가리킬 수 있다.
+   *
+   * 🔴 가는 곳은 `/hearing` 이 **아니라** `/hearing/select` 다(2026-08-11).
+   *    화면 5 는 토론 방식이 둘이고(A 대립 `/hearing` · B 다인 `/dynamic-hearing`)
+   *    엔진도 둘로 갈려 있다. 예전엔 여기서 A 를 **박아** 둬서 B 는 URL 을 직접
+   *    쳐야 닿았다. 방식은 이 화면이 정하는 게 아니다 — 여기서 정하는 건 **어디를**
+   *    이고, **어떻게**는 다음 화면에서 사람이 고른다.
    */
   function goHearing(row: TopNCsvRow) {
     writeSitePick({
@@ -79,7 +85,7 @@ export default function Screen4Page() {
       pnu: row.PNU,
       jibun: row.JIBUN,
     });
-    router.push("/hearing");
+    router.push("/hearing/select");
   }
 
   return (
