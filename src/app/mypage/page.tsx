@@ -75,9 +75,6 @@ export default function MyPage() {
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-shadow hover:shadow-md">
-        <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex justify-between items-center">
-          <h2 className="text-lg font-semibold text-gray-800">분석 내역</h2>
-        </div>
         <div className="py-10 px-10 min-h-[400px] flex flex-col items-center justify-start">
           <RunList />
         </div>
@@ -92,7 +89,8 @@ function RunList() {
   const [runs, setRuns] = useState<import('@/lib/omnisite/pipeline').RunMeta[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const fetchData = () => {
+    setLoading(true);
     import('@/lib/omnisite/pipeline').then(({ fetchRuns }) => {
       fetchRuns(true)
         .then((res) => {
@@ -104,26 +102,50 @@ function RunList() {
           setLoading(false);
         });
     });
+  };
+
+  useEffect(() => {
+    fetchData();
   }, []);
 
   if (loading) {
-    return <div className="text-gray-500">불러오는 중...</div>;
+    return <div className="text-gray-500 w-full text-center">불러오는 중...</div>;
   }
+
+  const HeaderSection = () => (
+    <div className="w-full mb-8 flex justify-between items-center border-b border-gray-100 pb-4">
+      <h2 className="text-xl font-bold text-gray-800">분석 내역</h2>
+      <button
+        onClick={fetchData}
+        className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-gray-600 bg-gray-100 hover:bg-gray-200 rounded-md transition-colors"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <polyline points="23 4 23 10 17 10"></polyline>
+          <polyline points="1 20 1 14 7 14"></polyline>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+        </svg>
+        새로고침
+      </button>
+    </div>
+  );
 
   if (runs.length === 0) {
     return (
-      <div className="text-center flex flex-col items-center justify-center mt-12">
-        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-50 border border-gray-100 mb-6 text-gray-300">
-          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-            <polyline points="14 2 14 8 20 8"></polyline>
-            <line x1="16" y1="13" x2="8" y2="13"></line>
-            <line x1="16" y1="17" x2="8" y2="17"></line>
-            <polyline points="10 9 9 9 8 9"></polyline>
-          </svg>
+      <div className="w-full">
+        <HeaderSection />
+        <div className="text-center flex flex-col items-center justify-center mt-12">
+          <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-gray-50 border border-gray-100 mb-6 text-gray-300">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+              <polyline points="14 2 14 8 20 8"></polyline>
+              <line x1="16" y1="13" x2="8" y2="13"></line>
+              <line x1="16" y1="17" x2="8" y2="17"></line>
+              <polyline points="10 9 9 9 8 9"></polyline>
+            </svg>
+          </div>
+          <p className="text-gray-600 font-medium text-lg">아직 실행한 분석 내역이 없습니다.</p>
+          <p className="text-sm text-gray-400 mt-2">OmniSite 데이터 분석 파이프라인을 실행하면 이곳에 진행 내역이 기록됩니다.</p>
         </div>
-        <p className="text-gray-600 font-medium text-lg">아직 실행한 분석 내역이 없습니다.</p>
-        <p className="text-sm text-gray-400 mt-2">OmniSite 데이터 분석 파이프라인을 실행하면 이곳에 진행 내역이 기록됩니다.</p>
       </div>
     );
   }
@@ -138,6 +160,7 @@ function RunList() {
 
   return (
     <div className="w-full text-left space-y-10">
+      <HeaderSection />
       {myRuns.length > 0 && (
         <div>
           <h3 className="text-md font-semibold text-gray-700 mb-4">내 분석 내역</h3>
