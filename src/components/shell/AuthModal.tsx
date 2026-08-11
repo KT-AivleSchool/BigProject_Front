@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { postJson, ApiError } from "@/lib/omnisite/client";
-import { UserLogin, UserRegister, TokenResponse, UserResponse, setAuthToken, setAuthUser } from "@/lib/omnisite/auth";
+import { UserLogin, UserRegister, TokenResponse, UserResponse, setAuthToken, setRefreshToken, setAuthUser } from "@/lib/omnisite/auth";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -88,7 +88,12 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
         
         // Save token
         setAuthToken(tokenData.access_token);
-        
+        // 🔴 재발급용 토큰은 **로그인 응답에 원래부터 있었는데 여기서 버려지고 있었다**
+        //    (백엔드 `auth.py:155`). 이게 없으면 상단 배지의 연장 버튼이 못 돈다.
+        //    스키마상 `str | None` 이라 없을 수도 있다 — 그때는 지우고, 배지가
+        //    「재발급용 토큰이 없다」고 말한다. 기본값을 지어내지 않는다.
+        setRefreshToken(tokenData.refresh_token ?? null);
+
         let username = email.split("@")[0] ?? "user";
         let userId = 0;
         try {
