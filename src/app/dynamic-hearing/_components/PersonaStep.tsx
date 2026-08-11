@@ -84,10 +84,13 @@ export function PersonaStep({
                 <div className="pr-8">
                   {/*
                     🔴 등급이 비면 **`C` 를 지어내지 않는다**(2026-08-11). 백엔드
-                    `_map_persona:211` 이 이미 기본 `"C"` 를 넣는데 여기서 또
-                    `|| 'C'` 를 하고 있었다 — 두 겹이 같은 값을 채우니, 서버가
-                    등급을 못 낸 경우와 진짜 C등급이 화면에서 구분되지 않는다.
-                    빈 값은 「미상」으로 **비었다고 말한다**(원칙 4).
+                    `_map_persona:211` 이 기본 `"C"` 를 넣는데 여기서 또 `|| 'C'`
+                    를 하고 있었다 — 두 겹이 같은 값을 채우니, 서버가 등급을 못 낸
+                    경우와 진짜 C등급이 화면에서 구분되지 않는다.
+                    같은 날 백엔드도 기본값을 「미상」으로 맞췄다. 그래서 이 `||` 는
+                    이제 거의 안 걸리는데 **지우지 않는다** — 빈 문자열이 오는 경우가
+                    남고, 두 겹이 이번엔 **같은 뜻**이라 값이 뭉개지지 않는다.
+                    (위 사고는 두 기본값이 「모른다」와 「C등급」으로 갈렸던 것이다)
                   */}
                   <div className="inline-block px-2.5 py-1 rounded bg-black/[0.04] text-[11px] font-semibold mb-3 text-ink-secondary border border-hairline">
                     중요도: {p.importance_grade || '미상'}

@@ -15,14 +15,45 @@ export class ApiError extends Error {
   readonly url: string;
   /** FastAPI `HTTPException` 의 `detail`. 없으면 본문 앞부분. */
   readonly detail: string;
+  /**
+   * 파싱된 응답 본문 원본. JSON 이 아니었으면 `null`.
+   *
+   * 🔴 `detail` 만으로는 부족해서 생겼다(2026-08-11). 백엔드가 404 의 `detail` 을
+   *    **객체**로 주기 시작했는데(`{code, message, run_id, domain, loaded, current}`)
+   *    `readDetail()` 은 그중 `message` 문자열만 뽑는다 — 표시에는 그게 맞지만
+   *    `code` 로 갈라야 할 때 남는 게 없다. 그래서 **뽑은 것과 원본을 둘 다** 든다.
+   *    `detail` 을 객체로 바꾸지 않은 이유: 그러면 이걸 쓰는 화면 십수 곳이
+   *    전부 문자열 가정을 깨고, 하필 그 자리가 「실패 사유를 띄우는」 자리다.
+   */
+  readonly body: unknown;
 
-  constructor(url: string, status: number, detail: string) {
+  constructor(url: string, status: number, detail: string, body: unknown = null) {
     super(`${status} ${url} — ${detail}`);
     this.name = "ApiError";
     this.url = url;
     this.status = status;
     this.detail = detail;
+    this.body = body;
   }
+}
+
+/**
+ * 실패 본문의 `detail.code`. 없으면 `null`.
+ *
+ * 🔴 **이 값으로 문구를 만들지 않는다.** 백엔드와 합의한 규약이 그렇다 —
+ *    코드 집합은 늘어날 수 있고(2026-08-11 회신에서 넷 → 다섯), 모르는 코드에
+ *    분기를 만들면 프런트 배포를 기다려야 한다. 대신 `message` 가 어느 갈래에서도
+ *    항상 채워져 오므로 **표시는 언제나 `detail`(= message) 그대로**이고,
+ *    이 코드는 「어느 갈래였는지」를 사유에 덧붙이는 데만 쓴다.
+ */
+export function apiErrorCode(e: unknown): string | null {
+  if (!(e instanceof ApiError)) return null;
+  const b = e.body;
+  if (typeof b !== "object" || b === null) return null;
+  const d = (b as { detail?: unknown }).detail;
+  if (typeof d !== "object" || d === null) return null;
+  const code = (d as { code?: unknown }).code;
+  return typeof code === "string" ? code : null;
 }
 
 /** 서버가 안 떠 있거나 네트워크가 끊긴 경우. 404 와 구분해야 안내 문구가 달라진다. */
@@ -36,27 +67,31 @@ export class NetworkError extends Error {
   }
 }
 
-async function readDetail(res: Response): Promise<string> {
+async function readDetail(res: Response): Promise<{ detail: string; body: unknown }> {
   // 🔴 `res.json()` 만 믿지 않는다. 500 은 HTML 로 올 수 있고, 그때 json() 이
   //    던지면 원래 실패 원인이 파싱 오류로 뒤바뀐다.
   const text = await res.text().catch(() => "");
-  if (!text) return res.statusText || "(본문 없음)";
+  if (!text) return { detail: res.statusText || "(본문 없음)", body: null };
   try {
     const j = JSON.parse(text) as { detail?: unknown };
-    if (typeof j.detail === "string") return j.detail;
+    if (typeof j.detail === "string") return { detail: j.detail, body: j };
     // 🔴 `detail` 이 **객체**인 경우가 있다 — 업로드 422 는
-    //    `{message, domain, saved_to, files[]}` 를 통째로 넣는다
-    //    (`app/api/v1/upload.py:483-488`). 전엔 이 분기가 없어서 본문 전체가
+    //    `{message, domain, saved_to, files[]}` 를 통째로 넣고
+    //    (`app/api/v1/upload.py:483-488`), `/simulations/hearings` 404 는
+    //    `{code, message, run_id, domain, loaded, current}` 를 넣는다
+    //    (`simulations.py:_missing_run_detail`). 전엔 이 분기가 없어서 본문 전체가
     //    300자에서 잘렸고, 하필 `message` 가 앞에 없으면 사유가 안 보였다.
+    //    두 엔드포인트 다 `message` 를 **항상** 채우기로 했으므로 그걸 쓴다.
     if (j.detail && typeof j.detail === "object") {
       const d = j.detail as { message?: unknown };
-      if (typeof d.message === "string") return d.message;
-      return JSON.stringify(j.detail).slice(0, 300);
+      if (typeof d.message === "string") return { detail: d.message, body: j };
+      return { detail: JSON.stringify(j.detail).slice(0, 300), body: j };
     }
+    return { detail: text.slice(0, 300), body: j };
   } catch {
     /* JSON 이 아니면 본문 그대로 쓴다 */
   }
-  return text.slice(0, 300);
+  return { detail: text.slice(0, 300), body: null };
 }
 
 import { getAuthToken } from "./auth";
@@ -78,7 +113,10 @@ async function request(url: string, init?: RequestInit): Promise<Response> {
   } catch (e) {
     throw new NetworkError(url, e);
   }
-  if (!res.ok) throw new ApiError(url, res.status, await readDetail(res));
+  if (!res.ok) {
+    const { detail, body } = await readDetail(res);
+    throw new ApiError(url, res.status, detail, body);
+  }
   return res;
 }
 
