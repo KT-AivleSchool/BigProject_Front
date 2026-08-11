@@ -26,6 +26,7 @@ import {
   submitAuditGate,
   submitWeightGate,
 } from "./pipeline";
+import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
 import { clearRunId, readRunId, writeRunId } from "./runStore";
 import { gateScreen } from "./gate";
@@ -45,7 +46,11 @@ interface RunContextValue {
   error: string | null;
   /** 진행 중 단계가 시작된 뒤 흐른 시간(초). 진행률 계산에 쓴다. */
   runningElapsedSec: number;
-  start: (domain: string, mode?: string) => Promise<string | null>;
+  /**
+   * 실행 시작. `full` 은 실행 조건(`user_input` 필수 · `topn`)을 같이 보낸다 —
+   * 계약 8-2. 다른 모드에 넘기면 `createRun` 이 버린다(보내면 400 이다).
+   */
+  start: (domain: string, mode?: string, full?: FullParams) => Promise<string | null>;
   /**
    * 게이트 답변. 성공하면 서버가 돌려준 status 를 그대로 현재 run 으로 삼는다 —
    * 그 순간 `running` 이므로 폴링이 저절로 재개된다.
@@ -187,11 +192,11 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   }, [run]);
 
   const start = useCallback(
-    async (domain: string, mode: string = MODE_FIXTURE) => {
+    async (domain: string, mode: string = MODE_FIXTURE, full?: FullParams) => {
       setStarting(true);
       setError(null);
       try {
-        const id = await createRun(domain, mode);
+        const id = await createRun(domain, mode, full);
         writeRunId(id);
         const doc = await fetchRun(id);
         applyRun(doc);

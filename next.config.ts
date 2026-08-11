@@ -34,6 +34,36 @@ const nextConfig: NextConfig = {
   turbopack: { root: __dirname },
 
   /**
+   * rewrite 프록시가 응답을 포기하는 시각.
+   *
+   * 🔴 **기본값 30초가 우리 상한을 전부 덮어쓰고 있었다**(2026-08-11 실측).
+   *    `node_modules/next/dist/server/lib/router-utils/proxy-request.js:33` 이
+   *    `proxyTimeout || 30000` 이다. 이건 프록시→백엔드 소켓의 **무음 상한**이라
+   *    LLM 이 생각하는 동안(응답 헤더도 안 옴) 그대로 걸린다.
+   *
+   *    증상이 고약하다 — 프록시가 끊으면 브라우저에는 **500 "Internal Server
+   *    Error"** 가 온다. 백엔드는 멀쩡히 계속 돌아 200 을 만들어내는데 화면은
+   *    "페르소나를 발굴하지 못했습니다 / HTTP 500" 을 띄운다. 서버가 실패했다고
+   *    **없는 사실을 말하는** 것이다(원칙 4). 실측:
+   *      · `POST /stakeholders/generate` 29.2s → 200 · 30.0s → **500** (같은 요청)
+   *      · 백엔드에 직접 curl 하면 35.4s 200. 죽인 쪽은 백엔드가 아니다
+   *      · Next 로그에는 `Failed to proxy … ECONNRESET (socket hang up)` 만 남는다
+   *
+   * 🔴 값의 근거는 **`simulation.ts` 의 `FIRST_PACKET_TIMEOUT_MS`(5분)** 다.
+   *    거기 적힌 실측이 「첫 SSE 패킷까지 264.2초」(PGVector 초기화가 프로세스당
+   *    1회)인데, 프록시가 30초에 끊으면 **그 5분은 한 번도 쓰인 적이 없다.**
+   *    타임아웃을 두 군데가 각자 정하면 짧은 쪽이 조용히 이긴다.
+   *
+   *    그래서 여기 값은 「멈춤을 판정하는 값」이 아니라 **「판정을 프런트에
+   *    맡기기 위해 비켜 주는 값」** 이다 — 프런트 상한(5분)보다 크기만 하면 된다.
+   *    멈춤 판정은 화면이 한다(`arm(IDLE_TIMEOUT_MS)` · 첫 패킷 5분). 그쪽은
+   *    사유를 화면에 적을 수 있지만 프록시는 500 밖에 못 말한다.
+   *    ⚠ `FIRST_PACKET_TIMEOUT_MS` 를 올리면 **이 값도 같이 올린다.**
+   *    (`import` 로 묶지 않은 이유: 이 파일은 CJS 로 로드된다 — 위 `__dirname` 주석)
+   */
+  experimental: { proxyTimeout: 6 * 60 * 1000 },
+
+  /**
    * 동일 출처 프록시.
    *
    * 왜 CORS 직접 호출이 아닌가 — 백엔드 `main.py` 의 `allow_origins=["*"]` 는
@@ -51,9 +81,64 @@ const nextConfig: NextConfig = {
         source: "/api/v1/pipeline/:path*",
         destination: `${API_ORIGIN}/api/v1/pipeline/:path*`,
       },
+      /**
+       * 화면 5·6. 백엔드가 **같은 라우터를 두 prefix 로** 등록한다
+       * (`main.py:161-170`) — 단수 `/simulation` · 복수 `/simulations`.
+       *
+       * 🔴 **복수형이 정본이다**(2026-08-11 백엔드 회신). 응답 안의 자기 링크
+       *    (`result_url`·`pdf_url`·SSE `saved`)가 전부 복수형이라, 단수만 열어 두면
+       *    **서버가 준 URL 을 그대로 fetch 할 수 없다.** 실제로 `hearings.ts` 가
+       *    한동안 prefix 를 치환하고 있었다 — 경로 규칙이 서버와 프런트 두 곳에
+       *    생기는 자리였다.
+       *
+       * ⚠ 단수도 남겨 둔다(백엔드가 호환용으로 유지한다). 여기서 지우면 단수로
+       *   부르는 요청이 **백엔드 404 가 아니라 Next 404 페이지**로 떨어져 사유가
+       *   안 보인다. 프런트 코드는 복수형만 쓴다(`simulation.ts` 머리말).
+       */
+      {
+        source: "/api/v1/simulations/:path*",
+        destination: `${API_ORIGIN}/api/v1/simulations/:path*`,
+      },
+      {
+        source: "/api/v1/simulation/:path*",
+        destination: `${API_ORIGIN}/api/v1/simulation/:path*`,
+      },
       {
         source: "/api/v1/auth/:path*",
         destination: `${API_ORIGIN}/api/v1/auth/:path*`,
+      },
+      /**
+       * 화면 1 업로드(2026-08-09 백엔드 재작성). 라우트 7개.
+       *
+       * 🔴 `bodySizeLimit` 을 여기서 안 건다 — 업로드는 rewrite 프록시를 그냥
+       *    지나가고(Route Handler 가 아니다) 크기 제한은 백엔드가 정한다.
+       *    프런트가 별도 상한을 두면 백엔드가 받아주는 파일을 프런트가 먼저
+       *    거절하고, 그 거절 문구는 백엔드 정책과 어긋난다.
+       */
+      {
+        source: "/api/v1/upload/:path*",
+        destination: `${API_ORIGIN}/api/v1/upload/:path*`,
+      },
+      /**
+       * 화면 5 B안(다인 토론)·HWPX 내려받기. 프런트 PR #57 ↔ 백엔드 PR #224.
+       * 백엔드 `main.py:171-180` 에 `stakeholders` 2개 · `report` 1개가 있다.
+       *
+       * 🔴 PR 원본은 `process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"`
+       *    으로 **브라우저에서 직접** 백엔드를 불렀다. 세 가지가 걸린다 —
+       *    ⓐ 백엔드 오리진이 번들에 박힌다(위 주석의 이유 그대로)
+       *    ⓑ `allow_origins=["*"]` 라는 **개발용** CORS 설정에 의존한다
+       *    ⓒ `localhost` 는 IPv6 `::1` 로 먼저 풀리는데 백엔드는 2026-08-09
+       *       보안 조치로 `127.0.0.1` 에만 바인딩돼 있다(백엔드 CLAUDE.md 함정).
+       *    그래서 나머지 넷과 **같은 방식**으로 접는다. 새 화면만 다른 규칙을
+       *    쓰면 백엔드 주소가 바뀔 때 여기만 남는다.
+       */
+      {
+        source: "/api/v1/stakeholders/:path*",
+        destination: `${API_ORIGIN}/api/v1/stakeholders/:path*`,
+      },
+      {
+        source: "/api/v1/report/:path*",
+        destination: `${API_ORIGIN}/api/v1/report/:path*`,
       },
     ];
   },
