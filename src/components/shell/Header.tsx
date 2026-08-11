@@ -7,9 +7,10 @@
  * 완료 표시(✓)의 기준은 "그 화면이 읽을 산출물이 run 에 있는가" 다 —
  * 사용자가 방문했는지가 아니라 데이터가 있는지로 판단한다.
  *
- * 🔴 **화면 5 만 예외다.** 토론은 산출물이 아니라 이 탭의 sessionStorage 에만 있다
- *    (백엔드에 저장·조회 경로가 아직 없다). 그래서 아래 `hearingDone` 을 따로 구해
- *    넘긴다 — 다른 화면과 판정 방식이 다르다는 걸 여기 적어 둔다.
+ * 🔴 **화면 5 만 예외다.** 다른 화면은 `run.artifacts` 하나로 판정하는데 토론은
+ *    거기 없다 — **서버 DB 에 남고**(2026-08-11 경로가 열렸다) 물으려면 조인 키인
+ *    `run.loaded.run_id` 가 있어야 한다. 그래서 아래 `hearingDone` 을 따로 구해
+ *    넘긴다. 판정이 어디서 왔는지(`source`)까지 같이 온다.
  */
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
@@ -17,6 +18,7 @@ import { usePathname } from "next/navigation";
 import { NAV_SCREENS, screenOf, isScreenReady, isScreenAllowed } from "@/lib/omnisite/screens";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { isHearingDoneFor } from "@/lib/omnisite/hearingResult";
+import { useHearingDone } from "@/lib/omnisite/hearings";
 import type { ArtifactName, RunDoc } from "@/lib/omnisite/types";
 import { AuthModal } from "./AuthModal";
 import { getAuthUser, setAuthUser, setAuthToken, UserResponse } from "@/lib/omnisite/auth";
@@ -32,23 +34,20 @@ export function Header() {
   const [user, setUser] = useState<UserResponse | null>(null);
 
   /**
-   * 화면 5 완료 여부. **마운트 뒤에 구한다** — 토론 기록은 sessionStorage 에 있어
-   * 서버 렌더 때는 존재하지 않는다. 렌더 중에 읽으면 서버(항상 없음)와 클라이언트가
-   * 갈려 하이드레이션이 깨진다(2026-08-05 에 한 번 밟은 자리다).
+   * 화면 5 완료 여부. **서버가 본선, sessionStorage 가 폴백**이다(`useHearingDone`).
+   * 둘 다 마운트 뒤에 구한다 — 로컬 기록은 서버 렌더 때 존재하지 않아 렌더 중에
+   * 읽으면 하이드레이션이 깨진다(2026-08-05 에 한 번 밟은 자리다).
    *
-   * 🔴 판정 기준과 그 한계는 `hearingResult.isHearingDoneFor` 에 적혀 있다 —
-   *    **탭 안에서만 유효한 임시 기준**이고, 백엔드가 토론 결과를 run 에 저장하면
-   *    `NEEDS["5"]` 로 옮겨간다.
+   * 🔴 폴백으로 넘기는 `isHearingDoneFor` 는 **이 탭 안에서만 유효**하다. 서버에
+   *    못 물었을 때만(적재 칸 없는 fixture·hitl 실행, 404, 네트워크 실패) 쓰인다 —
+   *    서버가 「0건」이라고 답하면 로컬을 보지 않는다.
    */
-  const [hearingDone, setHearingDone] = useState(false);
+  const hearing = useHearingDone(isHearingDoneFor, pathname);
+  const hearingDone = hearing.done;
 
   useEffect(() => {
     setUser(getAuthUser());
   }, []);
-
-  useEffect(() => {
-    setHearingDone(isHearingDoneFor(run?.run_id ?? null));
-  }, [pathname, run?.run_id]);
 
   const handleLogout = () => {
     setAuthToken(null);
