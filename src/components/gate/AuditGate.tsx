@@ -45,7 +45,21 @@ interface ExclusionState {
 interface IntentState {
   choice: number | null;
   weight: string;
+  /**
+   * 배제 승격(`needs_radius`)의 반경. **`ExclusionState` 와 같은 3지**다 —
+   * 반경 규약이 같으니 UI 도 같아야 한다. 여기만 2지(빈칸/값)로 만들면
+   * 「입력 안 함」과 「반경 없음」이 뭉개진다.
+   */
+  radiusMode: RadiusMode;
+  radiusValue: string;
 }
+
+const emptyIntent = (): IntentState => ({
+  choice: null,
+  weight: "",
+  radiusMode: "skip",
+  radiusValue: "",
+});
 
 interface PrefixState {
   /** 체크해야 보낸다. 접두 코드는 **틀려도 행 수가 그럴듯해서 자동 검증이 못 잡는다.** */
@@ -138,11 +152,24 @@ export function AuditGate({
    *    `kind` 로 판정한다(`isAuditQuestion`).
    */
   function build(): AuditAnswer | string {
+    /**
+     * 🔴 미확정으로 남은 반경을 **제출 전에** 막는다(2026-08-10 백엔드 회신 체크⑥).
+     *    서버는 이 제출을 **200 으로 받는다** — 안 보낸 키는 「안 건드림」이고
+     *    그건 정상적인 답이기 때문이다. 대신 STEP2 정제가 `SystemExit` 으로
+     *    멈춰 run 이 `failed` 가 된다. 즉 **게이트에서는 성공으로 보이고 몇 분 뒤
+     *    다른 단계에서 죽는다** — 사람은 자기가 답한 줄 안다. 원인이 보이는
+     *    자리에서 멈추는 게 낫다.
+     */
+    const unanswered: string[] = [];
+
     const outEx: AuditAnswerExclusion[] = [];
     for (const q of exclusions) {
       if (!q.editable) continue;
       const s = ex[exKey(q)];
-      if (!s || s.mode === "skip") continue;
+      if (!s || s.mode === "skip") {
+        unanswered.push(`${q.dataset_id} (배제 반경 — ${q.facility_type ?? "시설 미상"})`);
+        continue;
+      }
       if (s.mode === "none") {
         outEx.push({
           dataset_id: q.dataset_id,
@@ -169,15 +196,38 @@ export function AuditGate({
       if (!s || s.choice === null) continue;
       const choice = q.choices.find((c) => c.value === s.choice);
       if (!choice) return `[${q.dataset_id}] 알 수 없는 선택지입니다.`;
-      if (!choice.needs_weight) {
-        outIt.push({ dataset_id: q.dataset_id, choice: s.choice });
-        continue;
+
+      const out: AuditAnswerIntent = { dataset_id: q.dataset_id, choice: s.choice };
+
+      if (choice.needs_weight) {
+        const w = Number(s.weight);
+        if (!s.weight.trim() || !Number.isFinite(w)) {
+          return `[${q.dataset_id}] 「${choice.label}」 은 크기를 같이 정해야 합니다.`;
+        }
+        out.weight = w;
       }
-      const w = Number(s.weight);
-      if (!s.weight.trim() || !Number.isFinite(w)) {
-        return `[${q.dataset_id}] 「${choice.label}」 은 크기를 같이 정해야 합니다.`;
+
+      /**
+       * 🔴 `choice === 3` 이 아니라 `needs_radius` 로 판정한다. 그리고 이 값은
+       *    **`intents` 항목 안에** 실어야 한다 — `exclusions` 로 보내면 400 이다
+       *    (승격될 role 의 질문이 아직 없다). 필요 없는데 보내도 400 이라
+       *    `needs_radius` 가 false 면 키를 아예 만들지 않는다.
+       */
+      if (choice.needs_radius) {
+        if (s.radiusMode === "skip") {
+          unanswered.push(`${q.dataset_id} (「${choice.label}」 의 배제 반경)`);
+        } else if (s.radiusMode === "none") {
+          out.radius_m = null;
+        } else {
+          const n = Number(s.radiusValue);
+          if (!s.radiusValue.trim() || !Number.isInteger(n)) {
+            return `[${q.dataset_id}] 배제 승격의 반경에 정수를 입력해 주세요 (현재: ${JSON.stringify(s.radiusValue)}).`;
+          }
+          out.radius_m = n;
+        }
       }
-      outIt.push({ dataset_id: q.dataset_id, choice: s.choice, weight: w });
+
+      outIt.push(out);
     }
 
     const outPf: AuditAnswerCodePrefix[] = [];
@@ -192,6 +242,10 @@ export function AuditGate({
         op_index: q.op_index,
         prefix: s.value.trim(),
       });
+    }
+
+    if (unanswered.length) {
+      return `반경이 미확정인 항목이 ${unanswered.length}건 있습니다 — ${unanswered.join(" · ")}. 「반경 없음」 또는 「반경 직접 지정」 중 하나를 골라 주세요. 미확정으로 제출하면 게이트는 통과하지만 다음 단계(정제)에서 실행이 중단됩니다.`;
     }
 
     const answer: AuditAnswer = { run_id: runId };
@@ -283,14 +337,11 @@ export function AuditGate({
         })}
 
         {intents.map((q) => {
-          const defaultState: IntentState = !q.editable
-            ? { choice: q.choices[0]?.value ?? null, weight: "0" } // Fallback, real confirmed state should ideally come from backend, but since not provided, we just enable it.
-            : { choice: null, weight: "" };
           return (
             <IntentCard
               key={q.dataset_id}
               q={q}
-              state={it[q.dataset_id] ?? defaultState}
+              state={it[q.dataset_id] ?? emptyIntent()}
               onChange={(s) => setIt((p) => ({ ...p, [q.dataset_id]: s }))}
               confirmed={!!confirmed[q.dataset_id]}
               onConfirm={(val) =>
@@ -426,9 +477,14 @@ function ExclusionCard({
                 }
                 className="w-20 px-2 py-1 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
               />
-              <span className="text-gray-500 font-medium">m</span>
+              <span className="text-gray-500 font-medium">m <span className="text-xs font-normal text-gray-400">(1~5000)</span></span>
             </label>
           </div>
+          {state.mode === "skip" && (
+            <p className="w-full text-xs text-rose-700 mt-2 px-1">
+              아직 <strong>미확정</strong>입니다. 이대로 제출하면 다음 단계(정제)에서 실행이 중단됩니다.
+            </p>
+          )}
         </div>
       )}
     </QuestionCard>
@@ -475,6 +531,7 @@ function IntentCard({
               <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                 {picked ? picked.label : "건너뜀"}
                 {picked?.needs_weight && state.weight ? ` (W: ${state.weight})` : ""}
+                {picked?.needs_radius && state.radiusMode === 'value' ? ` (R: ${state.radiusValue}m)` : ""}
               </span>
             )}
 
@@ -495,16 +552,17 @@ function IntentCard({
               <span className="font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
                 {picked ? picked.label : "미확정 (건너뜀)"}
                 {picked?.needs_weight && state.weight ? ` (가중치: ${state.weight})` : ""}
+                {picked?.needs_radius && state.radiusMode === 'value' ? ` (반경: ${state.radiusValue}m)` : ""}
               </span>
             </div>
           </div>
 
-          <div className="flex flex-col gap-2 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
+          <div className="flex flex-col gap-3 text-sm bg-gray-50 p-3.5 rounded-xl border border-gray-100">
             <div className="flex flex-wrap gap-x-6 gap-y-2">
               <Radio
                 name={`it-${q.dataset_id}`}
                 checked={state.choice === null}
-                onChange={() => onChange({ choice: null, weight: state.weight })}
+                onChange={() => onChange({ ...state, choice: null })}
                 label="건너뜀 (결정 보류)"
               />
               {q.choices.map((c) => (
@@ -517,8 +575,9 @@ function IntentCard({
                 />
               ))}
             </div>
+            
             {picked?.needs_weight && (
-              <label className="flex items-center gap-3 mt-1 p-2 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-1">
+              <label className="flex items-center gap-3 mt-2 p-3 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-1">
                 <span className="font-bold text-gray-700 text-xs">
                   크기 (Weight)
                 </span>
@@ -529,15 +588,74 @@ function IntentCard({
                   max={1}
                   value={state.weight}
                   onChange={(e) => onChange({ ...state, weight: e.target.value })}
-                  className="w-16 px-2 py-1 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                  className="w-24 px-3 py-1.5 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                 />
+                <span className="text-xs text-gray-500">
+                  가점/감점 여부는 위에서 선택한 역할에 따라 자동 결정됩니다. (0은 입력 불가)
+                </span>
               </label>
+            )}
+
+            {picked?.needs_radius && (
+              <div className="mt-2 rounded-lg border border-gray-200 bg-white p-3 shadow-sm animate-in fade-in slide-in-from-top-1">
+                <p className="font-bold text-gray-700 text-xs">배제 반경</p>
+                <p className="mt-1 text-xs text-gray-500">
+                  「{picked.label}」 은 <strong>새 배제 레이어를 만드는 선택</strong>이라 반경을 같이 정해야 합니다.
+                  여기서 정하지 않으면 미확정으로 남고, 다음 단계(정제)에서 실행이 멈춥니다.
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-4">
+                  <Radio
+                    name={`itr-${q.dataset_id}`}
+                    checked={state.radiusMode === "skip"}
+                    onChange={() => onChange({ ...state, radiusMode: "skip" })}
+                    label="미확정 유지 (건너뜀)"
+                    title="반경을 정하지 않습니다. 이후 단계에서 실행이 멈춥니다."
+                  />
+                  <Radio
+                    name={`itr-${q.dataset_id}`}
+                    checked={state.radiusMode === "none"}
+                    onChange={() => onChange({ ...state, radiusMode: "none" })}
+                    label="반경 없음 (면적 배제로 확정)"
+                    title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
+                  />
+                  <Radio
+                    name={`itr-${q.dataset_id}`}
+                    checked={state.radiusMode === "value"}
+                    onChange={() => onChange({ ...state, radiusMode: "value" })}
+                    label="반경 직접 지정"
+                  />
+                  <label
+                    className={`flex items-center gap-2 transition-opacity ${state.radiusMode === "value" ? "opacity-100" : "opacity-40 pointer-events-none"}`}
+                  >
+                    <input
+                      type="number"
+                      min={1}
+                      max={5000}
+                      step={1}
+                      value={state.radiusValue}
+                      onChange={(e) =>
+                        onChange({ ...state, radiusMode: "value", radiusValue: e.target.value })
+                      }
+                      className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                    />
+                    <span className="text-gray-500 font-medium">
+                      m <span className="text-xs font-normal text-gray-400">(1~5000)</span>
+                    </span>
+                  </label>
+                  {state.radiusMode === "skip" && (
+                    <p className="w-full text-xs text-rose-700 mt-2 px-1">
+                      아직 <strong>미확정</strong>입니다. 이대로 제출하면 다음 단계(정제)에서 실행이 중단됩니다.
+                    </p>
+                  )}
+                </div>
+              </div>
             )}
           </div>
         </div>
       )}
     </QuestionCard>
   );
+
 }
 
 function PrefixCard({

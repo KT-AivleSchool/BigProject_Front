@@ -75,6 +75,17 @@ export interface GateIntentChoice {
   label: string;
   /** true(가점·감점)면 `weight` 를 같이 보내야 한다. */
   needs_weight: boolean;
+  /**
+   * true(배제 승격)면 `radius_m` 을 **같은 항목에서** 보내야 한다(2026-08-10 계약).
+   *
+   * 🔴 `value === 3` 으로 판정하지 않는다. 선택지 번호는 백엔드 사정으로 바뀔 수
+   *    있고, 그때 화면은 **안 터지고 반경칸만 사라진다** — 그러면 사람은 답한 줄
+   *    아는데 STEP2 에서 run 이 죽는다. 무엇이 필요한지는 서버가 말하게 둔다.
+   *
+   * 🔴 `exclusions` 배열로는 못 보낸다. 게이트A 질문 목록은 **답변 전에** 만들어져
+   *    승격될 role 의 질문이 아직 없다 — 보내면 400 「게이트에 없는 대상」이다.
+   */
+  needs_radius: boolean;
 }
 
 export interface GateIntentQuestion {
@@ -190,6 +201,14 @@ export interface AuditAnswerIntent {
   choice: number;
   /** 크기만. 부호는 `choice` 가 정한다. 1·2 에서만 쓰고 0 은 400(제외하려면 choice=5). */
   weight?: number;
+  /**
+   * 배제 승격의 반경. `needs_radius: true` 인 선택지에서만 보낸다 — 아니면 400.
+   *
+   * 🔴 `AuditAnswerExclusion.radius_m` 과 **같은 3상태 규약**이다:
+   *    값 = 확정 · `null` = 반경 없음(면 배제)으로 확정 · **키 생략** = 미확정 유지.
+   *    미확정으로 두면 STEP2 가 `SystemExit` 으로 멈춘다 — 조용히 진행하지 않는다.
+   */
+  radius_m?: number | null;
 }
 
 export interface AuditAnswerCodePrefix {
@@ -261,6 +280,22 @@ export type ArtifactName =
   | "exclusion"
   | "score_grid";
 
+/**
+ * `full` run 의 DB 적재 결과. 값은 **행 수**다.
+ *
+ * 🔴 `run_id` 는 `RunDoc.run_id` 와 같을 것 같지만 **같다고 가정하지 않는다.**
+ *    백엔드가 적재기 로그에서 읽어 적는 값이고, 다르면 그건 사고다(그때는
+ *    백엔드가 run 을 실패시킨다). 조회 키로는 이쪽을 쓴다.
+ *
+ * 🔴 화면 5 는 `audit_rules`(무엇을 근거로) 와 `booth_candidates`(어디를) 를
+ *    **둘 다** 읽는다. 뒤만 있으면 목록은 뜨는데 토론이 0.4초에 죽는다.
+ */
+export interface RunLoaded {
+  run_id: string;
+  audit_rules?: number;
+  booth_candidates?: number;
+}
+
 export interface RunDoc {
   run_id: string;
   domain: string;
@@ -271,6 +306,19 @@ export interface RunDoc {
   artifacts: Partial<Record<ArtifactName, string>>;
   /** `awaiting_hitl` 일 때만 있다. 답을 주면 즉시 사라진다. */
   gate?: RunGate;
+  /**
+   * 이 run 이 실제로 DB 에 적재한 것. **`mode: "full"` 에만 있고 나머지는 `null`** 이다
+   * (fixture·hitl 은 적재 칸이 없다 — 정본이 이미 `run_id='정본'` 으로 들어 있다).
+   *
+   * 🔴 화면 5 의 `/candidates?run_id=` 는 **이 값을 그대로** 쓴다. 「mode 가 full 이면
+   *    `run_id` 와 같다」를 프런트가 다시 계산하면, 적재기가 `--run` 을 무시하고
+   *    정본에 넣은 날 화면은 **0건**을 보고 "후보가 없다"고 말한다. 어디에 넣었는지는
+   *    넣은 쪽만 안다 — 백엔드가 적재 로그의 run_id 를 대조해 여기 적어 준다.
+   *
+   * 🔴 나중에 생긴 필드라(2026-08-10) **옛 run 의 `status.json` 에는 키가 없다.**
+   *    그래서 `undefined` 와 `null` 을 둘 다 "적재 정보 없음"으로 다룬다.
+   */
+  loaded?: RunLoaded | null;
   error: string | null;
   started_at: string | null;
   finished_at: string | null;

@@ -17,10 +17,13 @@
  *    "report 에서 읽었다"고 적으면 그건 거짓 출처 기록이다.
  */
 import { useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
 import { GridMap } from "@/components/map/GridMap";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
+import { useRun } from "@/lib/omnisite/RunProvider";
+import { writeSitePick } from "@/lib/omnisite/sitePick";
 import { loadReport, loadScoreGrid, loadTopN } from "@/lib/omnisite/pipeline";
 import { areaM2, fixed, int, percent } from "@/lib/omnisite/format";
 import { SCREENS } from "@/lib/omnisite/screens";
@@ -29,6 +32,8 @@ import type { ReportDoc, ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
 const SCREEN = SCREENS.find((s) => s.no === "4")!;
 
 export default function Screen4Page() {
+  const router = useRouter();
+  const { run } = useRun();
   const grid = useArtifact<ScoreGridDoc>("score_grid", loadScoreGrid);
   const topn = useArtifact<TopNCsvRow[]>("topN", loadTopN);
   const report = useArtifact<ReportDoc>("report", loadReport);
@@ -58,6 +63,29 @@ export default function Screen4Page() {
   function select(rank: number | null) {
     setSelected(rank);
     setTab(rank === null ? "list" : "detail");
+  }
+
+  /**
+   * 화면 5 로 넘긴다. **고른 위치를 같이 들고 간다.**
+   *
+   * 🔴 `rank == 1` 을 화면 5 가 알아서 쓰던 것을 여기서 끊는다 — 추천은 추천이고,
+   *    어디로 공청회를 열지는 사람이 정한다(2026-08-10 사람 결정).
+   *    이으는 키는 `PNU` 다. `순위` 는 실행마다 뜻이 달라 다른 필지를 가리킬 수 있다.
+   *
+   * 🔴 가는 곳은 `/hearing` 이 **아니라** `/hearing/select` 다(2026-08-11).
+   *    화면 5 는 토론 방식이 둘이고(A 대립 `/hearing` · B 다인 `/dynamic-hearing`)
+   *    엔진도 둘로 갈려 있다. 예전엔 여기서 A 를 **박아** 둬서 B 는 URL 을 직접
+   *    쳐야 닿았다. 방식은 이 화면이 정하는 게 아니다 — 여기서 정하는 건 **어디를**
+   *    이고, **어떻게**는 다음 화면에서 사람이 고른다.
+   */
+  function goHearing(row: TopNCsvRow) {
+    writeSitePick({
+      run_id: run?.run_id ?? null,
+      rank: row.순위,
+      pnu: row.PNU,
+      jibun: row.JIBUN,
+    });
+    router.push("/hearing/select");
   }
 
   return (
@@ -169,27 +197,47 @@ export default function Screen4Page() {
                   <Legend grid={g} />
                 </section>
 
+                {/* 🔴 다음 단계로 가려면 **후보지를 하나 골라야 한다.** 화면 5 는
+                    고른 그 점으로 공청회를 연다 — 안 고르고 넘어가면 화면 5 가
+                    스스로 1순위를 집게 되고, 그건 추천을 결정으로 바꿔 읽는 것이다. */}
                 <div className="shrink-0 mt-4 mb-2">
-                  <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-gray-200 bg-gray-50/80 p-5 rounded-2xl shadow-sm">
+                  <div
+                    className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 p-5 shadow-sm ${
+                      sel ? "border-blue-200 bg-blue-50/60" : "border-gray-200 bg-gray-50/80"
+                    }`}
+                  >
                     <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gray-200 text-gray-500">
+                      <div
+                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
+                          sel ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-500"
+                        }`}
+                      >
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
                       </div>
                       <div className="flex flex-col">
                         <span className="text-[14px] font-bold text-gray-800">
-                          최적 위치 선정이 완료되었습니다
+                          {sel
+                            ? `${sel.순위}순위 · ${sel.JIBUN} 로 공청회를 엽니다`
+                            : "공청회를 열 위치를 선택하세요"}
                         </span>
                         <span className="text-[13px] text-gray-500">
-                          다음 단계인 공청회 시뮬레이션(갈등 예측) 기능은 현재 준비 중입니다.
+                          {sel
+                            ? "이 필지로 페르소나 토론을 시작합니다. 다른 곳을 원하면 지도나 목록에서 다시 고르세요."
+                            : "지도의 번호 마커나 오른쪽 후보 목록에서 한 곳을 누르면 다음 단계로 넘어갈 수 있습니다."}
                         </span>
                       </div>
                     </div>
                     <button
                       type="button"
-                      disabled
-                      className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-gray-300 px-8 py-3.5 text-sm font-bold text-gray-500 cursor-not-allowed shadow-sm transition-all"
+                      disabled={!sel}
+                      onClick={() => sel && goHearing(sel)}
+                      className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold shadow-sm transition-all ${
+                        sel
+                          ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
+                          : "cursor-not-allowed bg-gray-300 text-gray-500"
+                      }`}
                     >
-                      갈등 예측 실행 (준비 중)
+                      {sel ? "이 위치로 갈등 예측 실행" : "후보지를 먼저 선택하세요"}
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
                     </button>
                   </div>

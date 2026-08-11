@@ -1,26 +1,4 @@
-"use client";
 
-/**
- * 화면 3 · 가중치
- * ===============
- * 읽는 것: `weight_set.json`. 이름 붙이기에만 `reviewed` · `clean_report` 를 곁들인다
- * (없어도 화면은 뜬다 — id 로 표시된다).
- *
- * 🔴 **이 화면에는 층이 둘 있다. 겹치면 무엇을 만졌는지 아무도 설명 못 한다.**
- *
- *    1. **게이트B 답변 폼**(위) — `awaiting_hitl` + `gate.id === "weight"` 일 때만.
- *       묻는 것은 `slider_proposed`(`-1~+1`) · `radius_proposed`, 즉 **계산 전 입력**
- *       이고 제안 패스(`--propose-only`)가 만든 사전값이다.
- *    2. **산출물 `weight_set.json`**(아래) — **계산이 끝난 최종 가중치**다. 여기에는
- *       슬라이더를 달지 않고 **막대(bar)로** 그린다. 최종값에 슬라이더를 달면 사람은
- *       이 숫자를 조정했다고 믿는데 서버가 받는 것은 다른 층의 값이다.
- *
- *    폼이 열려 있는 동안 아래 표는 **직전 실행의 값**이거나 아예 없다. 그게 정상이다.
- *
- * 🔴 명세의 지표명("유동인구 · 건물 밀도")은 **산출물에 없다.** 지어내지 않고
- *    `labels.ts` 규칙으로 데이터에서 끌어온다. 끌어온 근거도 같이 보여준다.
- *
- * 🔴 `w_human` 은 **크기만**이다(항상 ≥ 0). 방향은 `direction`(benefit/cost).
 "use client";
 
 /**
@@ -208,6 +186,8 @@ export default function Screen3Page() {
   
               return (
                 <>
+                  <HitlState hitl={w.hitl} />
+
                   <section className="mt-6">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h2 className="text-[14px] font-semibold">지표별 가중치</h2>
