@@ -22,11 +22,13 @@
  *   clean_report.json 정제 결과   — 데이터셋별 원본→정제 행수, 이상치
  *   report.json       본문 대부분 — weight_set · counts · spatial · coverage · data_gap
  *   topN.csv          위치 선정   — 좌표는 여기에만 있다
- *   sessionStorage    토론 결과   — 화면 5 A(`sim_*`) · B(`omnisite.hearingB.v1`)
+ *   /simulations/hearings  토론 결과 — 이 실행에서 열린 공청회(서버 DB)
+ *   sessionStorage    토론 결과   — 위에 못 물었을 때만. A(`sim_*`) · B(`omnisite.hearingB.v1`)
  *
- * 🔴 토론 결과만 파일 산출물이 아니다. 화면 5 가 SSE 로 받아 들고 있던 것이라
- *    `hearingResult.ts` 를 거쳐 읽는다. **없으면 없다고 적는다** — 표본 시나리오를
- *    채워 넣지 않는다.
+ * 🔴 토론 결과만 파일 산출물이 아니다. 2026-08-11 부터 **서버 DB 에 남으므로 거기가
+ *    본선**이고(`hearings.ts`), 탭 기록은 서버에 못 물었을 때(적재 칸 없는
+ *    fixture·hitl 실행 · 404 · 네트워크 실패) 쓰는 폴백이다. 어느 쪽에서 읽었는지는
+ *    8절이 문서에 적는다. **없으면 없다고 적는다** — 표본 시나리오를 채워 넣지 않는다.
  *
  * 🔴 `data_gap` 은 부록이 아니라 핵심이다. 적용 안 한 것을 "안 했다"고 적는 것이
  *    산출물 계약이다(원칙 4). 그래서 개요에도 건수를 띄운다.
@@ -58,6 +60,12 @@ import {
   type HearingResultA,
   type HearingResultB,
 } from "@/lib/omnisite/hearingResult";
+import {
+  useRunHearingDetails,
+  type RunHearingDetails,
+  type ServerHearingA,
+  type ServerHearingB,
+} from "@/lib/omnisite/hearings";
 import type {
   CleanReportDoc,
   DataGap,
@@ -85,7 +93,8 @@ const SOURCE_FILES = [
   "clean_report.json",
   "report.json",
   "topN.csv",
-  "sessionStorage(화면 5 토론 기록)",
+  "GET /simulations/hearings (서버에 남은 공청회)",
+  "sessionStorage(화면 5 토론 기록 — 서버에 못 물었을 때만)",
 ];
 
 /**
@@ -159,6 +168,13 @@ export default function Screen6Page() {
     setSide({ pick: readSitePick(), a: readHearingA(), b: readHearingB() });
   }, []);
 
+  /**
+   * 🔴 **토론 결과의 본선은 서버다**(2026-08-11 경로가 열렸다). 위 `side` 는 이제
+   *    서버에 **못 물었을 때**(적재 칸 없는 fixture·hitl 실행 · 404 · 네트워크 실패)
+   *    쓰는 폴백이고, 그 사실을 8절이 문서에 적는다.
+   */
+  const served = useRunHearingDetails();
+
   return (
     <PageBody>
       <div className="doc-hide">
@@ -208,7 +224,12 @@ export default function Screen6Page() {
               <WeightSection rep={rep} />
               <SiteSection rows={rows} pick={side?.pick ?? null} read={side !== null} />
               <CoverageSection rep={rep} />
-              <HearingSection a={side?.a ?? null} b={side?.b ?? null} read={side !== null} />
+              <HearingSection
+                served={served}
+                a={side?.a ?? null}
+                b={side?.b ?? null}
+                read={side !== null}
+              />
               <GapSection gaps={rep.data_gap} />
 
               <p className="mt-10 border-t border-hairline pt-4 text-[11px] leading-relaxed text-ink-secondary">
@@ -804,41 +825,251 @@ function CoverageSection({ rep }: { rep: ReportDoc }) {
  * 🔴 **화면 5 는 엔진이 둘이고, 여기서 합치지 않는다.** A(대립)와 B(다인)는 참여자도
  *    지표도 다르다. 한 절에 섞으면 어느 엔진이 낸 결론인지 알 수 없다.
  *
- * 🔴 **A 에는 범위가 없다.** 동현님 화면이 남기는 `sim_*` 키에는 주제·PNU 가 없고
- *    `sim_parcel`(parcel_id)만 있다. 그 값을 그대로 적고, 「지금 대상지의 토론이다」로
- *    단정하지 않는다 — 단정하면 다른 필지의 토론이 이 기획안의 근거가 된다.
+ * 🔴 **출처가 둘이고, 이것도 합치지 않는다.** 서버 기록(본선)과 이 탭 기록(폴백)은
+ *    **알 수 있는 것이 다르다** — 서버는 어느 run·어느 순위인지 조인으로 알지만
+ *    (A 는 `css_pro/con`·수용도를 저장하지 않는다), 탭 기록은 그 반대다. 한쪽 모양으로
+ *    접으면 없는 값을 지어내거나 있는 값을 버린다(원칙 4·5). 그래서 카드를 따로 두고
+ *    배지로 출처를 적는다.
+ *
+ * 🔴 **탭 기록의 A 에는 범위가 없다.** 동현님 화면이 남기는 `sim_*` 키에는 주제·PNU 가
+ *    없고 `sim_parcel`(parcel_id)만 있다. 그 값을 그대로 적고, 「지금 대상지의
+ *    토론이다」로 단정하지 않는다 — 단정하면 다른 필지의 토론이 이 기획안의 근거가 된다.
+ *    (서버 A 는 `jibun`·`rank` 가 같이 오므로 이 문제가 없다.)
  */
 function HearingSection({
+  served,
   a,
   b,
   read,
 }: {
+  served: RunHearingDetails;
   a: HearingResultA | null;
   b: HearingResultB | null;
   read: boolean;
 }) {
+  /**
+   * 🔴 **같은 토론을 두 번 싣지 않는다.** 서버에서 받은 것과 이 탭 기록이 같은 토론이면
+   *    로컬 쪽을 뺀다. 대조 키는 엔진마다 다르다 — B 는 저장 응답으로 받은
+   *    `serverId`(= `hearing_id`) 로 **정확히** 갈리고, A 는 그런 값이 없어
+   *    `parcel_id` 로만 본다(서버 A 는 그 필지의 최신 1건이므로 같은 필지면 같은
+   *    토론이다). 두 번 실리면 읽는 사람은 공청회를 두 번 연 것으로 읽는다.
+   */
+  const localAIsDup = a !== null && served.a !== null && a.parcelId === served.a.item.parcel_id;
+  const localBIsDup = b !== null && served.b !== null && b.serverId === served.b.item.hearing_id;
+  const localA = localAIsDup ? null : a;
+  const localB = localBIsDup ? null : b;
+
+  const nothing =
+    !served.loading && served.a === null && served.b === null && read && !localA && !localB;
+
+  /** 서버가 센 건수 중 여기 싣지 못한 나머지. 「1건만 실었다」를 문서에 적기 위한 값이다. */
+  const shown = (served.a ? 1 : 0) + (served.b ? 1 : 0);
+  const rest = served.total === null ? 0 : Math.max(0, served.total - shown);
+
   return (
     <section className="doc-section">
       <H id="s8">8. 공청회 토론 결과</H>
 
-      {!read ? (
+      {served.loading || !read ? (
         <p className="mt-3 text-[13px] text-ink-secondary">토론 기록을 확인하는 중입니다…</p>
-      ) : !a && !b ? (
+      ) : nothing ? (
         <div className="mt-3 rounded-xl border border-hairline bg-black/[0.015] px-4 py-3 text-[12px] leading-relaxed text-ink-secondary">
-          <b className="text-ink">이 세션에 토론 기록이 없습니다.</b> 화면 5 에서 공청회를
+          <b className="text-ink">이 실행에 토론 기록이 없습니다.</b> 화면 5 에서 공청회를
           돌리면 그 발언과 지표가 여기에 실립니다. 표본 시나리오를 대신 넣지 않습니다.
-          <br />
-          기록은 브라우저 세션에만 남습니다 — 탭을 닫으면 사라집니다(백엔드에 토론 결과를
-          조회하는 경로가 아직 없습니다).
+          {served.failure && (
+            <>
+              <br />
+              서버에는 물어보지 못했습니다 — <span className="tnum">{served.failure}</span>
+            </>
+          )}
         </div>
       ) : (
         <div className="mt-3 flex flex-col gap-5">
-          {a && <HearingA a={a} />}
-          {b && <HearingB b={b} />}
+          {served.a && <ServerHearingACard s={served.a} />}
+          {served.b && <ServerHearingBCard s={served.b} />}
+          {localA && <HearingA a={localA} />}
+          {localB && <HearingB b={localB} />}
         </div>
       )}
+
+      {/*
+        🔴 **출처와 못 실은 것을 문서에 적는다.** 「서버에서 읽었다」와 「이 탭에만 있다」는
+           같은 값이 아니고, 뒤엣것은 탭을 닫으면 사라진다. 안 적으면 읽는 사람이
+           이 기획안을 다시 열면 나오는 문서로 읽는다(원칙 4).
+      */}
+      <div className="mt-3 space-y-1 text-[11px] leading-relaxed text-ink-secondary">
+        {served.failure ? (
+          <p>
+            출처: <b>이 브라우저 탭의 기록</b> — 서버에 물어보지 못했습니다(
+            {served.failure}). 탭을 닫으면 이 절은 비어집니다.
+          </p>
+        ) : (
+          <p>
+            출처: <b>서버에 저장된 공청회</b>
+            {served.total !== null && <> (이 실행에 {int(served.total)}건)</>}
+            {rest > 0 && <> — 엔진별 최신 1건만 실었고 나머지 {int(rest)}건은 뺐습니다.</>}
+            {(localA || localB) && <> 서버에 없는 기록은 이 탭에서 읽어 함께 실었습니다.</>}
+          </p>
+        )}
+        {served.detailFailure.A && <p>A 본문을 읽지 못했습니다 — {served.detailFailure.A}</p>}
+        {served.detailFailure.B && <p>B 본문을 읽지 못했습니다 — {served.detailFailure.B}</p>}
+      </div>
     </section>
   );
+}
+
+/** 서버 A 1건(`GET /simulations/results/{parcel_id}`). 필지의 **최신 1건**이다. */
+function ServerHearingACard({ s }: { s: ServerHearingA }) {
+  const lines: HearingLine[] = s.detail.debate_logs.map((l) => ({
+    speaker: typeof l.sender === "string" && l.sender ? l.sender : "발언자 미상",
+    text: typeof l.text === "string" ? l.text : "",
+  }));
+  const factors = s.detail.conflict_factors;
+  return (
+    <div className="rounded-xl border border-hairline p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded border border-hairline bg-black/[0.04] px-2 py-0.5 text-[11px] font-semibold">
+          A · 대립 토론
+        </span>
+        <span className="rounded border border-primary/40 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
+          서버 기록
+        </span>
+        <span className="text-[12px] text-ink-secondary">
+          발언 {int(lines.length)}건 · {datetime(s.item.created_at)}
+        </span>
+      </div>
+
+      <dl className="mt-3 grid gap-x-8 gap-y-2 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
+        <Item k="대상 지번" v={s.item.jibun || "—"} />
+        <Item k="후보 순위" v={s.item.rank === null ? "—" : `${int(s.item.rank)}순위`} />
+        <Item k="parcel_id" v={String(s.item.parcel_id)} mono />
+        <Item
+          k="갈등 민감도(CSS)"
+          v={s.detail.conflict_sensitivity_score === null ? "—" : fixed(s.detail.conflict_sensitivity_score, 2)}
+        />
+      </dl>
+
+      {factors && Object.keys(factors).length > 0 && (
+        <div className="mt-3">
+          <h4 className="text-[12px] font-semibold">갈등 요인별 값</h4>
+          <dl className="mt-1.5 grid gap-x-8 gap-y-1 text-[12px] sm:grid-cols-2 lg:grid-cols-4">
+            {Object.entries(factors).map(([k, v]) => (
+              <Item key={k} k={k} v={fixed(v, 4)} />
+            ))}
+          </dl>
+        </div>
+      )}
+
+      {s.detail.scenario && (
+        <div className="mt-3">
+          <h4 className="text-[12px] font-semibold">조정 시나리오(엔진 원문)</h4>
+          {/* 🔴 키를 골라 표로 만들지 않는다 — 리포터 노드가 필드를 늘리면 옛 값만 보인다. */}
+          <pre className="mt-1.5 overflow-x-auto whitespace-pre-wrap rounded-lg border border-hairline bg-black/[0.02] p-3 font-mono text-[11px] leading-relaxed text-ink-secondary">
+            {JSON.stringify(s.detail.scenario, null, 2)}
+          </pre>
+        </div>
+      )}
+
+      <Transcript
+        lines={lines}
+        onDownload={() =>
+          downloadHearingJson(
+            { item: s.item, detail: s.detail },
+            `토론기록_A_parcel-${s.item.parcel_id}_${fileStamp(s.item.created_at ?? "")}.json`,
+          )
+        }
+      />
+    </div>
+  );
+}
+
+/**
+ * 서버 B 1건(`GET /simulations/hearings/b/{id}`).
+ *
+ * 🔴 `result_json` 은 서버가 **통짜로** 내보내는 값이라 모양을 우리가 정하지 않는다.
+ *    발언만 꺼내 보되 **못 꺼내면 못 꺼냈다고 적고 원문을 싣는다** — 조용히 비면
+ *    「토론을 안 했다」로 읽힌다(원칙 1·4).
+ */
+function ServerHearingBCard({ s }: { s: ServerHearingB }) {
+  const lines = linesFromResultJson(s.detail.result_json);
+  return (
+    <div className="rounded-xl border border-hairline p-5">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="rounded border border-hairline bg-black/[0.04] px-2 py-0.5 text-[11px] font-semibold">
+          B · 다인 토론
+        </span>
+        <span className="rounded border border-primary/40 bg-primary/5 px-2 py-0.5 text-[11px] font-medium text-primary">
+          서버 기록
+        </span>
+        <span className="text-[12px] text-ink-secondary">
+          발언 {int(s.detail.message_count)}건 · 참여 {int(s.item.persona_count)}명 ·{" "}
+          {datetime(s.item.created_at)}
+        </span>
+      </div>
+
+      <dl className="mt-3 grid gap-x-8 gap-y-2 text-[13px] sm:grid-cols-2">
+        <Item k="안건" v={s.detail.topic || "—"} />
+        <Item k="목적" v={s.detail.purpose || "—"} />
+        <Item k="대상 지번" v={s.item.jibun || "—"} />
+        <Item k="후보 순위" v={s.item.rank === null ? "—" : `${int(s.item.rank)}순위`} />
+        <Item k="hearing_id" v={String(s.detail.hearing_id)} mono />
+        <Item k="적재 run_id" v={s.detail.run_id ?? "—"} mono />
+      </dl>
+
+      {lines === null ? (
+        <p className="mt-3 text-[12px] leading-relaxed text-amber-700">
+          서버 기록에서 발언 목록을 읽지 못했습니다(`result_json.messages` 모양이 다릅니다).
+          아래에 서버가 준 원문을 그대로 싣습니다 — 임의로 해석하지 않았습니다.
+        </p>
+      ) : (
+        <Transcript
+          lines={lines}
+          onDownload={() =>
+            downloadHearingJson(
+              { item: s.item, detail: s.detail },
+              `토론기록_B_${s.detail.hearing_id}_${fileStamp(s.item.created_at ?? "")}.json`,
+            )
+          }
+        />
+      )}
+
+      <details className="mt-3">
+        <summary className="cursor-pointer text-[12px] font-semibold">서버 원문(result_json)</summary>
+        <pre className="mt-1.5 max-h-[420px] overflow-auto whitespace-pre-wrap rounded-lg border border-hairline bg-black/[0.02] p-3 font-mono text-[11px] leading-relaxed text-ink-secondary">
+          {JSON.stringify(s.detail.result_json, null, 2)}
+        </pre>
+      </details>
+    </div>
+  );
+}
+
+/**
+ * B 서버 원문에서 발언만 꺼낸다. **모양이 안 맞으면 `null`** — 빈 배열로 돌려주면
+ * 「발언이 없는 토론」이 되어 원문이 있다는 사실까지 지워진다.
+ */
+function linesFromResultJson(result: unknown): HearingLine[] | null {
+  if (typeof result !== "object" || result === null) return null;
+  const msgs = (result as { messages?: unknown }).messages;
+  if (!Array.isArray(msgs) || msgs.length === 0) return null;
+  const out: HearingLine[] = [];
+  for (const m of msgs) {
+    if (typeof m !== "object" || m === null) return null;
+    const row = m as { speaker?: unknown; text?: unknown };
+    if (typeof row.text !== "string") return null;
+    const sp = row.speaker;
+    const speaker =
+      typeof sp === "string"
+        ? sp
+        : typeof sp === "object" && sp !== null && typeof (sp as { name?: unknown }).name === "string"
+          ? ((sp as { name: string }).name)
+          : "발언자 미상";
+    const kind =
+      typeof sp === "object" && sp !== null && typeof (sp as { kind?: unknown }).kind === "string"
+        ? (sp as { kind: string }).kind
+        : undefined;
+    out.push({ speaker, text: row.text, kind });
+  }
+  return out;
 }
 
 function HearingA({ a }: { a: HearingResultA }) {
@@ -849,6 +1080,9 @@ function HearingA({ a }: { a: HearingResultA }) {
         <span className="rounded border border-hairline bg-black/[0.04] px-2 py-0.5 text-[11px] font-semibold">
           A · 대립 토론
         </span>
+        <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+          이 탭에만 있음
+        </span>
         <span className="text-[12px] text-ink-secondary">
           발언 {int(a.lines.length)}건 · {a.finished ? "종료됨" : "종료 표시 없음"}
         </span>
@@ -858,9 +1092,14 @@ function HearingA({ a }: { a: HearingResultA }) {
         <Item k="토론한 후보 parcel_id" v={a.parcelId === null ? "—" : String(a.parcelId)} mono />
         <Item k="찬성측 갈등 등급" v={m?.cssPro ?? "—"} />
         <Item k="반대측 갈등 등급" v={m?.cssCon ?? "—"} />
+        {/*
+          🔴 `percent()` 를 쓰지 않는다. 저장값이 **이미 퍼센트**(0~100)라 100 을 또
+             곱하면 `45` 가 **4500%** 로 나간다(2026-08-11 실측). 타입 주석이
+             「0~1」이라고 말하고 있어서 안 걸렸다 — 쓰는 쪽을 읽고 고쳤다.
+        */}
         <Item
           k="수용도(찬성 · 반대)"
-          v={`${percent(m?.proAccept ?? null, 0)} · ${percent(m?.conAccept ?? null, 0)}`}
+          v={`${pct100(m?.proAccept ?? null)} · ${pct100(m?.conAccept ?? null)}`}
         />
       </dl>
 
@@ -906,6 +1145,13 @@ function HearingB({ b }: { b: HearingResultB }) {
         <span className="rounded border border-hairline bg-black/[0.04] px-2 py-0.5 text-[11px] font-semibold">
           B · 다인 토론
         </span>
+        {/*
+          🔴 저장 실패와 「서버가 아무 말도 안 함」을 갈라 적는다. 둘 다 이 탭에만
+             있지만 앞은 **서버가 거절했다**는 사실이 따로 남아야 한다(원칙 4).
+        */}
+        <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
+          {b.saveError ? "서버 저장 실패" : "이 탭에만 있음"}
+        </span>
         <span className="text-[12px] text-ink-secondary">
           발언 {int(b.lines.length)}건 · 참여 {int(b.participants.length)}명 ·{" "}
           {datetime(b.savedAt)}
@@ -919,6 +1165,16 @@ function HearingB({ b }: { b: HearingResultB }) {
         <Item k="대상 PNU" v={b.scope.pnu || "—"} mono />
         <Item k="라운드" v={rounds === null ? "—" : `${int(rounds)}회`} />
         <Item k="적재 run_id" v={b.scope.runId ?? "—"} mono />
+        <Item
+          k="서버 저장"
+          v={
+            b.serverId !== null
+              ? `저장됨 (hearing_id ${b.serverId})`
+              : b.saveError
+                ? `실패 — ${b.saveError}`
+                : "서버가 저장 여부를 알리지 않았습니다"
+          }
+        />
       </dl>
 
       {b.participants.length > 0 && (
@@ -968,9 +1224,11 @@ function HearingB({ b }: { b: HearingResultB }) {
 /**
  * 토론 기록 **원본**을 파일로 내린다.
  *
- * 🔴 화면 5 가 저장한 값을 **그대로** 넘긴다 — 여기서 키를 골라 담으면 내려받은 파일이
- *    「원본」인 척하면서 다른 값이 된다. 백엔드에 토론 결과를 조회하는 경로가 아직 없어서
- *    (`HearingSection` 안내 참고) 이 파일이 탭을 닫은 뒤 남는 **유일한 사본**이다.
+ * 🔴 받은 값을 **그대로** 넘긴다 — 여기서 키를 골라 담으면 내려받은 파일이 「원본」인
+ *    척하면서 다른 값이 된다. 서버 기록이면 목록 행(`item`)과 본문(`detail`)을 **둘 다**
+ *    담는다: 본문에는 이 토론이 어느 run·어느 순위였는지가 없고, 그건 조인으로만
+ *    붙는 값이라 여기서 빼면 다시 알아낼 수 없다.
+ *    탭 기록(폴백)이면 이 파일이 탭을 닫은 뒤 남는 **유일한 사본**이다.
  */
 function downloadHearingJson(record: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(record, null, 2)], {
@@ -982,6 +1240,11 @@ function downloadHearingJson(record: unknown, filename: string) {
   el.download = filename;
   el.click();
   URL.revokeObjectURL(url);
+}
+
+/** 이미 퍼센트인 값(0~100)을 표시용으로. 없으면 `—` — `0%` 로 지어내지 않는다. */
+function pct100(v: number | null): string {
+  return typeof v === "number" && Number.isFinite(v) ? `${Math.round(v)}%` : "—";
 }
 
 /** ISO 시각을 파일명에 쓸 수 있는 모양으로. 값은 안 바꾼다(구분자만 바꾼다). */
