@@ -29,7 +29,7 @@
  *      `false` 로 읽게 되므로 **반드시 `engine` 으로 먼저 가른다.**
  */
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, NetworkError, getJson } from "./client";
+import { ApiError, NetworkError, apiErrorCode, getJson } from "./client";
 import { useRun } from "./RunProvider";
 
 /** 🔴 복수형이 정본이다 — 이유는 `simulation.ts` 머리말. */
@@ -141,6 +141,31 @@ export function fetchHearingByUrl<T>(resultUrl: string): Promise<T> {
   return getJson<T>(resultUrl);
 }
 
+/**
+ * 실패 사유 한 줄. **서버 문구를 그대로 쓴다.**
+ *
+ * 🔴 `code` 를 **분기 조건이 아니라 표시**로만 쓴다(2026-08-11 백엔드 합의).
+ *    `/hearings` 404 는 다섯 갈래다 — `UNKNOWN_RUN`(폴더가 없다) ·
+ *    `STATUS_UNREADABLE`(폴더는 있는데 `status.json` 을 못 읽는다) ·
+ *    `LOADED_BUT_MISSING`(적재 기록은 있는데 지금 DB 에 없다) ·
+ *    `NEVER_LOADED`(기록도 행도 없다) · `DOMAIN_MISMATCH`(run 엔 있는데 그 도메인만 없다).
+ *    다섯을 화면에서 다시 문장으로 옮기지 않는 이유는 두 가지다 —
+ *    ⓐ 코드 집합이 늘어난다(회신 한 번에 넷 → 다섯이 됐다). 모르는 코드에
+ *       분기가 없으면 화면이 **빈 말**을 하게 된다.
+ *    ⓑ 서버가 `message` 를 **어느 갈래에서도 채우기로** 했고, 거기엔 우리가 못 쓰는
+ *       것까지 들어 있다(`JSONDecodeError` 원문, 기록된 행 수, 실제 행 수).
+ *    그래서 문구는 서버 것을 쓰고, 코드는 「어느 갈래였는지」를 괄호로 덧붙인다.
+ *    ⚠ 모르는 코드가 와도 이 함수는 그대로 동작한다 — 그게 요점이다.
+ */
+function describeFailure(e: unknown): string {
+  if (e instanceof ApiError) {
+    const code = apiErrorCode(e);
+    return `HTTP ${e.status}${code ? ` [${code}]` : ""} — ${e.detail}`;
+  }
+  if (e instanceof NetworkError) return e.message;
+  return String(e);
+}
+
 // ── 화면 5 완료 판정 ───────────────────────────────────────────
 
 /** 판정이 **어디서 왔는지**. 화면에 근거를 적으려면 결과만으로는 부족하다. */
@@ -210,13 +235,12 @@ export function useHearingDone(
       const list = await fetchHearings(loadedRunId);
       setState({ done: list.count > 0, source: "server", count: list.count, reason: null });
     } catch (e) {
-      const reason =
-        e instanceof ApiError
-          ? `HTTP ${e.status} — ${e.detail}`
-          : e instanceof NetworkError
-            ? e.message
-            : String(e);
-      setState({ done: localFallback(loadedRunId), source: "local", count: null, reason });
+      setState({
+        done: localFallback(loadedRunId),
+        source: "local",
+        count: null,
+        reason: describeFailure(e),
+      });
     }
     // refreshKey 는 값을 안 쓰고 **다시 묻는 계기**로만 쓴다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -277,13 +301,12 @@ export function useRunHearings(): RunHearings {
       })
       .catch((e: unknown) => {
         if (!alive) return;
-        const failure =
-          e instanceof ApiError
-            ? `HTTP ${e.status} — ${e.detail}`
-            : e instanceof NetworkError
-              ? e.message
-              : String(e);
-        setState({ loading: false, items: null, failure, askedRunId: loadedRunId });
+        setState({
+          loading: false,
+          items: null,
+          failure: describeFailure(e),
+          askedRunId: loadedRunId,
+        });
       });
     return () => {
       alive = false;
@@ -358,13 +381,6 @@ export function useRunHearingDetails(): RunHearingDetails {
     const itemA = asA.length === 0 ? null : latestOf<HearingItemA>(asA, "A");
     const itemB = latestOf<HearingItemB>(items, "B");
 
-    const why = (e: unknown) =>
-      e instanceof ApiError
-        ? `HTTP ${e.status} — ${e.detail}`
-        : e instanceof NetworkError
-          ? e.message
-          : String(e);
-
     void (async () => {
       let a: ServerHearingA | null = null;
       let b: ServerHearingB | null = null;
@@ -374,14 +390,14 @@ export function useRunHearingDetails(): RunHearingDetails {
         try {
           a = { item: itemA, detail: await fetchHearingByUrl<HearingDetailA>(itemA.result_url) };
         } catch (e) {
-          fail.A = why(e);
+          fail.A = describeFailure(e);
         }
       }
       if (itemB) {
         try {
           b = { item: itemB, detail: await fetchHearingByUrl<HearingDetailB>(itemB.result_url) };
         } catch (e) {
-          fail.B = why(e);
+          fail.B = describeFailure(e);
         }
       }
       if (!alive) return;
