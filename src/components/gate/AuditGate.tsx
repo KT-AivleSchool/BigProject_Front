@@ -15,11 +15,13 @@
  * 🔴 `editable: false` 인 항목도 **전부 보여준다.** 보내지는 않는다(보내면 400).
  *    흡연 픽스처는 4건 전부 여기 해당해서, 이 폼은 「확인하고 그대로 진행」이 된다.
  */
-import { useState } from "react";
-import { Fact, GateFrame, QuestionCard } from "./GateFrame";
+import React, { useState, useMemo, useEffect, MutableRefObject } from "react";
+import { Fact, GateFrame, QuestionCard, WarningBadge } from "./GateFrame";
 import { isAuditQuestion } from "@/lib/omnisite/gate";
 import { meters } from "@/lib/omnisite/format";
 import { useRun } from "@/lib/omnisite/RunProvider";
+import { PageFooter } from "@/components/ui/Page";
+import { SCREENS } from "@/lib/omnisite/screens";
 import type {
   AuditAnswer,
   AuditAnswerCodePrefix,
@@ -54,7 +56,19 @@ interface PrefixState {
 const exKey = (q: GateExclusionQuestion) => `${q.dataset_id}#${q.role_index}`;
 const pfKey = (q: GateCodePrefixQuestion) => `${q.dataset_id}#${q.op_index}`;
 
-export function AuditGate({ gate, runId }: { gate: RunGate; runId: string }) {
+export function AuditGate({ 
+  gate, 
+  runId,
+  submitRef,
+  onReadyChange,
+  onProgressChange
+}: { 
+  gate: RunGate; 
+  runId: string;
+  submitRef: React.MutableRefObject<(() => Promise<boolean | void>) | null>;
+  onReadyChange: (ready: boolean) => void;
+  onProgressChange?: (confirmed: number, total: number) => void;
+}) {
   const { answerAudit } = useRun();
 
   const exclusions = gate.questions.filter(
@@ -67,19 +81,62 @@ export function AuditGate({ gate, runId }: { gate: RunGate; runId: string }) {
     (q): q is GateCodePrefixQuestion => q.kind === "code_prefix",
   );
 
-  const [ex, setEx] = useState<Record<string, ExclusionState>>({});
-  const [it, setIt] = useState<Record<string, IntentState>>({});
-  const [pf, setPf] = useState<Record<string, PrefixState>>({});
+  const [ex, setEx] = useState<Record<string, ExclusionState>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const item = window.localStorage.getItem(`omnisite_gate_ex_${runId}`);
+        if (item) return JSON.parse(item);
+      } catch {}
+    }
+    return {};
+  });
+  const [it, setIt] = useState<Record<string, IntentState>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const item = window.localStorage.getItem(`omnisite_gate_it_${runId}`);
+        if (item) return JSON.parse(item);
+      } catch {}
+    }
+    return {};
+  });
+  const [pf, setPf] = useState<Record<string, PrefixState>>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const item = window.localStorage.getItem(`omnisite_gate_pf_${runId}`);
+        if (item) return JSON.parse(item);
+      } catch {}
+    }
+    return {};
+  });
+  const [confirmed, setConfirmed] = useState<Record<string, boolean>>(() => {
+    let initial: Record<string, boolean> = {};
+    if (typeof window !== "undefined") {
+      try {
+        const item = window.localStorage.getItem(`omnisite_gate_confirmed_${runId}`);
+        if (item) initial = JSON.parse(item);
+      } catch {}
+    }
+    for (const q of gate.questions) {
+      if ("editable" in q && !q.editable && initial[q.dataset_id] === undefined) {
+        initial[q.dataset_id] = true;
+      }
+    }
+    return initial;
+  });
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const SCREEN = SCREENS.find((s) => s.no === "2")!;
+  const auditQuestions = gate.questions.filter(isAuditQuestion);
+  const isAllConfirmed =
+    auditQuestions.length > 0 &&
+    auditQuestions.every((q) => confirmed[q.dataset_id]);
 
   /**
    * 🔴 `"editable" in q` 로 좁히지 않는다. 그건 **모양을 보고 종류를 정하는 것**이라
    *    나중에 다른 kind 에 같은 이름의 필드가 생기면 조용히 섞인다. 종류는
    *    `kind` 로 판정한다(`isAuditQuestion`).
    */
-  const editableCount = gate.questions.filter((q) => isAuditQuestion(q) && q.editable).length;
-
   function build(): AuditAnswer | string {
     const outEx: AuditAnswerExclusion[] = [];
     for (const q of exclusions) {
@@ -87,14 +144,22 @@ export function AuditGate({ gate, runId }: { gate: RunGate; runId: string }) {
       const s = ex[exKey(q)];
       if (!s || s.mode === "skip") continue;
       if (s.mode === "none") {
-        outEx.push({ dataset_id: q.dataset_id, role_index: q.role_index, radius_m: null });
+        outEx.push({
+          dataset_id: q.dataset_id,
+          role_index: q.role_index,
+          radius_m: null,
+        });
         continue;
       }
       const n = Number(s.value);
       if (!s.value.trim() || !Number.isInteger(n)) {
         return `[${q.dataset_id}] 배제반경에 정수를 입력해 주세요 (현재: ${JSON.stringify(s.value)}).`;
       }
-      outEx.push({ dataset_id: q.dataset_id, role_index: q.role_index, radius_m: n });
+      outEx.push({
+        dataset_id: q.dataset_id,
+        role_index: q.role_index,
+        radius_m: n,
+      });
     }
 
     const outIt: AuditAnswerIntent[] = [];
@@ -120,7 +185,8 @@ export function AuditGate({ gate, runId }: { gate: RunGate; runId: string }) {
       if (!q.editable) continue;
       const s = pf[pfKey(q)];
       if (!s || !s.confirm) continue;
-      if (!s.value.trim()) return `[${q.dataset_id}] 지역 코드가 비어 있습니다.`;
+      if (!s.value.trim())
+        return `[${q.dataset_id}] 지역 코드가 비어 있습니다.`;
       outPf.push({
         dataset_id: q.dataset_id,
         op_index: q.op_index,
@@ -135,75 +201,126 @@ export function AuditGate({ gate, runId }: { gate: RunGate; runId: string }) {
     return answer;
   }
 
+  const allIds = [
+    ...exclusions.map((q) => q.dataset_id),
+    ...intents.map((q) => q.dataset_id),
+    ...prefixes.map((q) => q.dataset_id),
+  ];
+  const totalCount = allIds.length;
+  const confirmedCount = allIds.filter((id) => confirmed[id]).length;
+  const isReady = totalCount > 0 && confirmedCount === totalCount;
+
+  useEffect(() => {
+    onReadyChange(isReady);
+    if (onProgressChange) onProgressChange(confirmedCount, totalCount);
+  }, [isReady, confirmedCount, totalCount, onReadyChange, onProgressChange]);
+
   async function onSubmit() {
     const built = build();
     if (typeof built === "string") {
       setError(built);
-      return;
+      return false;
     }
     setSubmitting(true);
     setError(null);
     try {
       await answerAudit(built);
-      // 성공하면 run 이 `running` 으로 바뀌어 이 컴포넌트가 통째로 사라진다.
+      return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setSubmitting(false);
     }
   }
 
+  useEffect(() => {
+    if (submitRef) {
+      submitRef.current = onSubmit;
+    }
+  }, [submitRef, ex, it, pf, confirmed]);
+
   return (
-    <GateFrame
-      gate={gate}
-      runId={runId}
-      submitting={submitting}
-      error={error}
-      onSubmit={() => void onSubmit()}
-      submitLabel="이 답으로 계속 진행"
-      lead={
-        <>
-          현재 AI가 분석을 일시 중지하고 <strong>사용자의 검토 및 승인</strong>을 기다리고 있습니다. <br className="hidden sm:block" />
-          아래의 제안값을 확인하시고, 판단이 필요한 부분을 수정한 뒤 제출하시면 다음 분석 단계가 진행됩니다.<br />
-          <span className="text-blue-600/80 mt-1 block">
-            수정 가능한 항목은 <strong>총 {editableCount}건</strong>입니다. 회색으로 표시된 항목은 법적 근거가 명확하여 AI가 자동 확정한 항목입니다.
-          </span>
-        </>
-      }
-    >
-      {gate.questions.length === 0 && (
-        <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 shadow-sm">
-          검토할 질문이 없습니다. 그대로 제출 버튼을 누르면 다음 단계로 넘어갑니다.
-        </p>
-      )}
+    <>
+      <GateFrame
+        gate={gate}
+        runId={runId}
+        submitting={submitting}
+        error={error}
+        onSubmit={() => void onSubmit()}
+        submitLabel="감리 결과 확정 및 다음 단계로 이동"
+        confirmedCount={[
+          ...exclusions.map((q) => q.dataset_id),
+          ...intents.map((q) => q.dataset_id),
+          ...prefixes.map((q) => q.dataset_id),
+        ].filter(id => confirmed[id]).length}
+        hideTitle={true}
 
-      {exclusions.map((q) => (
-        <ExclusionCard
-          key={exKey(q)}
-          q={q}
-          state={ex[exKey(q)] ?? { mode: "skip", value: "" }}
-          onChange={(s) => setEx((p) => ({ ...p, [exKey(q)]: s }))}
-        />
-      ))}
+      >
+        {gate.questions.length === 0 && (
+          <p className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-600 shadow-sm">
+            검토할 질문이 없습니다. 그대로 제출 버튼을 누르면 다음 단계로
+            넘어갑니다.
+          </p>
+        )}
 
-      {intents.map((q) => (
-        <IntentCard
-          key={q.dataset_id}
-          q={q}
-          state={it[q.dataset_id] ?? { choice: null, weight: "" }}
-          onChange={(s) => setIt((p) => ({ ...p, [q.dataset_id]: s }))}
-        />
-      ))}
+        {exclusions.map((q) => {
+          const defaultState: ExclusionState = !q.editable
+            ? { mode: "value", value: String(q.proposed_m ?? q.radius_m ?? "") }
+            : { mode: "none", value: "" };
+          return (
+            <ExclusionCard
+              key={exKey(q)}
+              q={q}
+              state={ex[exKey(q)] ?? defaultState}
+              onChange={(s) => setEx((p) => ({ ...p, [exKey(q)]: s }))}
+              confirmed={!!confirmed[q.dataset_id]}
+              onConfirm={(val) =>
+                setConfirmed((p) => ({ ...p, [q.dataset_id]: val }))
+              }
+            />
+          );
+        })}
 
-      {prefixes.map((q) => (
-        <PrefixCard
-          key={pfKey(q)}
-          q={q}
-          state={pf[pfKey(q)] ?? { confirm: false, value: q.suggestion ?? q.prefix }}
-          onChange={(s) => setPf((p) => ({ ...p, [pfKey(q)]: s }))}
-        />
-      ))}
-    </GateFrame>
+        {intents.map((q) => {
+          const defaultState: IntentState = !q.editable
+            ? { choice: q.choices[0]?.value ?? null, weight: "0" } // Fallback, real confirmed state should ideally come from backend, but since not provided, we just enable it.
+            : { choice: null, weight: "" };
+          return (
+            <IntentCard
+              key={q.dataset_id}
+              q={q}
+              state={it[q.dataset_id] ?? defaultState}
+              onChange={(s) => setIt((p) => ({ ...p, [q.dataset_id]: s }))}
+              confirmed={!!confirmed[q.dataset_id]}
+              onConfirm={(val) =>
+                setConfirmed((p) => ({ ...p, [q.dataset_id]: val }))
+              }
+            />
+          );
+        })}
+
+        {prefixes.map((q) => (
+          <PrefixCard
+            key={pfKey(q)}
+            q={q}
+            state={
+              pf[pfKey(q)] ?? {
+                confirm: false,
+                value: q.suggestion ?? q.prefix,
+              }
+            }
+            onChange={(s) => setPf((p) => ({ ...p, [pfKey(q)]: s }))}
+            confirmed={!!confirmed[q.dataset_id]}
+            onConfirm={(val) =>
+              setConfirmed((p) => ({ ...p, [q.dataset_id]: val }))
+            }
+          />
+        ))}
+
+      </GateFrame>
+
+    </>
   );
 }
 
@@ -211,90 +328,108 @@ function ExclusionCard({
   q,
   state,
   onChange,
+  confirmed,
+  onConfirm,
 }: {
   q: GateExclusionQuestion;
   state: ExclusionState;
   onChange: (s: ExclusionState) => void;
+  confirmed: boolean;
+  onConfirm: (val: boolean) => void;
 }) {
-  // 근거문장에 시설명이 없다 = 다른 시설 규정을 긁었을 수 있다.
   const suspect = q.evidence_matches_facility === false;
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
     <QuestionCard
       id={q.dataset_id}
-      editable={q.editable}
       warn={suspect}
-      title={`배제 반경 — ${q.facility_type ?? "(시설 미상)"}`}
+      confirmed={confirmed}
+      isEditing={isExpanded}
+      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+      onConfirm={
+        isExpanded
+          ? () => { onConfirm(true); setIsExpanded(false); }
+          : () => onConfirm(!confirmed)
+      }
+      confirmLabel={isExpanded ? "적용" : (confirmed ? "승인됨" : "승인")}
+      title={
+        <div 
+          className={`flex flex-col ${!isExpanded ? "group py-1" : "gap-2"}`}
+        >
+          <div className="flex items-center flex-wrap gap-2">
+            <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+              {q.facility_type ?? "(시설 미상)"}
+            </span>
+            {!isExpanded && confirmed && (
+              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                {state.mode === "skip" ? "건너뜀" : state.mode === "none" ? "반경 없음" : `반경: ${state.value}m`}
+              </span>
+            )}
+
+          </div>
+        </div>
+      }
     >
-      <p className="text-sm text-gray-600">{q.summary}</p>
-      {q.rationale && (
-        <p className="mt-1 text-[13px] leading-relaxed text-gray-500 bg-gray-50 p-2.5 rounded-lg border border-gray-100">{q.rationale}</p>
-      )}
+      {isExpanded && (
+        <div className="mt-2 flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
+            <p className="text-[14px] text-blue-900 font-bold leading-relaxed bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+              "{
+                (() => {
+                  let text = q.evidence || q.summary;
+                  const targetNum = String(q.proposed_m ?? q.radius_m ?? "");
+                  if (state.mode === "value" && state.value && targetNum && text.includes(targetNum)) {
+                    text = text.replace(targetNum, state.value);
+                  }
+                  return text;
+                })()
+              }"
+            </p>
+            {suspect && (
+              <div className="mt-0.5 flex flex-wrap gap-2">
+                <WarningBadge text="시설명 확인 권장" title="이 시설의 이름이 근거 문장에 명시되어 있지 않아 확인이 필요합니다." />
+              </div>
+            )}
+          </div>
 
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Fact k="현재 확정값" v={meters(q.radius_m)} sub={q.radius_source ?? undefined} />
-        <Fact k="AI 제안값" v={meters(q.proposed_m)} sub={q.proposal_source ?? undefined} />
-        <Fact k="배제 형태" v={q.exclusion_type ?? "—"} />
-      </div>
-
-      {q.evidence && (
-        <blockquote className="mt-4 border-l-4 border-blue-200 bg-blue-50/50 p-3 text-[13px] italic text-blue-800 rounded-r-lg">
-          "{q.evidence}"
-        </blockquote>
-      )}
-      {suspect && (
-        <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 shadow-sm">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0 text-amber-600"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-          <p>
-            <strong>이 시설의 이름이 근거 문장에 명시되어 있지 않습니다.</strong> <br className="hidden sm:block" />
-            AI가 유사한 다른 시설의 규정을 참고했을 수 있으므로, 제안값을 수락하기 전에 실제 관련 법령을 꼭 확인해주세요.
-          </p>
-        </div>
-      )}
-
-      {q.editable ? (
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
-          <Radio
-            name={`ex-${exKey(q)}`}
-            checked={state.mode === "skip"}
-            onChange={() => onChange({ ...state, mode: "skip" })}
-            label="미확정 유지 (건너뜀)"
-            title="현재 제안된 값을 선택하지 않고 보류합니다."
-          />
-          <Radio
-            name={`ex-${exKey(q)}`}
-            checked={state.mode === "none"}
-            onChange={() => onChange({ ...state, mode: "none" })}
-            label="반경 없음 (면적 배제로 확정)"
-            title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
-          />
-          <Radio
-            name={`ex-${exKey(q)}`}
-            checked={state.mode === "value"}
-            onChange={() =>
-              onChange({
-                mode: "value",
-                value: state.value || String(q.proposed_m ?? q.radius_m ?? ""),
-              })
-            }
-            label="반경 직접 지정"
-          />
-          <label className={`flex items-center gap-2 transition-opacity ${state.mode === 'value' ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
-            <input
-              type="number"
-              min={1}
-              max={5000}
-              step={1}
-              value={state.value}
-              onChange={(e) => onChange({ mode: "value", value: e.target.value })}
-              className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+          <div className="flex flex-wrap items-center gap-4 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
+            <Radio
+              name={`ex-${exKey(q)}`}
+              checked={state.mode === "none"}
+              onChange={() => onChange({ ...state, mode: "none" })}
+              label="반경 없음 (면적 배제로 확정)"
+              title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
             />
-            <span className="text-gray-500 font-medium">m <span className="text-xs font-normal text-gray-400">(1~5000)</span></span>
-          </label>
+            <Radio
+              name={`ex-${exKey(q)}`}
+              checked={state.mode === "value"}
+              onChange={() =>
+                onChange({
+                  mode: "value",
+                  value: state.value || String(q.proposed_m ?? q.radius_m ?? ""),
+                })
+              }
+              label="반경 직접 지정"
+            />
+            <label
+              className={`flex items-center gap-2 transition-opacity ${state.mode === "value" ? "opacity-100" : "opacity-40 pointer-events-none"}`}
+            >
+              <input
+                type="number"
+                min={1}
+                max={5000}
+                step={1}
+                value={state.value}
+                onChange={(e) =>
+                  onChange({ mode: "value", value: e.target.value })
+                }
+                className="w-20 px-2 py-1 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+              />
+              <span className="text-gray-500 font-medium">m</span>
+            </label>
+          </div>
         </div>
-      ) : (
-        <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 border border-gray-100">
-          이 항목은 조례·법령 기반으로 AI가 <strong>자동 확정</strong>했습니다. 수동으로 변경할 수 없습니다.
-        </p>
       )}
     </QuestionCard>
   );
@@ -304,61 +439,102 @@ function IntentCard({
   q,
   state,
   onChange,
+  confirmed,
+  onConfirm,
 }: {
   q: GateIntentQuestion;
   state: IntentState;
   onChange: (s: IntentState) => void;
+  confirmed: boolean;
+  onConfirm: (val: boolean) => void;
 }) {
   const picked = q.choices.find((c) => c.value === state.choice) ?? null;
-  return (
-    <QuestionCard id={q.dataset_id} editable={q.editable} title="데이터 용도">
-      <p className="text-sm text-gray-600">{q.summary}</p>
-      <p className="mt-1 text-[13px] leading-relaxed text-gray-500 bg-gray-50 p-2.5 rounded-lg border border-gray-100">{q.message}</p>
-      <p className="mt-2 text-xs font-medium text-blue-600/80 bg-blue-50/50 inline-flex px-2 py-1 rounded-md border border-blue-100">
-        현재 할당된 역할: {q.current_roles.length ? q.current_roles.join(" · ") : "할당되지 않음"}
-      </p>
+  const [isExpanded, setIsExpanded] = useState(false);
 
-      {q.editable ? (
-        <div className="mt-4 flex flex-col gap-3 text-sm bg-gray-50 p-3.5 rounded-xl border border-gray-100">
-          <div className="flex flex-wrap gap-x-6 gap-y-2">
-            <Radio
-              name={`it-${q.dataset_id}`}
-              checked={state.choice === null}
-              onChange={() => onChange({ choice: null, weight: state.weight })}
-              label="건너뜀 (결정 보류)"
-            />
-            {q.choices.map((c) => (
-              <Radio
-                key={c.value}
-                name={`it-${q.dataset_id}`}
-                checked={state.choice === c.value}
-                onChange={() => onChange({ ...state, choice: c.value })}
-                label={`${c.label}`}
-              />
-            ))}
-          </div>
-          {picked?.needs_weight && (
-            <label className="flex items-center gap-3 mt-2 p-3 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-1">
-              <span className="font-bold text-gray-700">크기 (Weight)</span>
-              <input
-                type="number"
-                step={0.1}
-                min={-1}
-                max={1}
-                value={state.weight}
-                onChange={(e) => onChange({ ...state, weight: e.target.value })}
-                className="w-24 px-3 py-1.5 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-              />
-              <span className="text-xs text-gray-500">
-                가점/감점 여부는 위에서 선택한 역할에 따라 자동 결정됩니다. (0은 입력 불가)
+  return (
+    <QuestionCard
+      id={q.dataset_id}
+      confirmed={confirmed}
+      isEditing={isExpanded}
+      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+      onConfirm={
+        isExpanded
+          ? () => { onConfirm(true); setIsExpanded(false); }
+          : () => onConfirm(!confirmed)
+      }
+      confirmLabel={isExpanded ? "적용" : (confirmed ? "승인됨" : "승인")}
+      title={
+        <div 
+          className={`flex flex-col ${!isExpanded ? "group py-1" : "gap-2"}`}
+        >
+          <div className="flex items-center flex-wrap gap-2">
+            <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+              데이터 용도
+            </span>
+            {!isExpanded && confirmed && (
+              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                {picked ? picked.label : "건너뜀"}
+                {picked?.needs_weight && state.weight ? ` (W: ${state.weight})` : ""}
               </span>
-            </label>
-          )}
+            )}
+
+          </div>
         </div>
-      ) : (
-        <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 border border-gray-100">
-          이 항목은 분석 초기 단계에서 이미 <strong>자동 확정</strong>되었습니다.
-        </p>
+      }
+    >
+      {isExpanded && (
+        <div className="mt-2 flex flex-col gap-4">
+          <div className="flex flex-col gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+            <p className="text-[14px] text-blue-900 font-bold">"{q.summary}"</p>
+            <p className="text-[13px] text-gray-500 mt-1">{q.message}</p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] px-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-blue-600 font-medium">적용될 용도</span>
+              <span className="font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">
+                {picked ? picked.label : "미확정 (건너뜀)"}
+                {picked?.needs_weight && state.weight ? ` (가중치: ${state.weight})` : ""}
+              </span>
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-2 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
+            <div className="flex flex-wrap gap-x-6 gap-y-2">
+              <Radio
+                name={`it-${q.dataset_id}`}
+                checked={state.choice === null}
+                onChange={() => onChange({ choice: null, weight: state.weight })}
+                label="건너뜀 (결정 보류)"
+              />
+              {q.choices.map((c) => (
+                <Radio
+                  key={c.value}
+                  name={`it-${q.dataset_id}`}
+                  checked={state.choice === c.value}
+                  onChange={() => onChange({ ...state, choice: c.value })}
+                  label={`${c.label}`}
+                />
+              ))}
+            </div>
+            {picked?.needs_weight && (
+              <label className="flex items-center gap-3 mt-1 p-2 bg-white rounded-lg border border-gray-200 shadow-sm animate-in fade-in slide-in-from-top-1">
+                <span className="font-bold text-gray-700 text-xs">
+                  크기 (Weight)
+                </span>
+                <input
+                  type="number"
+                  step={0.1}
+                  min={-1}
+                  max={1}
+                  value={state.weight}
+                  onChange={(e) => onChange({ ...state, weight: e.target.value })}
+                  className="w-16 px-2 py-1 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+                />
+              </label>
+            )}
+          </div>
+        </div>
       )}
     </QuestionCard>
   );
@@ -368,71 +544,94 @@ function PrefixCard({
   q,
   state,
   onChange,
+  confirmed,
+  onConfirm,
 }: {
   q: GateCodePrefixQuestion;
   state: PrefixState;
   onChange: (s: PrefixState) => void;
+  confirmed: boolean;
+  onConfirm: (val: boolean) => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+
   return (
     <QuestionCard
       id={q.dataset_id}
-      editable={q.editable}
       warn={q.recheck_skipped}
-      title={`지역 코드 접두어 — ${q.col ?? "(대상 열 미확인)"}`}
-    >
-      <p className="text-sm text-gray-600">{q.summary}</p>
+      confirmed={confirmed}
+      isEditing={isExpanded}
+      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+      onConfirm={
+        isExpanded
+          ? () => { 
+              onConfirm(true); 
+              setIsExpanded(false); 
+              onChange({ ...state, confirm: true });
+            }
+          : () => onConfirm(!confirmed)
+      }
+      confirmLabel={isExpanded ? "적용" : (confirmed ? "승인됨" : "승인")}
+      title={
+        <div 
+          className={`flex flex-col ${!isExpanded ? "group py-1" : "gap-2"}`}
+        >
+          <div className="flex items-center flex-wrap gap-2">
+            <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+              지역 코드 접두어 — {q.col ?? "(대상 열 미확인)"}
+            </span>
+            {!isExpanded && confirmed && (
+              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
+                코드: {state.value || "—"}
+              </span>
+            )}
 
-      <div className="mt-4 flex flex-wrap gap-3">
-        <Fact k="현재 값" v={q.prefix || "—"} />
-        <Fact k="대상 지역" v={q.region || "—"} />
-        <Fact k="판정 상태" v={q.verdict ?? "—"} sub={q.confirmed_by ?? undefined} />
-        <Fact k="AI 제안" v={q.suggestion ?? "—"} />
-      </div>
-
-      {(q.reason || q.detail) && (
-        <div className="mt-4 bg-gray-50 p-3 rounded-lg border border-gray-100 text-[13px] text-gray-500 space-y-1">
-          {q.reason && <p>{q.reason}</p>}
-          {q.detail && <p className="text-xs text-gray-400">{q.detail}</p>}
-        </div>
-      )}
-
-      {q.recheck_skipped && (
-        <div className="mt-3 flex items-start gap-2.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-[13px] text-amber-900 shadow-sm">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0 text-amber-600"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
-          <p>
-            <strong>코드표 대조가 누락되었습니다.</strong> <br className="hidden sm:block" />
-            AI가 코드 검증을 수행하지 못했으므로, 지역 코드가 정확한지 사람이 직접 확인해야 합니다.
-          </p>
-        </div>
-      )}
-
-      {q.editable ? (
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm bg-blue-50/50 p-4 rounded-xl border border-blue-100">
-          <label className="flex items-center gap-2 font-medium text-gray-800 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={state.confirm}
-              onChange={(e) => onChange({ ...state, confirm: e.target.checked })}
-              className="w-4 h-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500"
-            />
-            이 값으로 코드 확정
-          </label>
-          <div className={`flex items-center gap-2 transition-opacity ${state.confirm ? 'opacity-100' : 'opacity-50 pointer-events-none'}`}>
-            <input
-              value={state.value}
-              onChange={(e) => onChange({ ...state, value: e.target.value })}
-              placeholder="예) 11170"
-              className="w-32 px-3 py-1.5 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
-            />
           </div>
-          <p className="text-xs text-blue-800/70 w-full mt-1">
-            <strong className="text-blue-900 font-bold">주의:</strong> 접두어가 틀려도 검증 과정에서 오류로 잡히지 않을 수 있습니다. 체크박스를 선택하지 않으면 값이 전송되지 않습니다.
-          </p>
         </div>
-      ) : (
-        <p className="mt-4 rounded-lg bg-gray-50 px-3 py-2 text-xs text-gray-500 border border-gray-100">
-          이 지역 코드는 코드표({q.confirmed_by ?? "출처 미기재"})에 의해 <strong>자동 확정</strong>되었습니다.
-        </p>
+      }
+    >
+      {isExpanded && (
+        <div className="mt-2 flex flex-col gap-4">
+          <div className="flex flex-col gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
+            <p className="text-[14px] text-blue-900 font-bold">"{q.summary}"</p>
+            {q.recheck_skipped && (
+              <div className="mt-0.5 flex flex-wrap gap-2">
+                <WarningBadge text="코드표 대조 누락" title="AI가 코드 검증을 수행하지 못했으므로, 사람이 직접 확인해야 합니다." />
+              </div>
+            )}
+          </div>
+          
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[13px] px-1">
+            <div className="flex items-center gap-1.5">
+              <span className="text-blue-600 font-medium">적용될 값</span>
+              <span className="font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded">{state.value || "—"}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">원본 값</span>
+              <span className="font-medium text-gray-700 bg-gray-100 px-1.5 py-0.5 rounded">{q.prefix || "—"}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">대상 지역</span>
+              <span className="font-medium text-gray-800">{q.region || "—"}</span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="text-gray-500">AI 제안</span>
+              <span className="font-medium text-blue-700">{q.suggestion ?? "—"}</span>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-4 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
+            <label className="flex items-center gap-3 font-medium text-gray-800">
+              사용할 코드 접두어
+              <input
+                value={state.value}
+                onChange={(e) => onChange({ ...state, value: e.target.value })}
+                placeholder="예) 11170"
+                className="w-24 px-2 py-1.5 rounded-md border border-gray-300 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm font-bold text-gray-900"
+              />
+            </label>
+          </div>
+        </div>
       )}
     </QuestionCard>
   );
@@ -452,12 +651,27 @@ function Radio({
   title?: string;
 }) {
   return (
-    <label className="flex items-center gap-2 cursor-pointer group" title={title}>
-      <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${checked ? 'border-blue-500 bg-blue-500' : 'border-gray-300 group-hover:border-blue-400 bg-white'}`}>
+    <label
+      className="flex items-center gap-2 cursor-pointer group"
+      title={title}
+    >
+      <div
+        className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${checked ? "border-blue-500 bg-blue-500" : "border-gray-300 group-hover:border-blue-400 bg-white"}`}
+      >
         {checked && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
       </div>
-      <input type="radio" name={name} checked={checked} onChange={onChange} className="sr-only" />
-      <span className={`text-sm transition-colors ${checked ? 'text-gray-900 font-medium' : 'text-gray-600 group-hover:text-gray-800'}`}>{label}</span>
+      <input
+        type="radio"
+        name={name}
+        checked={checked}
+        onChange={onChange}
+        className="sr-only"
+      />
+      <span
+        className={`text-sm transition-colors ${checked ? "text-gray-900 font-medium" : "text-gray-600 group-hover:text-gray-800"}`}
+      >
+        {label}
+      </span>
     </label>
   );
 }

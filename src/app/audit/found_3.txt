@@ -1,0 +1,513 @@
+Created At: 2026-08-10T05:43:24Z
+Completed At: 2026-08-10T05:43:24Z
+File Path: `file:///c:/Users/User/Desktop/%EA%B5%90%EC%95%88/%EB%B9%85%ED%94%84%EB%A1%9C%EC%A0%9D%ED%8A%B8/%EC%BD%94%EB%93%9C/backend/BigProject_Front/src/app/audit/page.tsx`
+Total Lines: 505
+Total Bytes: 27034
+Showing lines 1 to 505
+The following code has been modified to include a line number before every line, in the format: <line_number>: <original_line>. Please note that any changes targeting the original code should remove the line number, colon, and leading space.
+1: "use client";
+2: 
+3: import { useState } from "react";
+4: import Link from "next/link";
+5: import { AuditGate } from "@/components/gate/AuditGate";
+6: import { ArtifactView } from "@/components/ui/ArtifactView";
+7: import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
+8: import { GATE_AUDIT, openGate, gateScreen } from "@/lib/omnisite/gate";
+9: import { loadReviewed, loadCleanReport } from "@/lib/omnisite/pipeline";
+10: import { useRun } from "@/lib/omnisite/RunProvider";
+11: import { SCREENS } from "@/lib/omnisite/screens";
+12: import { useArtifact } from "@/lib/omnisite/useArtifact";
+13: import { meters } from "@/lib/omnisite/format";
+14: import type { CleanReportDoc, ReviewedDoc, ReviewedFlag, ReviewedResult, ReviewedRole, RunDoc } from "@/lib/omnisite/types";
+15: 
+16: const SCREEN = SCREENS.find((s) => s.no === "2")!;
+17: const SCREEN_2B = SCREENS.find((s) => s.no === "2b")!;
+18: 
+19: const ROLE_LABEL: Record<string, string> = {
+20:   positive_factor: "가점 요인",
+21:   negative_factor: "감점 요인",
+22:   hard_exclusion: "설치 금지(배제)",
+23:   reference_only: "참조만",
+24: };
+25: 
+26: const COORD_LABEL: Record<string, string> = {
+27:   has_coords: "좌표 있음",
+28:   needs_geocoding: "지오코딩 필요",
+29:   stat_join: "통계 — 조인 필요",
+30:   spatial: "폴리곤(공간정보)",
+31: };
+32: 
+33: export default function Screen2Page() {
+34:   const { run } = useRun();
+35:   const state = useArtifact("reviewed", loadReviewed);
+36:   const gate = openGate(run, GATE_AUDIT);
+37: 
+38:   return (
+39:     <PageBody>
+40:       <PageHeader
+41:         screen={SCREEN}
+42:         lead="AI가 1차적으로 판정한 데이터 분석 계획을 검토합니다. 내용을 확인하고 다음 단계로 진행해주세요."
+43:         right={
+44:           <Link href={SCREEN_2B.path} className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-bold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-lg hover:-translate-y-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+45:             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+46:             AI 배제 사유 상세보기
+47:           </Link>
+48:         }
+49:       />
+50: 
+51:       {/* 내부 스크롤 영역 */}
+52:       <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4">
+53:         {gate ? (
+54:           <div className="mt-4">
+55:             <AuditGate gate={gate} runId={run!.run_id} />
+56:           </div>
+57:         ) : (
+58:           <div className="mt-4">
+59:             <NoGateNotice run={run ?? null} />
+60:           </div>
+61:         )}
+62: 
+63:         <div className="mt-8">
+64:           <ArtifactView state={state} what="감리 결과">
+65:             {(doc) => <Body doc={doc} />}
+66:           </ArtifactView>
+67:         </div>
+68:       </div>
+69: 
+70:       {!gate && (
+71:         <div className="shrink-0 mt-4">
+72:           <NoGateCTA run={run ?? null} />
+73:         </div>
+74:       )}
+75:     </PageBody>
+76:   );
+77: }
+78: 
+79: function Body({ doc }: { doc: ReviewedDoc }) {
+80:   const fi = doc.facility_inference;
+81:   const flags = doc.results.flatMap((r) =>
+82:     r.hitl_flags.map((f) => ({ result: r, flag: f })),
+83:   );
+84:   const pending = doc.results.flatMap((r) =>
+85:     r.roles.filter((x) => x.need_review).map((role) => ({ result: r, role })),
+86:   );
+87: 
+88:   return (
+89:     <div className="flex flex-col gap-8 pb-12">
+90:       {/* ── 선정 대상 ── */}
+91:       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+92:         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
+93:           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+94:           <h2 className="text-base font-bold text-gray-800">선정 대상 분석</h2>
+95:         </div>
+96:         <div className="p-6">
+97:           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+98:             <KV icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"/><path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9"/><path d="M12 3v6"/></svg>} k="시설" v={fi.facility} />
+99:             <KV icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="10" r="3"/><path d="M12 21.7C17.3 17 20 13 20 10a8 8 0 1 0-16 0c0 3 2.7 7 8 11.7z"/></svg>} k="지역" v={fi.region} />
+100:             <KV icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>} k="입력" v={fi.source_input} />
+101:             <KV 
+102:               icon={<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>}
+103:               k="분석 주체" 
+104:               v={fi.confirmed ? "사람이 직접 확정함" : "AI 자동 추론됨"} 
+105:               tone={fi.confirmed ? "ok" : "info"} 
+106:             />
+107:           </div>
+108:           
+109:           {!fi.confirmed && (
+110:             <div className="mt-4 flex flex-col gap-3 p-4 rounded-xl border border-blue-100 bg-blue-50/50 text-blue-800">
+111:               <div className="flex gap-3">
+112:                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 text-blue-500 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+113:                 <div className="text-xs leading-relaxed w-full">
+114:                   <strong className="block mb-1 text-sm">💡 이 데이터는 어떻게 결정되었나요?</strong>
+115:                   AI가 사용자의 원래 입력 문장(<i>"{fi.source_input}"</i>)을 바탕으로 대상 시설과 지역을 <strong>자동으로 유추해낸 결과</strong>입니다. 
+116:                 </div>
+117:               </div>
+118:               <div className="mt-2 ml-8">
+119:                 <p className="text-xs text-blue-800/80 mb-2">단, AI가 원하시는 시설이나 지역을 잘못 짚어냈다면 아래 버튼을 눌러 처음으로 돌아가 문장을 명확하게 고쳐주세요.</p>
+120:                 <Link href="/" className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-200 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors text-xs font-semibold shadow-sm w-fit">
+121:                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+122:                   첫 단계(데이터 입력)로 돌아가서 수정하기
+123:                 </Link>
+124:               </div>
+125:             </div>
+126:           )}
+127: 
+128:           {fi.mismatch && (
+129:             <div className="mt-4 flex gap-3 p-4 rounded-xl border border-orange-200 bg-orange-50 text-orange-800">
+130:               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+131:               <div className="text-sm">
+132:                 <span className="font-bold">입력과 데이터 불일치:</span> {fi.mismatch_reason}
+133:               </div>
+134:             </div>
+135:           )}
+136:         </div>
+137:       </section>
+138: 
+139:       {/* ── 확인 요청 ── */}
+140:       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+141:         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+142:           <div className="flex items-center gap-2">
+143:             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="15" x2="15" y2="15"/></svg>
+144:             <h2 className="text-base font-bold text-gray-800">확인 요청</h2>
+145:           </div>
+146:           <div className="flex items-center gap-2 text-xs">
+147:             <span className="px-2.5 py-1 rounded-full bg-orange-100 text-orange-700 font-medium">검토 대기 {pending.length}건</span>
+148:             <span className="px-2.5 py-1 rounded-full bg-green-100 text-green-700 font-medium">확정 완료 {flags.filter((x) => x.flag.confirmed_by_human).length}건</span>
+149:           </div>
+150:         </div>
+151: 
+152:         <div className="p-6">
+153:           {pending.length === 0 && flags.length === 0 ? (
+154:             <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
+155:               <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center mb-4 border border-gray-100">
+156:                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+157:               </div>
+158:               <h3 className="text-base font-medium text-gray-900 mb-1">확인 요청 없음</h3>
+159:               <p className="text-sm text-gray-500 max-w-sm">현재 사람의 확인이 필요한 건이 없습니다. 모든 항목이 자동으로 처리되었거나 감리가 건너뛰어졌습니다.</p>
+160:             </div>
+161:           ) : (
+162:             <div className="grid gap-4">
+163:               {pending.map(({ result, role }, i) => (
+164:                 <PendingCard key={`p${i}`} result={result} role={role} />
+165:               ))}
+166:               {flags.map(({ result, flag }, i) => (
+167:                 <FlagCard key={`f${i}`} result={result} flag={flag} />
+168:               ))}
+169:             </div>
+170:           )}
+171:         </div>
+172:       </section>
+173: 
+174:       {/* ── 데이터셋 판정 ── */}
+175:       <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+176:         <div className="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex items-center gap-2">
+177:           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-blue-500"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="9" y1="21" x2="9" y2="9"/></svg>
+178:           <h2 className="text-base font-bold text-gray-800">데이터셋별 감리 판정</h2>
+179:         </div>
+180:         
+181:         <DatasetAuditChips results={doc.results} />
+182:       </section>
+183:     </div>
+184:   );
+185: }
+186: 
+187: function DatasetAuditChips({ results }: { results: ReviewedResult[] }) {
+188:   const [selectedId, setSelectedId] = useState<string | null>(null);
+189:   const selected = results.find(r => r.dataset_id === selectedId);
+190:   
+191:   // clean_report.json을 불러와 데이터셋 이름(파일명)을 가져온다
+192:   const cleanState = useArtifact("clean_report", loadCleanReport);
+193:   const cleanDoc = cleanState.data;
+194: 
+195:   const getDatasetName = (id: string) => {
+196:     if (!cleanDoc) return null;
+197:     const match = cleanDoc.results.find(r => r.dataset_id === id);
+198:     if (!match) return null;
+199:     return match.filename.replace(/\.[^/.]+$/, ""); // 확장자 제거
+200:   };
+201: 
+202:   return (
+203:     <div className="p-6">
+204:       <div className="flex flex-wrap gap-2.5">
+205:         {results.map((r) => {
+206:           const isSelected = selectedId === r.dataset_id;
+207:           const datasetName = getDatasetName(r.dataset_id);
+208:           
+209:           return (
+210:             <button 
+211:               key={r.dataset_id}
+212:               onClick={() => setSelectedId(isSelected ? null : r.dataset_id)}
+213:               className={`inline-flex items-center gap-2 pl-1.5 pr-3 py-1.5 rounded-full text-[12px] tracking-wide border transition-all ${
+214:                 isSelected 
+215:                   ? "border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 shadow-sm" 
+216:                   : "border-gray-200 bg-white hover:border-gray-300 shadow-sm"
+217:               }`}
+218:             >
+219:               <span className={`flex items-center justify-center w-6 h-6 rounded-full font-mono text-[10px] font-bold transition-colors ${
+220:                 isSelected ? 'bg-blue-500 text-white' : 'bg-gray-100 text-gray-600'
+221:               }`}>
+222:                 {r.dataset_id}
+223:               </span>
+224:               <div className="flex flex-wrap gap-1 items-center">
+225:                 {datasetName && (
+226:                   <span className={`font-bold mr-1 ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
+227:                     {datasetName}
+228:                   </span>
+229:                 )}
+230:                 {r.roles.map((role, i) => {
+231:                   const excl = role.role === "hard_exclusion";
+232:                   return (
+233:                     <span key={i} className={`flex items-center gap-1 font-medium ${excl ? 'text-red-600' : 'text-gray-600'}`}>
+234:                       {(i > 0 || datasetName) && <span className="text-gray-300 mx-0.5">|</span>}
+235:                       {ROLE_LABEL[role.role] ?? role.role}
+236:                       {excl && role.배제반경_m != null && <span className="opacity-70 font-mono text-[10px]">({meters(role.배제반경_m)})</span>}
+237:                       {!excl && typeof role.weight === "number" && <span className="opacity-70 font-mono text-[10px]">(W:{role.weight})</span>}
+238:                     </span>
+239:                   )
+240:                 })}
+241:               </div>
+242:             </button>
+243:           );
+244:         })}
+245:       </div>
+246: 
+247:       {selected && (
+248:         <div className="mt-5 p-5 bg-gray-50/80 rounded-xl border border-gray-200 animate-in fade-in slide-in-from-top-2">
+249:           <div className="flex items-center gap-3 mb-3 pb-3 border-b border-gray-200/60">
+250:             <span className="inline-flex items-center justify-center w-7 h-7 rounded-md bg-white border border-gray-200 font-mono text-xs font-bold text-gray-700 shadow-sm">
+251:               {selected.dataset_id}
+252:             </span>
+253:             <div className="flex flex-wrap gap-1.5">
+254:               {selected.roles.map((role, i) => (
+255:                 <RoleChip key={i} role={role} />
+256:               ))}
+257:             </div>
+258:           </div>
+259:           <div className="text-[13px] text-gray-700 leading-relaxed whitespace-pre-wrap">
+260:             {selected.summary}
+261:           </div>
+262:         </div>
+263:       )}
+264:     </div>
+265:   );
+266: }
+267: 
+268: function RoleChip({ role }: { role: ReviewedRole }) {
+269:   const excl = role.role === "hard_exclusion";
+270:   return (
+271:     <span
+272:       className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold tracking-wide border shadow-sm ${
+273:         excl 
+274:           ? "bg-red-50 text-red-700 border-red-200" 
+275:           : "bg-white text-gray-700 border-gray-200"
+276:       }`}
+277:       title={role.rationale}
+278:     >
+279:       {ROLE_LABEL[role.role] ?? role.role}
+280:       {excl && role.배제반경_m != null && <span className="opacity-70 font-mono ml-0.5">· {meters(role.배제반경_m)}</span>}
+281:       {!excl && typeof role.weight === "number" && <span className="opacity-70 font-mono ml-0.5">· W:{role.weight}</span>}
+282:     </span>
+283:   );
+284: }
+285: 
+286: function PendingCard({ result, role }: { result: ReviewedResult; role: ReviewedRole }) {
+287:   const [expanded, setExpanded] = useState(false);
+288:   return (
+289:     <div className="relative overflow-hidden rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-amber-50/30 shadow-sm transition-all hover:shadow-md">
+290:       <div className="absolute top-0 left-0 w-1 h-full bg-orange-400"></div>
+291:       
+292:       <button 
+293:         onClick={() => setExpanded(!expanded)}
+294:         className="w-full flex flex-wrap items-center justify-between gap-4 p-5 cursor-pointer focus:outline-none"
+295:       >
+296:         <div className="flex flex-wrap items-center gap-3">
+297:           <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-orange-100 border border-orange-200 font-mono text-xs font-bold text-orange-800">
+298:             {result.dataset_id}
+299:           </span>
+300:           <span className="text-sm font-bold text-gray-900">{ROLE_LABEL[role.role] ?? role.role}</span>
+301:           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500 text-white text-xs font-bold shadow-sm">
+302:             <span className="relative flex h-2 w-2"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span><span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span></span>
+303:             사람 확인 필요
+304:           </span>
+305:         </div>
+306:         <div className="text-orange-500">
+307:           <svg className={`w-5 h-5 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+308:             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+309:           </svg>
+310:         </div>
+311:       </button>
+312: 
+313:       {expanded && (
+314:         <div className="pl-16 pr-5 pb-5 animate-in fade-in slide-in-from-top-2">
+315:           <div className="p-3 bg-white/60 rounded-lg border border-orange-100">
+316:             <p className="text-sm text-gray-700 leading-relaxed">{role.rationale}</p>
+317:           </div>
+318:         </div>
+319:       )}
+320:     </div>
+321:   );
+322: }
+323: 
+324: function FlagCard({ result, flag }: { result: ReviewedResult; flag: ReviewedFlag }) {
+325:   const suspect = flag.근거_시설_일치 === false;
+326:   const done = flag.confirmed_by_human === true;
+327:   const [expanded, setExpanded] = useState(false);
+328:   
+329:   return (
+330:     <div className={`relative overflow-hidden rounded-xl border shadow-sm transition-all hover:shadow-md ${
+331:       suspect ? "border-orange-300 bg-orange-50" : "border-gray-200 bg-white"
+332:     }`}>
+333:       <div className={`absolute top-0 left-0 w-1 h-full ${suspect ? 'bg-orange-400' : done ? 'bg-green-400' : 'bg-gray-300'}`}></div>
+334:       
+335:       <button 
+336:         onClick={() => setExpanded(!expanded)}
+337:         className="w-full flex flex-wrap items-center justify-between gap-4 p-5 cursor-pointer focus:outline-none"
+338:       >
+339:         <div className="flex flex-wrap items-center gap-3">
+340:           <span className="inline-flex items-center justify-center w-8 h-8 rounded-lg bg-gray-100 border border-gray-200 font-mono text-xs font-bold text-gray-700">
+341:             {result.dataset_id}
+342:           </span>
+343:           <span className="text-sm font-bold text-gray-900">{flag.type}</span>
+344:           <div className="flex gap-2">
+345:             {done && (
+346:               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-green-50 border border-green-200 text-green-700 text-xs font-bold">
+347:                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+348:                 사람이 확정함
+349:               </span>
+350:             )}
+351:             {suspect && (
+352:               <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-red-50 border border-red-200 text-red-700 text-xs font-bold">
+353:                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+354:                 근거-시설 불일치
+355:               </span>
+356:             )}
+357:           </div>
+358:         </div>
+359:         <div className="text-gray-400">
+360:           <svg className={`w-5 h-5 transition-transform ${expanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+361:             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+362:           </svg>
+363:         </div>
+364:       </button>
+365: 
+366:       {expanded && (
+367:         <div className="pl-16 pr-5 pb-5 animate-in fade-in slide-in-from-top-2">
+368:           <p className="text-sm text-gray-700 leading-relaxed mb-4">{flag.message}</p>
+369: 
+370:           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
+371:             {flag.제안값 != null && <InfoChip label="확정값" value={meters(flag.제안값)} />}
+372:             {flag.출처 && <InfoChip label="출처" value={flag.출처} />}
+373:             {flag.source_type && <InfoChip label="출처 종류" value={flag.source_type} />}
+374:           </div>
+375: 
+376:           {flag.근거문장 && (
+377:             <div className="bg-gray-50 rounded-lg p-4 border border-gray-100 relative">
+378:               <svg className="absolute top-2 left-2 w-6 h-6 text-gray-200" fill="currentColor" viewBox="0 0 24 24"><path d="M14.017 21v-7.391c0-5.704 3.731-9.57 8.983-10.609l.995 2.151c-2.432.917-3.995 3.638-3.995 5.849h4v10h-9.983zm-14.017 0v-7.391c0-5.704 3.748-9.57 9-10.609l.996 2.151c-2.433.917-3.996 3.638-3.996 5.849h3.983v10h-9.983z"/></svg>
+379:               <p className="text-sm text-gray-600 italic leading-relaxed pl-6 relative z-10">"{flag.근거문장}"</p>
+380:             </div>
+381:           )}
+382:         </div>
+383:       )}
+384:     </div>
+385:   );
+386: }
+387: 
+388: function InfoChip({ label, value }: { label: string; value: string }) {
+389:   return (
+390:     <div className="bg-gray-50 border border-gray-100 rounded-lg px-3 py-2 flex flex-col justify-center">
+391:       <span className="text-[10px] uppercase font-bold text-gray-400 mb-0.5 tracking-wider">{label}</span>
+392:       <span className="text-xs font-semibold text-gray-800">{value}</span>
+393:     </div>
+394:   );
+395: }
+396: 
+397: function KV({ icon, k, v, tone }: { icon: React.ReactNode, k: string; v: string; tone?: "ok" | "warn" | "info" }) {
+398:   return (
+399:     <div className="flex items-start gap-3 p-3 rounded-xl bg-gray-50/50 border border-gray-100">
+400:       <div className="mt-0.5 text-gray-400">{icon}</div>
+401:       <div className="flex flex-col">
+402:         <dt className="text-xs font-semibold text-gray-500 mb-1">{k}</dt>
+403:         <dd className={`text-sm font-bold ${tone === "warn" ? "text-orange-600" : tone === "ok" ? "text-green-600" : tone === "info" ? "text-blue-600" : "text-gray-900"}`}>
+404:           {v}
+405:         </dd>
+406:       </div>
+407:     </div>
+408:   );
+409: }
+410: 
+411: function NoGateCTA({ run }: { run: RunDoc | null }) {
+412:   const status = run?.status;
+413: 
+414:   if (status === "succeeded") {
+415:     return (
+416:       <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-200 bg-emerald-50/30 p-5 rounded-2xl shadow-sm">
+417:         <div className="flex items-center gap-3">
+418:           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-pulse">
+419:             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 6 9 17l-5-5"/></svg>
+420:           </div>
+421:           <div className="flex flex-col">
+422:             <span className="text-[14px] font-bold text-emerald-900">
+423:               감리 확인이 완료되었습니다!
+424:             </span>
+425:             <span className="text-[13px] text-emerald-700/80">
+426:               다음 단계에서 지표별 가중치를 확인하고 조정할 수 있습니다.
+427:             </span>
+428:           </div>
+429:         </div>
+430:         <Link
+431:           href="/weights"
+432:           className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 active:scale-95"
+433:         >
+434:           가중치 단계로 이동하기
+435:           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+436:         </Link>
+437:       </div>
+438:     );
+439:   }
+440: 
+441:   if (status === "awaiting_hitl" && run?.gate) {
+442:     const target = gateScreen(run.gate.id);
+443:     if (target && target.no !== "2") {
+444:       return (
+445:         <div className="flex flex-wrap items-center justify-between gap-4 border-2 border-emerald-200 bg-emerald-50/30 p-5 rounded-2xl shadow-sm">
+446:           <div className="flex items-center gap-3">
+447:             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-pulse">
+448:               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+449:             </div>
+450:             <div className="flex flex-col">
+451:               <span className="text-[14px] font-bold text-emerald-900">
+452:                 다음 단계({target.name}) 분석이 완료되었습니다!
+453:               </span>
+454:               <span className="text-[13px] text-emerald-700/80">
+455:                 AI가 다음 단계를 위한 제안을 준비했습니다. 확인을 위해 이동해주세요.
+456:               </span>
+457:             </div>
+458:           </div>
+459:           <Link
+460:             href={target.path}
+461:             className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-emerald-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-emerald-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-emerald-500/30 active:scale-95"
+462:           >
+463:             {target.name} 단계로 바로 이동하기
+464:             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+465:           </Link>
+466:         </div>
+467:       );
+468:     }
+469:   }
+470: 
+471:   return null;
+472: }
+473: 
+474: function NoGateNotice({ run }: { run: RunDoc | null }) {
+475:   const status = run?.status;
+476: 
+477:   if (status === "succeeded") {
+478:     return null;
+479:   }
+480:   
+481:   if (status === "running") {
+482:     return (
+483:       <div className="flex flex-col items-center justify-center p-10 bg-blue-50/50 rounded-2xl border border-blue-100 text-center shadow-sm animate-in fade-in zoom-in-95">
+484:         <div className="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin mb-4" />
+485:         <h3 className="text-base font-bold text-blue-900 mb-1">AI가 다음 분석을 위해 열심히 데이터를 처리하고 있습니다...</h3>
+486:         <p className="text-sm text-blue-700/80">우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다.</p>
+487:       </div>
+488:     );
+489:   }
+490: 
+491:   if (status === "awaiting_hitl" && run?.gate) {
+492:     const target = gateScreen(run.gate.id);
+493:     if (target && target.no !== "2") {
+494:       return null;
+495:     }
+496:   }
+497: 
+498:   return (
+499:     <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-4 py-3 rounded-xl w-fit border border-gray-200">
+500:       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+501:       <span>현재 감리 대기 중인 항목이 없습니다. {status && `(상태: ${status})`}</span>
+502:     </div>
+503:   );
+504: }
+505: 
+The above content shows the entire, complete file contents of the requested file.

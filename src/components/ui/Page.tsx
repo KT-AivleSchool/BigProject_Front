@@ -25,7 +25,7 @@ export function PageHeader({
   right,
 }: {
   screen: Screen;
-  lead: string;
+  lead?: string;
   right?: React.ReactNode;
 }) {
   const idx = NAV_SCREENS.findIndex((s) => s.no === screen.no);
@@ -38,7 +38,7 @@ export function PageHeader({
           </h1>
           {screen.draft && <DraftBadge />}
         </div>
-        <p className="mt-1 text-[13px] text-ink-secondary">{lead}</p>
+        {lead && <p className="mt-1 text-[13px] text-ink-secondary">{lead}</p>}
       </div>
       <div className="flex items-center gap-3">
         {right}

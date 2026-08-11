@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { gateScreen } from "@/lib/omnisite/gate";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { computeProgress, formatDuration, loadBaseline } from "@/lib/omnisite/progress";
@@ -140,31 +141,52 @@ function SidebarContent({ run, baseline, runningElapsedSec, refresh }: { run: Ru
 }
 
 function GateBlock({ run, onRefresh }: { run: RunDoc; onRefresh: () => void }) {
+  const pathname = usePathname();
   const gate = run.gate;
   const target = gate ? gateScreen(gate.id) : null;
 
+  if (!gate) {
+    return null;
+  }
+
+  const isOnTargetScreen = target && pathname?.startsWith(target.path);
+
   return (
-    <div className="rounded-xl border-2 border-yellow-400 bg-yellow-50 p-4 shadow-sm relative overflow-hidden animate-in fade-in slide-in-from-right-4">
+    <div className={`rounded-xl border-2 p-4 shadow-sm relative overflow-hidden animate-in fade-in slide-in-from-right-4 ${
+      isOnTargetScreen ? "border-yellow-400 bg-yellow-50" : "border-indigo-300 bg-indigo-50"
+    }`}>
       <div className="absolute top-0 right-0 p-3 opacity-10">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
       </div>
       
-      <h3 className="text-[13px] font-extrabold text-yellow-900 mb-1 flex items-center gap-1.5">
+      <h3 className={`text-[13px] font-extrabold mb-1 flex items-center gap-1.5 ${
+        isOnTargetScreen ? "text-yellow-900" : "text-indigo-900"
+      }`}>
         <span className="relative flex h-2.5 w-2.5">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-yellow-500 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-yellow-600"></span>
+          <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+            isOnTargetScreen ? "bg-yellow-500" : "bg-indigo-400"
+          }`}></span>
+          <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
+            isOnTargetScreen ? "bg-yellow-600" : "bg-indigo-500"
+          }`}></span>
         </span>
-        사람의 확인이 필요합니다
+        {isOnTargetScreen ? "사람의 확인이 필요합니다" : `다음 단계(${target?.name || "알 수 없음"}) 대기 중`}
       </h3>
-      <p className="text-[11px] text-yellow-800/80 mb-3 leading-relaxed">
-        AI가 중간 결과를 도출했습니다. 다음 단계로 넘어가기 위해 피드백을 입력해주세요.
+      <p className={`text-[11px] mb-3 leading-relaxed ${
+        isOnTargetScreen ? "text-yellow-800/80" : "text-indigo-800/80"
+      }`}>
+        {isOnTargetScreen 
+          ? "다음 단계로 파이프라인을 진행하기 앞서, AI가 도출한 중간 결과에 대해 담당자의 최종 확인 및 승인이 필요하여 분석이 일시 정지되었습니다."
+          : `현재 파이프라인은 다음 단계인 '${target?.name || "알 수 없음"}'의 사용자 확인(HITL)을 위해 일시 정지되어 있습니다. 현재 보고 계신 화면의 작업을 충분히 마친 후 이동해 주세요.`}
       </p>
 
       {target ? (
-        <Link href={target.path} className="flex items-center justify-between w-full px-4 py-2.5 bg-yellow-400 text-yellow-900 rounded-lg text-xs font-bold hover:bg-yellow-500 transition-colors shadow-sm">
-          <span>{target.name} 하러 가기</span>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-        </Link>
+        !isOnTargetScreen && (
+          <Link href={target.path} className="flex items-center justify-between w-full px-4 py-2.5 rounded-lg text-xs font-bold transition-colors shadow-sm bg-indigo-500 text-white hover:bg-indigo-600">
+            <span>{gate?.id === "audit" ? "1차 분석 결과 확인하기" : `${target.name} 단계로 이동하기`}</span>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </Link>
+        )
       ) : (
         <p className="text-[11px] text-red-600">게이트 정보를 찾을 수 없습니다.</p>
       )}
