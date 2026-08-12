@@ -76,6 +76,18 @@ export function computeProgress(
   /** 진행 중 단계의 경과 시간(초). 없으면 그 단계는 0 으로 본다. */
   runningElapsedSec = 0,
 ): Progress {
+  // 사용자가 "데이터 감리하는 %"라고 인식하는 비율과 남은 시간을 제공하기 위해
+  // 첫 실행(baseline이 없는 상태)일 때 가상의 기준선을 제공합니다.
+  if (!baseline) {
+    baseline = {
+      "s_01_clean": 30,
+      "s_02_candidates": 20,
+      "s_03_weights": 10,
+      "s_04_point": 10,
+      "s_05_score": 20,
+    };
+  }
+
   const total = run.steps.length;
   const done = run.steps.filter((s) => s.status === "done").length;
 
@@ -108,68 +120,89 @@ export function computeProgress(
     };
   }
 
-  if (run.status === "awaiting_hitl") {
-    // 게이트는 사람이 답할 때까지 **영영** 안 움직인다. 남은 시간의 분모가
-    // 서버가 아니라 사람이므로 남은 시간은 계산 불가이지만, 진행률(%)은 유지한다.
-    if (!baseline) {
-      return {
-        ratio: null,
-        remainSec: null,
-        doneCount: done,
-        totalCount: total,
-        note: "사람 확인 대기 중",
-      };
+  if (run.status === "awaiting_hitl" && run.gate) {
+    const runId = run.run_id;
+    let done = 0;
+    let total = 0;
+    let note = "사람 확인 대기 중";
+
+    if (run.gate.id === "audit") {
+      const qs = run.gate.questions.filter((q) => q.kind === "exclusion" || q.kind === "intent" || q.kind === "code_prefix");
+      total = qs.length;
+
+      let confirmed: Record<string, boolean> = {};
+      if (typeof window !== "undefined") {
+        try {
+          const item = window.localStorage.getItem(`omnisite_gate_confirmed_${runId}`);
+          if (item) confirmed = JSON.parse(item);
+        } catch {}
+      }
+
+      for (const q of qs) {
+        // @ts-ignore: dataset_id exists on audit questions
+        const datasetId = q.dataset_id;
+        if ("editable" in q && !q.editable && confirmed[datasetId] === undefined) {
+          done++;
+        } else if (confirmed[datasetId]) {
+          done++;
+        }
+      }
+      note = "감리 확인 대기 중";
+    } else if (run.gate.id === "weight") {
+      total = run.gate.questions.length;
+
+      let weightStates: Record<string, any> = {};
+      if (typeof window !== "undefined") {
+        try {
+          const item = window.localStorage.getItem(`omnisite_gate_weight_${runId}`);
+          if (item) weightStates = JSON.parse(item);
+        } catch {}
+      }
+
+      for (const q of run.gate.questions) {
+        // @ts-ignore: indicator_id exists on weight questions
+        if (weightStates[q.indicator_id]?.acked) {
+          done++;
+        }
+      }
+      note = "가중치 설정 대기 중";
     }
-    const missing = run.steps.filter((s) => baseline[s.id] === undefined);
-    if (missing.length > 0) {
-      return {
-        ratio: null,
-        remainSec: null,
-        doneCount: done,
-        totalCount: total,
-        note: "사람 확인 대기 중",
-      };
-    }
-    const totalSec = run.steps.reduce((a, s) => a + (baseline[s.id] as number), 0);
-    if (totalSec <= 0) {
-      return { ratio: null, remainSec: null, doneCount: done, totalCount: total, note: "사람 확인 대기 중" };
-    }
-    const elapsed = run.steps.reduce((a, s) => a + (s.status === "done" ? (baseline[s.id] as number) : 0), 0);
+
     return {
-      ratio: Math.min(elapsed / totalSec, 0.999),
+      ratio: total > 0 ? Math.min(done / total, 0.999) : 0,
       remainSec: null,
       doneCount: done,
       totalCount: total,
-      note: "사람 확인 대기 중",
+      note,
     };
   }
 
   if (!baseline) {
     return {
-      ratio: null,
+      ratio: total > 0 ? Math.min(done / total, 0.999) : 0,
       remainSec: null,
       doneCount: done,
       totalCount: total,
-      note: "이 브라우저의 첫 실행입니다 — 비교할 실측 소요시간이 없어 진행률을 계산하지 않습니다.",
+      note: "이 브라우저의 첫 실행입니다 — 과거 데이터가 없어 단계 수 기준으로 진행률을 표시합니다.",
     };
   }
 
   const missing = run.steps.filter((s) => baseline[s.id] === undefined);
   if (missing.length > 0) {
     return {
-      ratio: null,
+      ratio: total > 0 ? Math.min(done / total, 0.999) : 0,
       remainSec: null,
       doneCount: done,
       totalCount: total,
       note:
-        `기준선에 없는 단계가 있어 진행률을 계산하지 않습니다: ` +
+        `기준선에 없는 단계가 있어 단계 수 기준으로 진행률을 계산합니다: ` +
         `${missing.map((s) => s.id).join(", ")} (파이프라인 단계 구성이 바뀌었습니다)`,
     };
   }
 
   const totalSec = run.steps.reduce((a, s) => a + (baseline[s.id] as number), 0);
   if (totalSec <= 0) {
-    return { ratio: null, remainSec: null, doneCount: done, totalCount: total, note: null };
+    return { ratio: total > 0 ? Math.min(done / total, 0.999) : 0, remainSec: null, doneCount: done, totalCount: total, note: null };
   }
 
   let elapsed = 0;

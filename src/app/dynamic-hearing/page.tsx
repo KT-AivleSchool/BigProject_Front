@@ -784,17 +784,7 @@ export default function DynamicHearingPage() {
         <span className="rounded-full border border-hairline bg-black/[0.03] px-3 py-1 text-[12px] font-semibold text-ink-secondary">
           토론 방식 B — 다인(N명) 토론
         </span>
-        {/*
-          A 를 직접 가리키던 임시 링크는 지웠다(2026-08-11 분기 UI 도입).
-          방식을 바꾸려면 **고르는 화면**으로 돌아간다 — 화면끼리 서로를 가리키면
-          방식이 늘 때마다 링크가 화면 수의 제곱으로 는다.
-        */}
-        <Link
-          href="/hearing/select"
-          className="rounded-lg border border-hairline bg-white px-3 py-1.5 text-[12px] font-medium text-ink-secondary hover:bg-black/[0.03]"
-        >
-          토론 방식 다시 고르기
-        </Link>
+
       </div>
 
       {/* 어느 점으로 토론하는지 먼저 밝힌다. 못 이었으면 여기서 멈춘다. */}
@@ -880,15 +870,26 @@ export default function DynamicHearingPage() {
         />
       </div>
 
-      <PageFooter screen={SCREEN} />
-      <SourceNote
-        files={[
-          "GET /api/v1/simulations/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
-          "audit_result_reviewed.json (시설·지역 · 조례 근거문장)",
-          "POST /api/v1/stakeholders/generate",
-          "POST /api/v1/stakeholders/dynamic/discuss/stream (SSE)",
-        ]}
-      />
+      {/* 바닥 내비게이션 바 */}
+      <div className="mt-6 mb-8 flex shrink-0 items-center justify-between rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-sm">
+        <Link
+          href="/sites"
+          className="rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-bold text-gray-500 transition-colors hover:bg-gray-50"
+        >
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            이전 단계
+          </div>
+        </Link>
+        <Link
+          href="/report"
+          className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
+        >
+          <div className="flex items-center gap-2">
+            갈등 예측 완료, 보고서로 넘어가기 &gt;
+          </div>
+        </Link>
+      </div>
     </PageBody>
   );
 }
@@ -1013,32 +1014,7 @@ function SitePanel({ site }: { site: ReturnType<typeof useSelectedSite> }) {
     );
   }
 
-  if (!selected) return null;
-
-  return (
-    <div className="rounded-2xl border border-blue-200 bg-blue-50/50 px-5 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
-          rank {selected.rank} · 화면 4 에서 선택
-        </span>
-        <span className="text-[15px] font-bold text-ink">{selected.jibun}</span>
-        <span className="font-mono text-[12px] text-ink-secondary">
-          parcel_id {selected.parcel_id} · PNU {selected.pnu}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px] text-ink-secondary sm:grid-cols-4">
-        <Kv k="시설" v={selected.facility_type} />
-        <Kv k="점수" v={selected.score.toFixed(4)} />
-        <Kv k="좌표" v={`${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}`} />
-        <Kv k="run" v={selected.run_id} />
-      </div>
-      <p className="mt-2 text-[11px] text-ink-secondary">
-        요청에는 <b>parcel_id {selected.parcel_id}</b> 만 실립니다 — 좌표·지번·조례는 서버가 이
-        번호로 조회합니다(2026-08-11 계약). 화면에 뜬 값은 <b>그 조회의 입력</b>이 무엇인지
-        보여주는 것입니다.
-      </p>
-    </div>
-  );
+  return null;
 }
 
 /**

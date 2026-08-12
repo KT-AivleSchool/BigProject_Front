@@ -14,7 +14,7 @@
  */
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { NAV_SCREENS, screenOf, isScreenReady, isScreenAllowed } from "@/lib/omnisite/screens";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { isHearingDoneFor } from "@/lib/omnisite/hearingResult";
@@ -26,13 +26,16 @@ import { getAuthUser, clearAuth, UserResponse } from "@/lib/omnisite/auth";
 
 export function Header() {
   const pathname = usePathname();
-  const { run } = useRun();
+  const router = useRouter();
+  const { run, reset } = useRun();
   const current = screenOf(pathname);
   const live = run?.status === "queued" || run?.status === "running";
 
   const [authModalOpen, setAuthModalOpen] = useState(false);
   const [authMode, setAuthMode] = useState<"login" | "register">("login");
   const [user, setUser] = useState<UserResponse | null>(null);
+  const [unlockedWeight, setUnlockedWeight] = useState(false);
+  const [highestIndex, setHighestIndex] = useState(0);
 
   /**
    * 화면 5 완료 여부. **서버가 본선, sessionStorage 가 폴백**이다(`useHearingDone`).
@@ -46,10 +49,20 @@ export function Header() {
   const hearing = useHearingDone(isHearingDoneFor, pathname);
   const hearingDone = hearing.done;
 
+  /**
+   * 로그인 상태 동기화.
+   *
+   * 🔴 `setUser(getAuthUser())` 를 effect 본문에 **한 줄로 박지 않는다.** 그러면
+   *    마운트 때 한 번만 읽고 끝이라, 다른 탭의 로그인/로그아웃(`storage`)도
+   *    같은 탭의 로그아웃(`omnisite-auth-change`, `handleLogout` 이 직접 쏜다)도
+   *    헤더에 안 닿는다. 같은 함수를 초기 1회 + 두 이벤트에 **같이** 건다.
+   */
   useEffect(() => {
     const syncUser = () => {
       setUser(getAuthUser());
     };
+    // 마운트 시 1회. 서버 프리렌더에는 localStorage 가 없어 렌더 중에 읽으면
+    // 하이드레이션이 어긋난다 — 그래서 여기서 읽는다.
     syncUser();
 
     window.addEventListener("storage", syncUser);
@@ -60,6 +73,41 @@ export function Header() {
       window.removeEventListener("omnisite-auth-change", syncUser);
     };
   }, [pathname]);
+
+  /**
+   * 순차 진행 잠금(데모 시연용) — `unlocked_weight_*` · `highest_nav_index_*`.
+   *
+   * 🔴 위 로그인 동기화와 **effect 를 합치지 않는다.** 의존 배열이 다르다
+   *    (`[pathname]` ↔ `[run?.run_id, current]`) — 합치면 화면을 옮길 때마다
+   *    `storage` 리스너를 떼었다 붙이거나, 반대로 run 이 바뀌어도 잠금이 안 따라온다.
+   */
+  useEffect(() => {
+    const checkUnlock = () => {
+      if (run?.run_id) {
+        setUnlockedWeight(window.localStorage.getItem(`unlocked_weight_${run.run_id}`) === "true");
+        
+        // 프론트엔드 순차 진행 강제 락
+        const storedKey = `highest_nav_index_${run.run_id}`;
+        const stored = parseInt(window.localStorage.getItem(storedKey) || "0", 10);
+        
+        if (current) {
+          const currentIndex = NAV_SCREENS.findIndex(s => s.no === current.no);
+          if (currentIndex > stored) {
+            window.localStorage.setItem(storedKey, currentIndex.toString());
+            setHighestIndex(currentIndex);
+          } else {
+            setHighestIndex(stored);
+          }
+        } else {
+          setHighestIndex(stored);
+        }
+      }
+    };
+    
+    checkUnlock();
+    window.addEventListener("storage", checkUnlock);
+    return () => window.removeEventListener("storage", checkUnlock);
+  }, [run?.run_id, current]);
 
   const handleLogout = () => {
     // 🔴 access·refresh·user 를 **같이** 지운다(`clearAuth`). 예전엔 access 와 user 만
@@ -76,6 +124,13 @@ export function Header() {
     }
   };
 
+  const handleReset = () => {
+    if (confirm("현재 진행 중인 파이프라인 데이터를 초기화하고 처음부터 다시 시작하시겠습니까?")) {
+      reset();
+      router.push("/");
+    }
+  };
+
   return (
     <>
       <header className="sticky top-0 z-50 border-b border-hairline bg-glass-mid backdrop-blur-xl">
@@ -87,8 +142,18 @@ export function Header() {
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {NAV_SCREENS.map((s, i) => {
               const active = current?.no === s.no;
-              const done = isScreenReady(run, s.no, hearingDone) && !active;
-              const allowed = isScreenAllowed(run, s.no, hearingDone);
+              let done = isScreenReady(run, s.no, hearingDone) && !active;
+              let allowed = isScreenAllowed(run, s.no, hearingDone);
+              
+              if (s.no === "3" && run?.status === "awaiting_hitl" && !unlockedWeight) {
+                allowed = false;
+              }
+              
+              // 데모 시연을 위한 순차 진행 강제 잠금
+              if (i > highestIndex) {
+                allowed = false;
+                done = false;
+              }
               
               const inner = (
                 <>
@@ -148,6 +213,17 @@ export function Header() {
           </nav>
 
           <div className="flex shrink-0 items-center gap-4 ml-4">
+            {run && (
+              <button 
+                onClick={handleReset}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors border border-red-100 shadow-sm"
+                title="진행 중인 데이터 초기화"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                데이터 초기화
+              </button>
+            )}
+
             {/* 유틸리티 링크 (가이드라인 준수) */}
             <div className="flex items-center gap-3 text-[12px] text-gray-600 font-medium">
               <Link href="/posts" className="hover:text-primary transition-colors font-semibold flex items-center gap-1 text-primary/90 bg-primary/8 px-2 py-1 rounded">

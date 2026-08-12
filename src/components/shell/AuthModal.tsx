@@ -32,6 +32,7 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
 
   useEffect(() => {
     if (agreeTerms && agreePrivacy && agreeMarketing) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAgreeAll(true);
     } else {
       setAgreeAll(false);
