@@ -132,6 +132,10 @@ export function Header() {
           <div className="flex shrink-0 items-center gap-4 ml-4">
             {/* 유틸리티 링크 (가이드라인 준수) */}
             <div className="flex items-center gap-3 text-[12px] text-gray-600 font-medium">
+              <Link href="/posts" className="hover:text-primary transition-colors font-semibold flex items-center gap-1 text-primary/90 bg-primary/8 px-2 py-1 rounded">
+                <span>📋</span> 게시판
+              </Link>
+              <span className="text-gray-300">|</span>
               {user ? (
                 <>
                   <Link href="/mypage" className="text-gray-800 hover:text-primary transition-colors font-semibold">
@@ -151,6 +155,7 @@ export function Header() {
                 </>
               )}
             </div>
+
           </div>
         </div>
       </header>

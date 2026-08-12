@@ -137,3 +137,11 @@ export function tokenExpiresAt(token: string | null = getAuthToken()): number | 
   const exp = p?.["exp"];
   return typeof exp === "number" ? exp * 1000 : null;
 }
+
+/** Access Token 을 포함한 Authorization 헤더 객체를 반환한다. */
+export function getAuthHeader(): Record<string, string> {
+  const token = getAuthToken();
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
+}
+
