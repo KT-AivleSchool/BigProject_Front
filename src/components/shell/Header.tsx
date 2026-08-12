@@ -7,9 +7,7 @@
  * 완료 표시(✓)의 기준은 "그 화면이 읽을 산출물이 run 에 있는가" 다 —
  * 사용자가 방문했는지가 아니라 데이터가 있는지로 판단한다.
  *
- * 🔴 화면 5 (산출물 확인) 의 완료 여부는 **여기 없다.**
- *    화면 1~4 는 파이프라인이 남기는 `run.loaded.*_done` 플래그를 보고 아는데,
- *    화면 5 는 "사람이 pdf 를 봤는가" 라서 파이프라인(엔진)은 모른다. 즉 상태가
+ * 🔴 **화면 5 만 예외다.** 다른 화면은 `run.artifacts` 하나로 판정하는데 토론은
  *    거기 없다 — **서버 DB 에 남고**(2026-08-11 경로가 열렸다) 물으려면 조인 키인
  *    `run.loaded.run_id` 가 있어야 한다. 그래서 아래 `hearingDone` 을 따로 구해
  *    넘긴다. 판정이 어디서 왔는지(`source`)까지 같이 온다.
@@ -23,7 +21,8 @@ import { isHearingDoneFor } from "@/lib/omnisite/hearingResult";
 import { useHearingDone } from "@/lib/omnisite/hearings";
 import type { ArtifactName, RunDoc } from "@/lib/omnisite/types";
 import { AuthModal } from "./AuthModal";
-import { getAuthUser, setAuthUser, setAuthToken, refreshAuthToken, UserResponse } from "@/lib/omnisite/auth";
+import { SessionBadge } from "./SessionBadge";
+import { getAuthUser, clearAuth, UserResponse } from "@/lib/omnisite/auth";
 
 export function Header() {
   const pathname = usePathname();
@@ -52,8 +51,10 @@ export function Header() {
   }, []);
 
   const handleLogout = () => {
-    setAuthToken(null);
-    setAuthUser(null);
+    // 🔴 access·refresh·user 를 **같이** 지운다(`clearAuth`). 예전엔 access 와 user 만
+    //    지웠는데, refresh 키가 생긴 뒤로는 그러면 죽은 재발급 토큰이 남아 다음
+    //    로그인 세션과 섞인다.
+    clearAuth();
     setUser(null);
   };
 
@@ -136,36 +137,9 @@ export function Header() {
                   <Link href="/mypage" className="text-gray-800 hover:text-primary transition-colors font-semibold">
                     {maskName(user.username)}님
                   </Link>
+                  <SessionBadge />
                   <span className="text-gray-300">|</span>
                   <Link href="/mypage" className="hover:text-primary transition-colors">마이페이지</Link>
-                  <span className="text-gray-300">|</span>
-                  <button 
-                    onClick={async (e) => {
-                      const btn = e.currentTarget;
-                      const originalText = btn.innerText;
-                      btn.innerText = "연장 중...";
-                      const refreshed = await refreshAuthToken();
-                      if (refreshed) {
-                        btn.innerText = "연장 완료!";
-                        btn.className = "text-green-600 font-semibold transition-colors";
-                        setTimeout(() => {
-                          btn.innerText = originalText;
-                          btn.className = "text-primary font-semibold hover:text-primary/80 transition-colors";
-                        }, 2000);
-                      } else {
-                        btn.innerText = "연장 실패";
-                        btn.className = "text-red-500 transition-colors";
-                        setTimeout(() => {
-                          btn.innerText = originalText;
-                          btn.className = "text-primary font-semibold hover:text-primary/80 transition-colors";
-                        }, 2000);
-                      }
-                    }} 
-                    className="text-primary font-semibold hover:text-primary/80 transition-colors"
-                    title="로그인 시간을 1시간 연장합니다."
-                  >
-                    토큰 연장
-                  </button>
                   <span className="text-gray-300">|</span>
                   <button onClick={handleLogout} className="hover:text-primary transition-colors">로그아웃</button>
                 </>

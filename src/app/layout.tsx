@@ -26,7 +26,7 @@ export default function RootLayout({
         <RunProvider>
           <Header />
           <div className="flex flex-1 relative min-h-0">
-            <main className="flex-1 flex flex-col min-w-0 min-h-0">
+            <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
               {children}
             </main>
             <ProgressSidebar />
