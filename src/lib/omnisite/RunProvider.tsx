@@ -73,6 +73,7 @@ interface RunContextValue {
    */
   refresh: () => Promise<void>;
   reset: () => void;
+  loadHistoricalRun: (id: string) => Promise<string | null>;
 }
 
 const RunContext = createContext<RunContextValue | null>(null);
@@ -292,6 +293,22 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const loadHistoricalRun = useCallback(async (id: string) => {
+    setStarting(true);
+    setError(null);
+    try {
+      writeRunId(id);
+      const doc = await fetchRun(id);
+      applyRun(doc);
+      return id;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      setStarting(false);
+    }
+  }, [applyRun]);
+
   return (
     <RunContext.Provider
       value={{
@@ -305,6 +322,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         answerWeight,
         refresh,
         reset,
+        loadHistoricalRun,
       }}
     >
       {children}
