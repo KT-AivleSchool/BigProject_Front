@@ -5,11 +5,17 @@ import { Header } from "@/components/shell/Header";
 import { Footer } from "@/components/shell/Footer";
 
 import { ProgressSidebar } from "@/components/shell/ProgressSidebar";
+import { ScaleToFit } from "@/components/shell/ScaleToFit";
 
 export const metadata: Metadata = {
   title: "OmniSite — 갈등시설 입지 선정",
   description: "B2G 공간의사결정지원(SDSS). GIS 최적화 + 공청회 시뮬레이션.",
 };
+
+// 15" 기준(사용자 지정, 2026-08-12). `ScaleToFit` 참고 — 이보다 작은 화면(13" 등)
+// 에서만 비율을 유지한 채 줄어든다. 안쪽 레이아웃은 항상 이 크기로 그려진다.
+const BASE_WIDTH = 1512;
+const BASE_HEIGHT = 982;
 
 /**
  * 웹폰트를 안 쓴다.
@@ -21,18 +27,22 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ko" className="h-full antialiased">
-      <body className="h-full flex flex-col overflow-hidden">
-        <RunProvider>
-          <Header />
-          <div className="flex flex-1 relative min-h-0">
-            <main className="flex-1 flex flex-col min-w-0 min-h-0">
-              {children}
-            </main>
-            <ProgressSidebar />
+    <html lang="ko" className="antialiased">
+      <body>
+        <ScaleToFit baseWidth={BASE_WIDTH} baseHeight={BASE_HEIGHT}>
+          <div className="h-full flex flex-col overflow-hidden">
+            <RunProvider>
+              <Header />
+              <div className="flex flex-1 relative min-h-0">
+                <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
+                  {children}
+                </main>
+                <ProgressSidebar />
+              </div>
+              <Footer />
+            </RunProvider>
           </div>
-          <Footer />
-        </RunProvider>
+        </ScaleToFit>
       </body>
     </html>
   );

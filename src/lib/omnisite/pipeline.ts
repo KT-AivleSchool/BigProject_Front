@@ -32,9 +32,15 @@
  *      걸려 조용히 뒤집히고, `direction_source` 가 산출물에서 사라진다.
  *    - 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 잡고 있다.
  *
- * 🔴 **run 목록 API 도 없다.** 그래서 방금 만든 run_id 를 프런트가 직접
- *    기억해야 한다(`runStore.ts`). 서버가 유일한 진실인데 목록을 못 물어보므로,
- *    브라우저에 남은 id 는 항상 서버에 되물어 확인한 뒤 쓴다.
+ * 🔴 **run 목록 API 는 아직 없다.**(실측 2026-08-12: `GET /pipeline/runs?mine=true`
+ *    → **405 Method Not Allowed**. 없는 경로가 아니라 `POST /runs` 가 같은 경로를
+ *    점유해 **메서드에서** 막힌다 — 404 로 적으면 "없는 걸 만드는 문제" 로 읽히는데
+ *    실제로는 "있는 경로에 메서드를 더하는 문제" 다.)
+ *    그래서 방금 만든 run_id 를 프런트가 직접 기억해야 한다(`runStore.ts`).
+ *    서버가 유일한 진실인데 목록을 못 물어보므로, 브라우저에 남은 id 는 항상
+ *    서버에 되물어 확인한 뒤 쓴다.
+ *    아래 `fetchRuns` 는 **그 405 가 200 이 되는 날을 위해 미리 배선한 것**이고,
+ *    지금은 마이페이지가 실패를 화면에 그대로 띄운다(삼키지 않는다).
  */
 import { getJson, postJson, getText } from "./client";
 import { parseCsv } from "./csv";
@@ -54,6 +60,16 @@ import type {
 
 const BASE = "/api/v1/pipeline";
 
+export interface RunMeta {
+  run_id: string;
+  domain: string;
+  mode: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+  is_mine: boolean;
+}
+
 /**
  * 계약 2절 · 8절. `mode` 는 이 **셋**이다.
  *
@@ -61,7 +77,7 @@ const BASE = "/api/v1/pipeline";
  * - `hitl`    게이트A·B 에서 멈춘다. 화면 2 · 3 에서 답해야 이어진다.
  * - `full`    STEP0(프로파일링)부터 DB 적재까지 10칸. 업로드한 도메인 전용.
  *
- * 🔴 **`fixture`·`hitl` 은 `data_임시/<도메인>_FIX/` 픽스처를 요구한다.**
+ * 🔴 **`fixture`·`hitl` 은 `datasets/<도메인>_FIX/` 픽스처를 요구한다.**
  *    없으면 `POST /runs` 가 400 이다. 화면이 미리 막지 못하는 이유는
  *    `GET /upload/domains` 응답에 픽스처 유무가 없기 때문이다(실측 2026-08-10:
  *    `domain`·`law_files`·`data_files`·`has_audit_reviewed` 넷뿐). 그래서
@@ -96,6 +112,10 @@ export interface FullParams {
 export const TOPN_DEFAULT = 20;
 /** 계약 8-2 의 상한. 벗어나면 서버가 400. */
 export const TOPN_MAX = 200;
+
+export async function fetchRuns(mine: boolean = true): Promise<{ runs: RunMeta[] }> {
+  return getJson<{ runs: RunMeta[] }>(`${BASE}/runs?mine=${mine}`);
+}
 
 export async function createRun(
   domain: string,
@@ -211,10 +231,14 @@ export const loadScoreGrid = (run: RunDoc) =>
  * `reviewed.json` 에는 감리 AI 제안(`exclusion_type`)만 있고, S9 지목 배수 판정이
  * 그걸 뒤집은 결과는 여기에 있다.
  *
- * 🔴 GeoJSON 이지만 **좌표는 안 읽는다.** 화면 2b 가 쓰는 것은 `properties` 뿐이다.
- *    285KB 를 판정 표 하나 때문에 받는 셈인데, 백엔드에 속성만 담긴 산출물이
- *    따로 없으므로 있는 것을 쓴다. 별도 요약 산출물을 만들어 달라고 하면
- *    같은 값이 두 곳에 생기고 언젠가 갈린다.
+ * 🔴 **좌표도 읽는다**(2026-08-12 부터). 예전 주석은 "GeoJSON 이지만 좌표는 안 읽는다 —
+ *    화면 2b 가 쓰는 것은 `properties` 뿐이고 285KB 를 판정 표 하나 때문에 받는 셈"
+ *    이었다. 그때는 참이었다. 지금은 **화면 4 지도가 이 좌표로 배제 구역을 그린다**
+ *    (`GridMap` 3번 — 격자 사각형 근사를 대신한다).
+ *
+ *    그래서 "속성만 담긴 요약 산출물을 따로 만들자"는 예전 갈림길은 **닫혔다.**
+ *    좌표가 실제로 쓰이므로 통째로 받는 것이 낭비가 아니다.
+ *    실측(`r_20260812_007`): 285,174 bytes · 54ms · MultiPolygon 5장 · 링 491 · 점 6,253.
  */
 export const loadExclusion = (run: RunDoc) =>
   getJson<ExclusionDoc>(requireUrl(run, "exclusion"));

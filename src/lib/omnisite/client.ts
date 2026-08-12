@@ -79,9 +79,10 @@ async function readDetail(res: Response): Promise<{ detail: string; body: unknow
     //    `{message, domain, saved_to, files[]}` 를 통째로 넣고
     //    (`app/api/v1/upload.py:483-488`), `/simulations/hearings` 404 는
     //    `{code, message, run_id, domain, loaded, current}` 를 넣는다
-    //    (`simulations.py:_missing_run_detail`). 전엔 이 분기가 없어서 본문 전체가
-    //    300자에서 잘렸고, 하필 `message` 가 앞에 없으면 사유가 안 보였다.
-    //    두 엔드포인트 다 `message` 를 **항상** 채우기로 했으므로 그걸 쓴다.
+    //    (`simulations.py:_missing_run_detail`). 이 분기가 없으면 본문 전체가
+    //    300자에서 잘려 **날 JSON 이 화면에 그대로 뜬다**(2026-08-11 에 한 번
+    //    되돌려졌던 자리다). 두 엔드포인트 다 `message` 를 **항상** 채우기로
+    //    했으므로 그걸 쓴다.
     if (j.detail && typeof j.detail === "object") {
       const d = j.detail as { message?: unknown };
       if (typeof d.message === "string") return { detail: d.message, body: j };
@@ -96,6 +97,13 @@ async function readDetail(res: Response): Promise<{ detail: string; body: unknow
 
 import { getAuthToken } from "./auth";
 
+/**
+ * 🔴 **401 을 만나도 자동 재발급하지 않는다.** 백엔드는 RTR 이라 재발급이 실패하면
+ *    그 사용자의 **모든 세션이 지워진다**(`app/api/v1/auth.py:193-197`). 요청 경로에
+ *    숨겨두면 그 사고가 어느 클릭에서 났는지 화면에 안 남는다. 갱신은 사람이
+ *    헤더의 버튼으로만 한다(`SessionBadge` → `authSession.refreshAuth`).
+ *    여기서 `./auth` 의 재발급 함수를 부르면 순환 import 도 같이 생긴다.
+ */
 async function request(url: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try {
@@ -104,11 +112,11 @@ async function request(url: string, init?: RequestInit): Promise<Response> {
     if (token) {
       headers.set("Authorization", `Bearer ${token}`);
     }
-    
-    res = await fetch(url, { 
-      cache: "no-store", 
+
+    res = await fetch(url, {
+      cache: "no-store",
       ...init,
-      headers
+      headers,
     });
   } catch (e) {
     throw new NetworkError(url, e);
@@ -135,6 +143,22 @@ export async function postJson<T>(url: string, body: unknown): Promise<T> {
 }
 
 /**
+ * 텍스트 산출물(CSV).
+ *
+ * 🔴 `res.text()` 를 쓰되 **바이트에서 직접 디코딩**한다. 백엔드가 한때 `.gpkg`
+ *    바이너리를 `text/plain; charset=utf-8` 로 내보낸 적이 있다(2026-08-04 실측).
+ *    지금은 고쳐졌지만, 헤더를 믿고 `text()` 를 부르면 그런 사고가 조용히
+ *    깨진 문자열로 흘러든다. 인코딩은 우리가 정한다.
+ */
+export async function getText(url: string): Promise<string> {
+  const res = await request(url);
+  const buf = await res.arrayBuffer();
+  const text = new TextDecoder("utf-8").decode(buf);
+  // utf-8-sig BOM 제거 — pandas 가 `utf-8-sig` 로 쓴다.
+  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+}
+
+/**
  * multipart/form-data POST (업로드).
  *
  * 🔴 `Content-Type` 을 **직접 넣지 않는다.** FormData 를 주면 브라우저가
@@ -151,20 +175,4 @@ export async function postForm<T>(url: string, form: FormData): Promise<T> {
 export async function deleteJson<T>(url: string): Promise<T> {
   const res = await request(url, { method: "DELETE" });
   return (await res.json()) as T;
-}
-
-/**
- * 텍스트 산출물(CSV).
- *
- * 🔴 `res.text()` 를 쓰되 **바이트에서 직접 디코딩**한다. 백엔드가 한때 `.gpkg`
- *    바이너리를 `text/plain; charset=utf-8` 로 내보낸 적이 있다(2026-08-04 실측).
- *    지금은 고쳐졌지만, 헤더를 믿고 `text()` 를 부르면 그런 사고가 조용히
- *    깨진 문자열로 흘러든다. 인코딩은 우리가 정한다.
- */
-export async function getText(url: string): Promise<string> {
-  const res = await request(url);
-  const buf = await res.arrayBuffer();
-  const text = new TextDecoder("utf-8").decode(buf);
-  // utf-8-sig BOM 제거 — pandas 가 `utf-8-sig` 로 쓴다.
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
 }

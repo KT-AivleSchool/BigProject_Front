@@ -33,9 +33,7 @@ export interface SitePick {
   jibun: string;
 }
 
-export function readSitePick(): SitePick | null {
-  if (typeof window === "undefined") return null;
-  const raw = window.sessionStorage.getItem(KEY);
+function parse(raw: string | null): SitePick | null {
   if (!raw) return null;
   try {
     const v = JSON.parse(raw) as unknown;
@@ -54,12 +52,56 @@ export function readSitePick(): SitePick | null {
   }
 }
 
+/**
+ * 🔴 **파싱 결과를 원문 문자열로 캐시한다.** 값을 아끼려는 게 아니다 —
+ *    `readSitePick` 은 `useSyncExternalStore` 의 스냅샷으로 쓰이는데, 스냅샷이
+ *    부를 때마다 **새 객체**를 돌려주면 React 가 "바뀌었다"고 보고 무한히 다시
+ *    렌더한다(`JSON.parse` 는 매번 새 객체다). 원문이 같으면 **같은 객체**를
+ *    돌려주는 것이 그 계약이다.
+ */
+let cachedRaw: string | null = null;
+let cachedValue: SitePick | null = null;
+
+export function readSitePick(): SitePick | null {
+  if (typeof window === "undefined") return null;
+  const raw = window.sessionStorage.getItem(KEY);
+  if (raw !== cachedRaw) {
+    cachedRaw = raw;
+    cachedValue = parse(raw);
+  }
+  return cachedValue;
+}
+
+/**
+ * 값이 바뀌었음을 알린다. `useSyncExternalStore` 가 이 훅으로 다시 읽는다.
+ *
+ * ⚠ `storage` 이벤트는 듣지 않는다. sessionStorage 는 **탭마다 따로**라
+ *    다른 문서가 이 값을 바꿀 경로가 없다 — 듣는 시늉만 하면 "동기화된다"고
+ *    잘못 읽힌다. 바꾸는 곳은 아래 두 함수뿐이고 그때만 알린다.
+ */
+const listeners = new Set<() => void>();
+
+export function subscribeSitePick(onChange: () => void): () => void {
+  listeners.add(onChange);
+  return () => {
+    listeners.delete(onChange);
+  };
+}
+
+function emit(): void {
+  // 캐시를 따로 비우지 않는다 — 판정 기준이 **원문 문자열**이라 값이 바뀌면
+  // 다음 `getItem` 이 다른 문자열(또는 null)을 주고 그때 다시 판다.
+  for (const l of listeners) l();
+}
+
 export function writeSitePick(pick: SitePick): void {
   if (typeof window === "undefined") return;
   window.sessionStorage.setItem(KEY, JSON.stringify(pick));
+  emit();
 }
 
 export function clearSitePick(): void {
   if (typeof window === "undefined") return;
   window.sessionStorage.removeItem(KEY);
+  emit();
 }

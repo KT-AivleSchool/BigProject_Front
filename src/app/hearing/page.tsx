@@ -130,7 +130,6 @@ export default function Screen5Page() {
     if (!selected) return;
 
     const controller = new AbortController();
-    setUsedParcelId(selected.parcel_id);
 
     /**
      * 🔴 타임아웃을 **갈라 잡는다.** 첫 패킷까지 5분 / 그 뒤 침묵 1분.
@@ -183,7 +182,17 @@ export default function Screen5Page() {
           openWhenHidden: true,
           async onopen(response) {
             const ct = response.headers.get("content-type") ?? "";
-            if (response.ok && ct.includes("text/event-stream")) return;
+            if (response.ok && ct.includes("text/event-stream")) {
+              /**
+               * 🔴 「넘겼다」를 **여기서** 적는다. 예전엔 effect 본문에서 요청을 보내기
+               *    전에 적었는데, 그러면 스트림이 안 열려도(400·JSON 에러) 화면에는
+               *    「이 필지로 돌렸다」가 남는다 — 그 필지로는 한 마디도 안 나왔다.
+               *    effect 본문의 동기 setState 라 `react-hooks/set-state-in-effect`
+               *    에도 걸렸고, 규칙이 받아주는 자리(콜백)가 마침 **더 정확한 자리**다.
+               */
+              setUsedParcelId(selected.parcel_id);
+              return;
+            }
             if (ct.includes("application/json")) {
               const errorData = await response.json();
               throw new Error(

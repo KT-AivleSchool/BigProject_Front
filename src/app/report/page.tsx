@@ -41,7 +41,7 @@
  *
  * ⚠ 이 배치는 **임시**다. 최종 PDF 세부 양식은 동현님 작업분이다.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { Download, Printer } from "lucide-react";
 
@@ -53,6 +53,7 @@ import { loadCleanReport, loadReport, loadReviewed, loadTopN } from "@/lib/omnis
 import { areaM2, datetime, fixed, int, km2, percent } from "@/lib/omnisite/format";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
+import { useHydrated } from "@/lib/omnisite/useHydrated";
 import {
   readHearingA,
   readHearingB,
@@ -158,15 +159,24 @@ export default function Screen6Page() {
   const reviewed = useArtifact<ReviewedDoc>("reviewed", loadReviewed);
 
   /**
-   * 🔴 렌더 중에 `sessionStorage` 를 읽지 않는다 — 서버 프리렌더엔 없어서
-   *    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다. 세 값을 **한 state 로**
-   *    묶은 이유는 하나다: 셋을 따로 두면 첫 프레임에 「토론 없음」·「위치 없음」이
-   *    각각 한 번씩 깜빡인다.
+   * 🔴 렌더 중에 `sessionStorage` 를 읽지 않는다 — 서버 프리렌더엔 없어서 하이드레이션
+   *    첫 판에 읽으면 서버가 그린 것과 달라진다. 예전엔 마운트 `useEffect` 에서
+   *    `setSide(...)` 로 했는데 그건 **effect 안의 동기 setState** 라
+   *    `react-hooks/set-state-in-effect` 가 잡는다. 지금은 값이 아니라 **시점**만
+   *    구독하고(`useHydrated`) 읽기는 렌더 중에 한다.
+   *
+   *    셋을 **한 판정으로** 묶는 이유는 그대로다: 따로 두면 첫 프레임에
+   *    「토론 없음」·「위치 없음」이 각각 한 번씩 깜빡인다. `useHydrated` 는 셋이
+   *    같은 순간에 뒤집히는 걸 보장한다 — 옛 `side !== null` 과 뜻이 같다.
+   *
+   *    `pick` 만 `sitePick.ts` 로 값 구독을 할 수도 있지만 안 한다. 화면 6 은 읽기
+   *    전용 문서라 머무는 동안 값이 바뀌지 않고, 한쪽만 구독하면 위의 「한 판정」이
+   *    깨진다.
    */
-  const [side, setSide] = useState<SessionSide | null>(null);
-  useEffect(() => {
-    setSide({ pick: readSitePick(), a: readHearingA(), b: readHearingB() });
-  }, []);
+  const hydrated = useHydrated();
+  const side: SessionSide | null = hydrated
+    ? { pick: readSitePick(), a: readHearingA(), b: readHearingB() }
+    : null;
 
   /**
    * 🔴 **토론 결과의 본선은 서버다**(2026-08-11 경로가 열렸다). 위 `side` 는 이제
