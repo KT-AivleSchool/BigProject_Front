@@ -25,6 +25,7 @@ import {
   MODE_FIXTURE,
   submitAuditGate,
   submitWeightGate,
+  cancelRun,
 } from "./pipeline";
 import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
@@ -145,7 +146,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
       if (!id) return;
       try {
         const doc = await fetchRun(id);
-        if (!cancelled) applyRun(doc);
+        if (!cancelled && readRunId() === id) applyRun(doc);
       } catch (e: unknown) {
         if (cancelled) return;
         // 404 는 "서버에서 사라진 run" 이다. 조용히 넘기지 않고 알린 뒤 지운다.
@@ -251,17 +252,44 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     const id = run?.run_id ?? readRunId();
     if (!id) return;
     try {
-      applyRun(await fetchRun(id));
-      setError(null);
+      const doc = await fetchRun(id);
+      if (readRunId() === id) {
+        applyRun(doc);
+        setError(null);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (readRunId() === id) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   }, [run?.run_id, applyRun]);
 
   const reset = useCallback(() => {
+    const id = readRunId();
+    if (id) {
+      // 백엔드의 실행도 명시적으로 취소하여 409 Conflict(좀비 런 부활) 방지
+      cancelRun(id).catch(console.error);
+    }
+
     clearRunId();
     setRun(null);
     setError(null);
+    
+    // 진행 중이던 데이터를 모두 초기화하기 위해 관련 캐시도 모두 삭제
+    if (typeof window !== "undefined") {
+      const keys = Object.keys(window.localStorage);
+      for (const k of keys) {
+        if (k.startsWith("omnisite_gate_") || k.startsWith("unlocked_weight_") || k.startsWith("highest_nav_")) {
+          window.localStorage.removeItem(k);
+        }
+      }
+      const sKeys = Object.keys(window.sessionStorage);
+      for (const k of sKeys) {
+        if (k.startsWith("audit_step_")) {
+          window.sessionStorage.removeItem(k);
+        }
+      }
+    }
   }, []);
 
   return (

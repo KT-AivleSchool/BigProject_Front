@@ -139,6 +139,13 @@ export function fetchRun(runId: string): Promise<RunDoc> {
   return getJson<RunDoc>(`${BASE}/runs/${encodeURIComponent(runId)}`);
 }
 
+export async function cancelRun(runId: string): Promise<void> {
+  const res = await fetch(`${BASE}/runs/${runId}`, { method: "DELETE" });
+  if (!res.ok) {
+    console.warn(`cancelRun failed: ${res.status}`);
+  }
+}
+
 /**
  * 실행 로그(`run.log`). 백엔드 커밋 `836455e`.
  *

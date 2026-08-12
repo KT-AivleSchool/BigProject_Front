@@ -166,27 +166,8 @@ export function WeightGate({
       error={error}
       onSubmit={() => void onSubmit()}
       submitLabel="가중치 확정 및 계산하기"
-      lead={
-        <p className="text-[13px] text-gray-600">제안값을 검토하시고, 필요에 따라 슬라이더를 조정하여 최종 확정해 주세요.</p>
-      }
+      hideTitle={true}
     >
-      {/* ── 슬라이더 읽는 법 ───────────────────────────────
-          카드마다 되풀이하면 여섯 번 읽어야 한다. 규칙은 전 지표 공통이므로
-          맨 위에 한 번만 둔다. */}
-      <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-5 shadow-sm">
-        <h4 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">가중치 슬라이더 조작 안내</h4>
-        <div className="grid gap-x-8 gap-y-3 text-[13px] sm:grid-cols-3">
-          <Legend tone="cost" head="−1 ~ 0 미만 (부정적 영향)">
-            해당 지표가 높을수록 <b>최종 점수(설치 적합도·수요 등)가 낮아지도록</b> 반영합니다.
-          </Legend>
-          <Legend tone="zero" head="0 (지표 제외)">
-            해당 지표를 분석에서 완전히 <b>제외</b>합니다.
-          </Legend>
-          <Legend tone="benefit" head="0 초과 ~ +1 (긍정적 영향)">
-            해당 지표가 높을수록 <b>최종 점수(설치 적합도·수요 등)가 높아지도록</b> 반영합니다.
-          </Legend>
-        </div>
-      </div>
 
       {/* ── 요약 띠 ──────────────────────────────────────── */}
       {(sum === 0 || missingRadius.length > 0) && (
@@ -280,91 +261,69 @@ function WeightCard({
 }) {
   const v = slider ?? 0;
   const cost = v < 0;
-  const [isExpanded, setIsExpanded] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
 
   return (
     <QuestionCard
       id={String(index).padStart(2, "0")}
       confirmed={!!acked}
       warn={!!q.conflict}
-      isEditing={isExpanded}
-      onConfirm={
-        isExpanded
-          ? () => { onAck(true); setIsExpanded(false); }
-          : (acked ? () => {} : () => setIsExpanded(true))
-      }
-      onReject={
-        isExpanded
-          ? () => setIsExpanded(false)
-          : (acked ? () => setIsExpanded(true) : undefined)
-      }
-      confirmLabel={isExpanded ? "적용" : (acked ? "승인됨" : "설정 열기")}
-      rejectLabel={isExpanded ? "닫기" : "수정"}
       title={
-        <div 
-          className={`flex flex-col ${!isExpanded ? "cursor-pointer group py-1" : "gap-2"}`}
-          onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
-        >
+        <div className="flex flex-col gap-2">
           <div className="flex items-center flex-wrap gap-2">
-            <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+            <span className="leading-snug">
               {name}
             </span>
-            {!isExpanded && acked && (
-              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                W: {signed(v)} {q.radius_required && `| R: ${radius}m`}
-              </span>
-            )}
           </div>
-          {isExpanded && (
-            <div className="flex flex-wrap gap-2 font-sans tracking-normal mt-1">
-              <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-100/80 shadow-sm">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-                AI 추천 가중치 : {typeof q.slider_proposed === "number" ? (q.slider_proposed > 0 ? `+${q.slider_proposed.toFixed(2)}` : q.slider_proposed.toFixed(2)) : "없음"}
-              </span>
-              {q.radius_required && (
-                <span className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-2 py-1 text-[11px] font-bold text-blue-600 border border-blue-100/80 shadow-sm">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/></svg>
-                  AI 추천 반경 : {typeof q.radius_proposed === "number" ? `${q.radius_proposed}m` : "없음"}
-                </span>
-              )}
-            </div>
-          )}
         </div>
       }
     >
-      {isExpanded && (
-        <div className="mt-3 sm:mt-0 flex flex-col gap-4">
-          <div className="text-[11.5px] leading-snug bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 flex gap-2">
-            <span className="text-blue-500 mt-0.5 text-[13px]">💡</span>
-            <div>
-              {(q.rationale || q.radius_rationale) && (
-                <div className="mb-1.5 space-y-0.5">
-                  {q.rationale && (
-                    <p>
-                      <b className="font-semibold text-blue-700/90 mr-1.5">AI 분석</b>
-                      <span className="text-gray-700">{polite(q.rationale)}</span>
-                    </p>
-                  )}
-                  {q.radius_rationale && (
-                    <p>
-                      <b className="font-semibold text-blue-700/90 mr-1.5">반경 근거</b>
-                      <span className="text-gray-700">{polite(q.radius_rationale)}</span>
-                    </p>
-                  )}
-                </div>
+      <button 
+        type="button"
+        onClick={() => setShowHelp(!showHelp)}
+        className="absolute top-3 right-3 text-gray-400 hover:text-blue-500 transition-colors bg-white rounded-full p-1 z-10"
+        title="AI 추천 및 분석 보기"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
+
+      <div className="mt-3 sm:mt-0 flex flex-col gap-4 pr-8">
+        {showHelp && (
+          <div className="text-[11.5px] leading-snug bg-blue-50/50 px-4 py-3 rounded-xl border border-blue-100 flex flex-col gap-2.5 animate-in fade-in zoom-in-95">
+            <div className="flex flex-wrap gap-4 text-[12px]">
+              <span className="font-bold text-blue-700">
+                AI 추천 중요도: {typeof q.slider_proposed === "number" ? (q.slider_proposed > 0 ? `+${q.slider_proposed.toFixed(2)}` : q.slider_proposed.toFixed(2)) : "없음"}
+              </span>
+              {q.radius_required && (
+                <span className="font-bold text-blue-700">
+                  AI 추천 면적: {typeof q.radius_proposed === "number" ? `${q.radius_proposed}m` : "없음"}
+                </span>
               )}
-              <ul className="ml-3 list-disc space-y-0.5 text-gray-500">
-                <li><b>가중치</b>: 양수(+)면 수요를 높이는 요인, 음수(-)면 낮추는 요인입니다. ±1에 가까울수록 영향력이 큽니다.</li>
-                {q.radius_required && <li><b>집계 반경</b>: 이 시설의 영향이 미치는 실제 유효 거리(m)를 입력해 주세요.</li>}
-              </ul>
             </div>
+            {(q.rationale || q.radius_rationale) && (
+              <div className="space-y-1">
+                {q.rationale && (
+                  <p>
+                    <b className="font-semibold text-blue-800 mr-1.5">분석:</b>
+                    <span className="text-gray-700">{polite(q.rationale)}</span>
+                  </p>
+                )}
+                {q.radius_rationale && (
+                  <p>
+                    <b className="font-semibold text-blue-800 mr-1.5">면적 근거:</b>
+                    <span className="text-gray-700">{polite(q.radius_rationale)}</span>
+                  </p>
+                )}
+              </div>
+            )}
           </div>
+        )}
 
           <div className="flex flex-wrap items-end gap-x-6 gap-y-3 rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3">
-            {/* [R] 집계 반경 */}
+            {/* [R] 면적 */}
             <div className="shrink-0">
               <label className="block text-[12px] font-bold text-gray-700 mb-1.5" htmlFor={`r-${q.indicator_id}`}>
-                집계 반경
+                면적
               </label>
               {q.radius_required ? (
                 <div className="flex items-center gap-3">
@@ -394,7 +353,7 @@ function WeightCard({
             {/* [W] 가중치 슬라이더 */}
             <div className="min-w-[320px] flex-1">
               <div className="flex items-end justify-between gap-2 mb-2">
-                <span className="text-[12px] font-bold text-gray-700">가중치 (중요도)</span>
+                <span className="text-[12px] font-bold text-gray-700">중요도</span>
                 <span className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-md shadow-sm border border-gray-100">
                   <b
                     className={`font-mono text-[16px] leading-none tracking-tight ${
@@ -436,7 +395,6 @@ function WeightCard({
             </div>
           )}
         </div>
-      )}
     </QuestionCard>
   );
 }

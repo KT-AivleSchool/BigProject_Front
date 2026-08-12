@@ -65,6 +65,15 @@ export function ProgressSidebar() {
 }
 
 function SidebarContent({ run, baseline, runningElapsedSec, refresh }: { run: RunDoc, baseline: any, runningElapsedSec: number, refresh: () => void }) {
+  const [tick, setTick] = useState(0);
+
+  useEffect(() => {
+    if (run.status === "awaiting_hitl") {
+      const interval = setInterval(() => setTick((t) => t + 1), 500);
+      return () => clearInterval(interval);
+    }
+  }, [run.status]);
+
   const p = computeProgress(run, baseline, runningElapsedSec);
   const live = run.status === "queued" || run.status === "running";
 
@@ -98,7 +107,7 @@ function SidebarContent({ run, baseline, runningElapsedSec, refresh }: { run: Ru
         </div>
         
         <div className="mt-1 flex items-center justify-between">
-          <span className="text-xs font-bold text-gray-800">{statusLabel(run.status)}</span>
+          <span className="text-xs font-bold text-gray-800">{statusLabel(run)}</span>
           <span className="text-lg font-black text-gray-900 tracking-tight">{p.ratio === null ? "—%" : percent(p.ratio, 0)}</span>
         </div>
         
@@ -177,19 +186,8 @@ function GateBlock({ run, onRefresh }: { run: RunDoc; onRefresh: () => void }) {
       }`}>
         {isOnTargetScreen 
           ? "다음 단계로 파이프라인을 진행하기 앞서, AI가 도출한 중간 결과에 대해 담당자의 최종 확인 및 승인이 필요하여 분석이 일시 정지되었습니다."
-          : `현재 파이프라인은 다음 단계인 '${target?.name || "알 수 없음"}'의 사용자 확인(HITL)을 위해 일시 정지되어 있습니다. 현재 보고 계신 화면의 작업을 충분히 마친 후 이동해 주세요.`}
+          : `파이프라인이 정상적으로 일시 정지되었습니다! 오류가 아니니 안심하세요. 현재 단계의 상세 결과를 충분히 검토하신 후, 화면 안내에 따라 다음 단계로 넘어가시면 됩니다.`}
       </p>
-
-      {target ? (
-        !isOnTargetScreen && (
-          <Link href={target.path} className="flex items-center justify-between w-full px-4 py-2.5 rounded-lg text-xs font-bold transition-colors shadow-sm bg-indigo-500 text-white hover:bg-indigo-600">
-            <span>{gate?.id === "audit" ? "1차 분석 결과 확인하기" : `${target.name} 단계로 이동하기`}</span>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </Link>
-        )
-      ) : (
-        <p className="text-[11px] text-red-600">게이트 정보를 찾을 수 없습니다.</p>
-      )}
     </div>
   );
 }
@@ -217,14 +215,18 @@ function StepRow({ step, baselineSec }: { step: RunStep; baselineSec: number | n
 }
 
 
-function statusLabel(s: string): string {
+function statusLabel(run: RunDoc): string {
+  if (run.status === "awaiting_hitl" && run.gate) {
+    if (run.gate.id === "audit") return "감리 확인 진행 중";
+    if (run.gate.id === "weight") return "가중치 설정 진행 중";
+  }
   return {
     queued: "대기 중",
-    running: "분석 진행 중",
+    running: "데이터 처리 중",
     awaiting_hitl: "일시 정지됨",
     succeeded: "분석 완료",
     failed: "분석 실패",
-  }[s] ?? s;
+  }[run.status] ?? run.status;
 }
 
 function ToggleButton({ isOpen, onClick, run }: { isOpen: boolean; onClick: () => void; run: RunDoc | null }) {

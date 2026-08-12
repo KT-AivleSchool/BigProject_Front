@@ -57,7 +57,7 @@ interface IntentState {
 const emptyIntent = (): IntentState => ({
   choice: null,
   weight: "",
-  radiusMode: "skip",
+  radiusMode: "value",
   radiusValue: "",
 });
 
@@ -75,13 +75,15 @@ export function AuditGate({
   runId,
   submitRef,
   onReadyChange,
-  onProgressChange
+  onProgressChange,
+  readOnly,
 }: { 
   gate: RunGate; 
   runId: string;
   submitRef: React.MutableRefObject<(() => Promise<boolean | void>) | null>;
   onReadyChange: (ready: boolean) => void;
   onProgressChange?: (confirmed: number, total: number) => void;
+  readOnly?: boolean;
 }) {
   const { answerAudit } = useRun();
 
@@ -165,8 +167,8 @@ export function AuditGate({
     const outEx: AuditAnswerExclusion[] = [];
     for (const q of exclusions) {
       if (!q.editable) continue;
-      const s = ex[exKey(q)];
-      if (!s || s.mode === "skip") {
+      const s = ex[exKey(q)] || { mode: "value", value: String(q.proposed_m ?? q.radius_m ?? "") };
+      if (s.mode === "skip") {
         unanswered.push(`${q.dataset_id} (배제 반경 — ${q.facility_type ?? "시설 미상"})`);
         continue;
       }
@@ -233,8 +235,8 @@ export function AuditGate({
     const outPf: AuditAnswerCodePrefix[] = [];
     for (const q of prefixes) {
       if (!q.editable) continue;
-      const s = pf[pfKey(q)];
-      if (!s || !s.confirm) continue;
+      const s = pf[pfKey(q)] || { confirm: true, value: q.suggestion ?? q.prefix };
+      if (!s.confirm) continue;
       if (!s.value.trim())
         return `[${q.dataset_id}] 지역 코드가 비어 있습니다.`;
       outPf.push({
@@ -319,9 +321,10 @@ export function AuditGate({
         )}
 
         {exclusions.map((q) => {
-          const defaultState: ExclusionState = !q.editable
-            ? { mode: "value", value: String(q.proposed_m ?? q.radius_m ?? "") }
-            : { mode: "none", value: "" };
+          const defaultState: ExclusionState = {
+            mode: "value",
+            value: String(q.proposed_m ?? q.radius_m ?? "")
+          };
           return (
             <ExclusionCard
               key={exKey(q)}
@@ -332,6 +335,7 @@ export function AuditGate({
               onConfirm={(val) =>
                 setConfirmed((p) => ({ ...p, [q.dataset_id]: val }))
               }
+              readOnly={readOnly}
             />
           );
         })}
@@ -347,6 +351,7 @@ export function AuditGate({
               onConfirm={(val) =>
                 setConfirmed((p) => ({ ...p, [q.dataset_id]: val }))
               }
+              readOnly={readOnly}
             />
           );
         })}
@@ -366,6 +371,7 @@ export function AuditGate({
             onConfirm={(val) =>
               setConfirmed((p) => ({ ...p, [q.dataset_id]: val }))
             }
+            readOnly={readOnly}
           />
         ))}
 
@@ -381,12 +387,14 @@ function ExclusionCard({
   onChange,
   confirmed,
   onConfirm,
+  readOnly,
 }: {
   q: GateExclusionQuestion;
   state: ExclusionState;
   onChange: (s: ExclusionState) => void;
   confirmed: boolean;
   onConfirm: (val: boolean) => void;
+  readOnly?: boolean;
 }) {
   const suspect = q.evidence_matches_facility === false;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -397,7 +405,8 @@ function ExclusionCard({
       warn={suspect}
       confirmed={confirmed}
       isEditing={isExpanded}
-      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+      readOnly={readOnly}
+      onClick={(!isExpanded || readOnly) ? () => setIsExpanded((prev) => !prev) : undefined}
       onConfirm={
         isExpanded
           ? () => { onConfirm(true); setIsExpanded(false); }
@@ -405,19 +414,11 @@ function ExclusionCard({
       }
       confirmLabel={isExpanded ? "적용" : (confirmed ? "승인됨" : "승인")}
       title={
-        <div 
-          className={`flex flex-col ${!isExpanded ? "group py-1" : "gap-2"}`}
-        >
+        <div className="flex flex-col gap-2 py-1">
           <div className="flex items-center flex-wrap gap-2">
-            <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+            <span className="leading-snug">
               {q.facility_type ?? "(시설 미상)"}
             </span>
-            {!isExpanded && confirmed && (
-              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                {state.mode === "skip" ? "건너뜀" : state.mode === "none" ? "반경 없음" : `반경: ${state.value}m`}
-              </span>
-            )}
-
           </div>
         </div>
       }
@@ -445,15 +446,23 @@ function ExclusionCard({
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
+            <div className="flex flex-col gap-1">
+              <Radio
+                name={`ex-${q.dataset_id}`}
+                checked={state.mode === "none"}
+                onChange={() => onChange({ ...state, mode: "none" })}
+                label="반경 없음 (면적 배제로 확정)"
+                title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
+                disabled={readOnly}
+              />
+              {state.mode === "none" && (
+                <span className="text-xs text-orange-600 ml-6">
+                  ⚠️ 점(Point) 데이터일 경우 '반경 없음'을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
+                </span>
+              )}
+            </div>
             <Radio
-              name={`ex-${exKey(q)}`}
-              checked={state.mode === "none"}
-              onChange={() => onChange({ ...state, mode: "none" })}
-              label="반경 없음 (면적 배제로 확정)"
-              title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
-            />
-            <Radio
-              name={`ex-${exKey(q)}`}
+              name={`ex-${q.dataset_id}`}
               checked={state.mode === "value"}
               onChange={() =>
                 onChange({
@@ -462,6 +471,7 @@ function ExclusionCard({
                 })
               }
               label="반경 직접 지정"
+              disabled={readOnly}
             />
             <label
               className={`flex items-center gap-2 transition-opacity ${state.mode === "value" ? "opacity-100" : "opacity-40 pointer-events-none"}`}
@@ -475,16 +485,12 @@ function ExclusionCard({
                 onChange={(e) =>
                   onChange({ mode: "value", value: e.target.value })
                 }
+                disabled={readOnly}
                 className="w-20 px-2 py-1 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
               />
               <span className="text-gray-500 font-medium">m <span className="text-xs font-normal text-gray-400">(1~5000)</span></span>
             </label>
           </div>
-          {state.mode === "skip" && (
-            <p className="w-full text-xs text-rose-700 mt-2 px-1">
-              아직 <strong>미확정</strong>입니다. 이대로 제출하면 다음 단계(정제)에서 실행이 중단됩니다.
-            </p>
-          )}
         </div>
       )}
     </QuestionCard>
@@ -497,12 +503,14 @@ function IntentCard({
   onChange,
   confirmed,
   onConfirm,
+  readOnly,
 }: {
   q: GateIntentQuestion;
   state: IntentState;
   onChange: (s: IntentState) => void;
   confirmed: boolean;
   onConfirm: (val: boolean) => void;
+  readOnly?: boolean;
 }) {
   const picked = q.choices.find((c) => c.value === state.choice) ?? null;
   const [isExpanded, setIsExpanded] = useState(false);
@@ -512,7 +520,8 @@ function IntentCard({
       id={q.dataset_id}
       confirmed={confirmed}
       isEditing={isExpanded}
-      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+      readOnly={readOnly}
+      onClick={(!isExpanded || readOnly) ? () => setIsExpanded((prev) => !prev) : undefined}
       onConfirm={
         isExpanded
           ? () => { onConfirm(true); setIsExpanded(false); }
@@ -520,21 +529,11 @@ function IntentCard({
       }
       confirmLabel={isExpanded ? "적용" : (confirmed ? "승인됨" : "승인")}
       title={
-        <div 
-          className={`flex flex-col ${!isExpanded ? "group py-1" : "gap-2"}`}
-        >
+        <div className="flex flex-col gap-2 py-1">
           <div className="flex items-center flex-wrap gap-2">
-            <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
+            <span className="leading-snug">
               데이터 용도
             </span>
-            {!isExpanded && confirmed && (
-              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                {picked ? picked.label : "건너뜀"}
-                {picked?.needs_weight && state.weight ? ` (W: ${state.weight})` : ""}
-                {picked?.needs_radius && state.radiusMode === 'value' ? ` (R: ${state.radiusValue}m)` : ""}
-              </span>
-            )}
-
           </div>
         </div>
       }
@@ -610,19 +609,29 @@ function IntentCard({
                     onChange={() => onChange({ ...state, radiusMode: "skip" })}
                     label="미확정 유지 (건너뜀)"
                     title="반경을 정하지 않습니다. 이후 단계에서 실행이 멈춥니다."
+                    disabled={readOnly}
                   />
-                  <Radio
-                    name={`itr-${q.dataset_id}`}
-                    checked={state.radiusMode === "none"}
-                    onChange={() => onChange({ ...state, radiusMode: "none" })}
-                    label="반경 없음 (면적 배제로 확정)"
-                    title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
-                  />
+                  <div className="flex flex-col gap-1">
+                    <Radio
+                      name={`itr-${q.dataset_id}`}
+                      checked={state.radiusMode === "none"}
+                      onChange={() => onChange({ ...state, radiusMode: "none" })}
+                      label="반경 없음 (면적 배제로 확정)"
+                      title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
+                      disabled={readOnly}
+                    />
+                    {state.radiusMode === "none" && (
+                      <span className="text-xs text-orange-600 ml-6">
+                        ⚠️ 점(Point) 데이터일 경우 '반경 없음'을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
+                      </span>
+                    )}
+                  </div>
                   <Radio
                     name={`itr-${q.dataset_id}`}
                     checked={state.radiusMode === "value"}
                     onChange={() => onChange({ ...state, radiusMode: "value" })}
                     label="반경 직접 지정"
+                    disabled={readOnly}
                   />
                   <label
                     className={`flex items-center gap-2 transition-opacity ${state.radiusMode === "value" ? "opacity-100" : "opacity-40 pointer-events-none"}`}
@@ -636,6 +645,7 @@ function IntentCard({
                       onChange={(e) =>
                         onChange({ ...state, radiusMode: "value", radiusValue: e.target.value })
                       }
+                      disabled={readOnly}
                       className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                     />
                     <span className="text-gray-500 font-medium">
@@ -664,12 +674,14 @@ function PrefixCard({
   onChange,
   confirmed,
   onConfirm,
+  readOnly,
 }: {
   q: GateCodePrefixQuestion;
   state: PrefixState;
   onChange: (s: PrefixState) => void;
   confirmed: boolean;
   onConfirm: (val: boolean) => void;
+  readOnly?: boolean;
 }) {
   const [isExpanded, setIsExpanded] = useState(false);
 
@@ -679,7 +691,8 @@ function PrefixCard({
       warn={q.recheck_skipped}
       confirmed={confirmed}
       isEditing={isExpanded}
-      onClick={!isExpanded ? () => setIsExpanded(true) : undefined}
+      readOnly={readOnly}
+      onClick={(!isExpanded || readOnly) ? () => setIsExpanded((prev) => !prev) : undefined}
       onConfirm={
         isExpanded
           ? () => { 
@@ -698,12 +711,6 @@ function PrefixCard({
             <span className={`leading-snug ${!isExpanded ? "group-hover:text-blue-600 transition-colors" : ""}`}>
               지역 코드 접두어 — {q.col ?? "(대상 열 미확인)"}
             </span>
-            {!isExpanded && confirmed && (
-              <span className="text-[11px] font-medium text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
-                코드: {state.value || "—"}
-              </span>
-            )}
-
           </div>
         </div>
       }
@@ -745,6 +752,7 @@ function PrefixCard({
                 value={state.value}
                 onChange={(e) => onChange({ ...state, value: e.target.value })}
                 placeholder="예) 11170"
+                disabled={readOnly}
                 className="w-24 px-2 py-1.5 rounded-md border border-gray-300 text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-500 outline-none transition-all shadow-sm font-bold text-gray-900"
               />
             </label>
@@ -761,20 +769,22 @@ function Radio({
   onChange,
   label,
   title,
+  disabled,
 }: {
   name: string;
   checked: boolean;
   onChange: () => void;
   label: string;
   title?: string;
+  disabled?: boolean;
 }) {
   return (
     <label
-      className="flex items-center gap-2 cursor-pointer group"
+      className={`flex items-center gap-2 group ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}`}
       title={title}
     >
       <div
-        className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${checked ? "border-blue-500 bg-blue-500" : "border-gray-300 group-hover:border-blue-400 bg-white"}`}
+        className={`w-4 h-4 rounded-full border flex items-center justify-center transition-colors ${checked ? "border-blue-500 bg-blue-500" : `border-gray-300 bg-white ${!disabled && "group-hover:border-blue-400"}`}`}
       >
         {checked && <div className="w-1.5 h-1.5 bg-white rounded-full" />}
       </div>
@@ -783,6 +793,7 @@ function Radio({
         name={name}
         checked={checked}
         onChange={onChange}
+        disabled={disabled}
         className="sr-only"
       />
       <span
