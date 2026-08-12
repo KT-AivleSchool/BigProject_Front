@@ -49,6 +49,7 @@ export function Header() {
   const hearingDone = hearing.done;
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 서버 렌더링 불일치를 막기 위해 마운트 시 localStorage에서 읽어옵니다.
     setUser(getAuthUser());
 
     const checkUnlock = () => {

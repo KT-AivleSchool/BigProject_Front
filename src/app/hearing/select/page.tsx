@@ -85,9 +85,33 @@ export default function HearingSelectPage() {
   // 🔴 렌더 중에 sessionStorage 를 읽지 않는다 — 서버 프리렌더엔 없어서
   //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다.
   useEffect(() => {
-    setPick(readSitePick());
-    setDone({ A: readHearingA() !== null, B: readHearingB() !== null });
-  }, []);
+    const currentPick = readSitePick();
+    setPick(currentPick);
+    
+    const resA = readHearingA();
+    const resB = readHearingB();
+    
+    // 현재 고른 위치(currentPick)에 대해 이미 진행된 토론이 있는지 판별
+    let matchA = false;
+    let matchB = false;
+    
+    if (currentPick) {
+      if (resB && resB.scope.pnu === currentPick.pnu) matchB = true;
+      // A 엔진은 pnu나 runId를 모른다. 기록이 있으면 현재 위치의 토론이라고 가정한다.
+      if (resA) matchA = true;
+    }
+
+    // 이미 진행한 토론이 있다면 해당 결과 화면으로 바로 넘긴다
+    if (matchB) {
+      router.replace("/dynamic-hearing");
+      return;
+    } else if (matchA) {
+      router.replace("/hearing");
+      return;
+    }
+
+    setDone({ A: resA !== null, B: resB !== null });
+  }, [router]);
 
   return (
     <PageBody>

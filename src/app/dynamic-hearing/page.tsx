@@ -871,7 +871,7 @@ export default function DynamicHearingPage() {
       </div>
 
       {/* 바닥 내비게이션 바 */}
-      <div className="mt-6 flex shrink-0 items-center justify-between rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-sm">
+      <div className="mt-6 mb-8 flex shrink-0 items-center justify-between rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-sm">
         <Link
           href="/sites"
           className="rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-bold text-gray-500 transition-colors hover:bg-gray-50"
@@ -883,21 +883,13 @@ export default function DynamicHearingPage() {
         </Link>
         <Link
           href="/report"
-          className="rounded-xl bg-blue-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-200 transition-colors hover:bg-blue-700"
+          className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
         >
           <div className="flex items-center gap-2">
-            다음 단계 확인 &gt;
+            갈등 예측 완료, 보고서로 넘어가기 &gt;
           </div>
         </Link>
       </div>
-      <SourceNote
-        files={[
-          "GET /api/v1/simulations/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
-          "audit_result_reviewed.json (시설·지역 · 조례 근거문장)",
-          "POST /api/v1/stakeholders/generate",
-          "POST /api/v1/stakeholders/dynamic/discuss/stream (SSE)",
-        ]}
-      />
     </PageBody>
   );
 }
