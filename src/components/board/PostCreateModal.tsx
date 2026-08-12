@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { createPost } from "@/lib/omnisite/posts";
+import { describeFailure, isUnauthorized } from "@/lib/omnisite/client";
 
 interface PostCreateModalProps {
   isOpen: boolean;
@@ -51,12 +52,11 @@ export function PostCreateModal({ isOpen, onClose, onSuccess }: PostCreateModalP
       setFile(null);
       onSuccess();
       onClose();
-    } catch (err: any) {
-      if (err.message === "UNAUTHORIZED") {
-        setError("로그인이 필요합니다.");
-      } else {
-        setError(err.message || "작성에 실패했습니다.");
-      }
+    } catch (err) {
+      // 🔴 `err.message === "UNAUTHORIZED"` 라는 **문자열 신호**를 없앴다 — 서버가
+      //    본문에 같은 낱말을 담으면 구분이 안 되고, 403·404·500 은 아예 갈 자리가 없다.
+      //    판정은 상태코드로 한다(`client.ts:isUnauthorized`).
+      setError(isUnauthorized(err) ? "로그인이 필요합니다." : describeFailure(err));
     } finally {
       setLoading(false);
     }

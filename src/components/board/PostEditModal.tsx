@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState } from "react";
 import { fetchPostDetail, updatePost } from "@/lib/omnisite/posts";
+import { describeFailure, isUnauthorized } from "@/lib/omnisite/client";
 
 interface PostEditModalProps {
   postId: number | null;
@@ -20,26 +21,32 @@ export function PostEditModal({ postId, isOpen, onClose, onSuccess }: PostEditMo
   const [initialLoading, setInitialLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (isOpen && postId) {
-      setInitialLoading(true);
-      setError(null);
-      setFile(null);
-      setRemoveFile(false);
-
-      fetchPostDetail(postId)
-        .then((data) => {
-          setTitle(data.title);
-          setContent(data.content);
-          setExistingFileName(data.original_filename || null);
-        })
-        .catch((err) => {
-          setError(err.message || "게시글 정보를 불러올 수 없습니다.");
-        })
-        .finally(() => {
-          setInitialLoading(false);
-        });
+  /**
+   * 🔴 `useEffect` 본문에서 `setState` 를 직접 부르지 않는다
+   *    (`react-hooks/set-state-in-effect`) — 선언을 effect **위**로 올려야
+   *    `react-hooks/immutability` 도 같이 조용해진다.
+   */
+  const loadDetail = async (id: number) => {
+    setInitialLoading(true);
+    setError(null);
+    setFile(null);
+    setRemoveFile(false);
+    try {
+      const data = await fetchPostDetail(id);
+      setTitle(data.title);
+      setContent(data.content);
+      setExistingFileName(data.original_filename || null);
+    } catch (err) {
+      // 🔴 `err.message` 를 쓰지 않는다 — 서버가 준 상태코드·사유가 통째로 사라진다.
+      setError(isUnauthorized(err) ? "로그인이 필요합니다." : describeFailure(err));
+    } finally {
+      setInitialLoading(false);
     }
+  };
+
+  useEffect(() => {
+    if (!isOpen || !postId) return;
+    loadDetail(postId);
   }, [isOpen, postId]);
 
   if (!isOpen || !postId) return null;
@@ -62,8 +69,10 @@ export function PostEditModal({ postId, isOpen, onClose, onSuccess }: PostEditMo
       await updatePost(postId, title.trim(), content.trim(), file, removeFile);
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.message || "게시글 수정에 실패했습니다.");
+    } catch (err) {
+      // 🔴 "게시글 수정에 실패했습니다" 로 뭉개지 않는다 — 401(만료)·413(용량)·
+      //    422(형식)·서버 미기동이 전부 같은 문장이 된다(원칙 4).
+      setError(isUnauthorized(err) ? "로그인이 필요합니다." : describeFailure(err));
     } finally {
       setLoading(false);
     }

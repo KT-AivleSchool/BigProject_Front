@@ -62,13 +62,19 @@ export function Header() {
   }, [pathname]);
 
   const handleLogout = () => {
+    // 🔴 access·refresh·user 를 **같이** 지운다(`clearAuth`). 예전엔 access 와 user 만
+    //    지웠는데, refresh 키가 생긴 뒤로는 그러면 죽은 재발급 토큰이 남아 다음
+    //    로그인 세션과 섞인다.
+    //    (PR #62 가 이 주석만 지우고 `clearAuth()` 호출은 그대로 뒀다 — 되살린다.
+    //     핀을 왜 박았는지 적은 주석이 사라지면 다음 사람이 그 핀을 뺀다.)
     clearAuth();
     setUser(null);
+    // 같은 탭에서는 `storage` 이벤트가 안 뜬다 — 헤더가 로그아웃을 즉시 반영하도록
+    // 직접 쏜다(수신은 위 effect).
     if (typeof window !== "undefined") {
       window.dispatchEvent(new Event("omnisite-auth-change"));
     }
   };
-
 
   return (
     <>

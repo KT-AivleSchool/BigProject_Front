@@ -7,6 +7,7 @@ import { AuthModal } from "@/components/shell/AuthModal";
 import { PostCreateModal } from "@/components/board/PostCreateModal";
 import { PostDetailModal } from "@/components/board/PostDetailModal";
 import { fetchPosts, PostListItem } from "@/lib/omnisite/posts";
+import { describeFailure, isUnauthorized } from "@/lib/omnisite/client";
 import { getAuthUser } from "@/lib/omnisite/auth";
 
 function PostsPageContent() {
@@ -21,6 +22,12 @@ function PostsPageContent() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 🔴 「로그인이 필요하다」를 `error` 문자열 `"UNAUTHORIZED"` 로 표시하던 것을 갈랐다.
+   *    서버 `detail` 이 우연히 같은 낱말을 담으면 실패 문구가 로그인 안내로 바뀐다 —
+   *    표시할 값과 갈래 판정을 한 칸에 담으면 언젠가 뜻이 섞인다.
+   */
+  const [needsLogin, setNeedsLogin] = useState(false);
 
   // 모달 제어 상태
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -41,10 +48,11 @@ function PostsPageContent() {
   const [jumpModalOpen, setJumpModalOpen] = useState(false);
   const [jumpInput, setJumpInput] = useState("");
 
-  useEffect(() => {
-    loadPosts(page, limit, sortBy, order, activeSearch.type, activeSearch.query, isMineFilter);
-  }, [page, limit, sortBy, order, activeSearch, isMineFilter]);
-
+  /**
+   * 🔴 `useEffect` 보다 **먼저** 선언한다. 아래에 두면 `react-hooks/immutability`
+   *    ("Cannot access variable before it is declared")로 lint 가 막는다 —
+   *    `const` 화살표 함수는 호이스팅되지 않는다.
+   */
   const loadPosts = async (
     currentPage: number,
     currentLimit = limit,
@@ -56,10 +64,11 @@ function PostsPageContent() {
   ) => {
     setLoading(true);
     setError(null);
+    setNeedsLogin(false);
 
     const user = getAuthUser();
     if (!user) {
-      setError("UNAUTHORIZED");
+      setNeedsLogin(true);
       setLoading(false);
       return;
     }
@@ -68,21 +77,24 @@ function PostsPageContent() {
       const data = await fetchPosts(currentPage, currentLimit, currentSortBy, currentOrder, sType, sQuery, mineOnly);
       setPosts(data.posts);
       setTotal(data.total);
-    } catch (err: any) {
-
-
-      if (err.message === "UNAUTHORIZED") {
-        setError("UNAUTHORIZED");
-      } else if (err.message?.includes("Failed to fetch") || err.name === "TypeError") {
-        setError("서버에 연결할 수 없습니다. 백엔드 서버 가동 상태 및 네트워크를 확인해 주세요.");
+    } catch (err) {
+      // 🔴 `err.message.includes("Failed to fetch")` 라는 문자열 대조를 없앴다 —
+      //    그 문구는 브라우저마다 다르다. `client.ts` 가 그 경우를 `NetworkError`
+      //    로 이미 갈라 놓았고, `describeFailure` 가 그대로 문장을 만든다.
+      if (isUnauthorized(err)) {
+        setNeedsLogin(true);
       } else {
-        setError(err.message || "게시글 목록을 불러오는 중 오류가 발생했습니다.");
+        setError(describeFailure(err));
       }
     } finally {
       setLoading(false);
     }
-
   };
+
+  useEffect(() => {
+    loadPosts(page, limit, sortBy, order, activeSearch.type, activeSearch.query, isMineFilter);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, limit, sortBy, order, activeSearch, isMineFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -292,7 +304,7 @@ function PostsPageContent() {
 
 
         {/* 미인증 상태 처리 */}
-        {error === "UNAUTHORIZED" ? (
+        {needsLogin ? (
           <div className="py-16 text-center rounded-2xl bg-white p-8 shadow-sm border border-gray-200">
             <div className="text-4xl mb-3">🔒</div>
             <h2 className="text-lg font-bold text-gray-900 mb-1">로그인이 필요한 서비스입니다</h2>

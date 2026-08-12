@@ -6,25 +6,15 @@ import { useRouter } from "next/navigation";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import Link from "next/link";
 import { datetime } from "@/lib/omnisite/format";
-import { ApiError, NetworkError, apiErrorCode } from "@/lib/omnisite/client";
+import { describeFailure } from "@/lib/omnisite/client";
 import { fetchPosts, PostListItem } from "@/lib/omnisite/posts";
 import { PostDetailModal } from "@/components/board/PostDetailModal";
 
-
-
 /**
- * 실패 문구. 화면 5(`hearings.ts`)와 같은 모양이다 —
- * 문장은 서버 `detail`, 코드는 「어느 갈래였는지」로 괄호에 덧붙이기만 한다.
- * `ApiError.message` 를 그대로 쓰지 않는 이유: 거기엔 요청 URL 이 들어 있다.
+ * 🔴 여기 있던 `describeFailure` 사본을 `client.ts` 로 올렸다 — 마이페이지·화면5
+ *    (`hearings.ts`)에 이어 게시판까지 **넷째 사본**이 될 자리였다. 모양이 갈리면
+ *    같은 실패가 화면마다 다르게 읽힌다.
  */
-function describeFailure(e: unknown): string {
-  if (e instanceof ApiError) {
-    const code = apiErrorCode(e);
-    return `HTTP ${e.status}${code ? ` [${code}]` : ""} — ${e.detail}`;
-  }
-  if (e instanceof NetworkError) return e.message;
-  return e instanceof Error ? e.message : String(e);
-}
 
 function maskName(name: string): string {
   if (!name) return "";
@@ -297,16 +287,25 @@ function MyPostList() {
   const [loading, setLoading] = useState(true);
   const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  /**
+   * 🔴 원본은 `.catch(() => {})` 였다. 그러면 401·404·서버 미기동이 전부
+   *    **「작성한 게시글이 없습니다」**로 그려진다 — 실패를 없음으로 바꿔 말하는
+   *    자리다(원칙 4). 아래 렌더도 **실패를 빈 목록보다 먼저** 본다.
+   */
+  const [error, setError] = useState<string | null>(null);
 
-  const loadMyPosts = () => {
+  const loadMyPosts = async () => {
     setLoading(true);
-    fetchPosts(1, 5, "created_at", "desc", "title_content", "", true)
-      .then((data) => {
-        setPosts(data.posts);
-        setTotal(data.total);
-      })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+    setError(null);
+    try {
+      const data = await fetchPosts(1, 5, "created_at", "desc", "title_content", "", true);
+      setPosts(data.posts);
+      setTotal(data.total);
+    } catch (err) {
+      setError(describeFailure(err));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -336,6 +335,10 @@ function MyPostList() {
       <div className="p-6">
         {loading ? (
           <div className="py-8 text-center text-xs text-gray-400">내 작성글을 불러오는 중입니다...</div>
+        ) : error ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-600">
+            ⚠️ {error}
+          </div>
         ) : posts.length === 0 ? (
           <div className="py-8 text-center text-xs text-gray-400">
             작성한 게시글이 없습니다. 게시판에서 첫 안건을 등록해 보세요!

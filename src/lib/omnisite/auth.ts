@@ -138,10 +138,11 @@ export function tokenExpiresAt(token: string | null = getAuthToken()): number | 
   return typeof exp === "number" ? exp * 1000 : null;
 }
 
-/** Access Token 을 포함한 Authorization 헤더 객체를 반환한다. */
-export function getAuthHeader(): Record<string, string> {
-  const token = getAuthToken();
-  if (!token) return {};
-  return { Authorization: `Bearer ${token}` };
-}
+/**
+ * 🔴 `getAuthHeader()` 를 두지 않는다(PR #62 에서 들어왔다가 여기서 뺐다).
+ *    `Bearer` 는 `client.ts:request()` 가 **모든 요청에** 한 자리에서 붙인다 —
+ *    손으로 붙이는 헬퍼가 같이 있으면 붙이는 자리가 둘이 되고, 새 API 파일이
+ *    `fetch` 를 직접 부르면서 그 헬퍼만 쓰는 길이 열린다(그러면 `NetworkError`·
+ *    객체형 `detail` 풀기·401 판정이 통째로 빠진다). 참조 0곳이라 지금 지운다.
+ */
 

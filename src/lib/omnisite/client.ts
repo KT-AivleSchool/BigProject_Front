@@ -67,6 +67,35 @@ export class NetworkError extends Error {
   }
 }
 
+/**
+ * 실패 문구. **문장은 서버 `detail`**, 코드는 「어느 갈래였는지」로 괄호에 덧붙이기만 한다.
+ *
+ * 🔴 `ApiError.message` 를 그대로 쓰지 않는다 — 거기엔 요청 URL 이 들어 있다.
+ * 🔴 우리가 문구를 지어내지 않는다(원칙 4). 서버가 준 사유가 곧 화면 문장이다.
+ *
+ * 마이페이지(`mypage/page.tsx`)와 화면5(`hearings.ts`)가 각자 들고 있던 것을
+ * 게시판까지 넷째로 복사하게 되어 여기로 올렸다 — 모양이 갈리면 같은 실패가
+ * 화면마다 다르게 읽힌다.
+ */
+export function describeFailure(e: unknown): string {
+  if (e instanceof ApiError) {
+    const code = apiErrorCode(e);
+    return `HTTP ${e.status}${code ? ` [${code}]` : ""} — ${e.detail}`;
+  }
+  if (e instanceof NetworkError) return e.message;
+  return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * 로그인이 필요한(또는 만료된) 실패인가.
+ *
+ * 🔴 문자열 신호(`new Error("UNAUTHORIZED")`) 대신 쓴다 — 그 방식은 상태코드·서버
+ *    사유·URL 을 통째로 버리고, 서버가 같은 문구를 본문에 담으면 구분이 안 된다.
+ */
+export function isUnauthorized(e: unknown): boolean {
+  return e instanceof ApiError && e.status === 401;
+}
+
 async function readDetail(res: Response): Promise<{ detail: string; body: unknown }> {
   // 🔴 `res.json()` 만 믿지 않는다. 500 은 HTML 로 올 수 있고, 그때 json() 이
   //    던지면 원래 실패 원인이 파싱 오류로 뒤바뀐다.
@@ -171,8 +200,32 @@ export async function postForm<T>(url: string, form: FormData): Promise<T> {
   return (await res.json()) as T;
 }
 
+/** multipart/form-data PUT (게시글 수정). 헤더를 안 넣는 이유는 `postForm` 과 같다. */
+export async function putForm<T>(url: string, form: FormData): Promise<T> {
+  const res = await request(url, { method: "PUT", body: form });
+  return (await res.json()) as T;
+}
+
 /** DELETE. 실패는 `ApiError` 로 던진다 — 204 를 안 주는 엔드포인트라 본문을 읽는다. */
 export async function deleteJson<T>(url: string): Promise<T> {
   const res = await request(url, { method: "DELETE" });
   return (await res.json()) as T;
+}
+
+/**
+ * 바이너리 내려받기(첨부파일).
+ *
+ * 🔴 `<a href>` 로 열지 않는다 — 그 요청에는 `Authorization` 헤더가 안 붙는데
+ *    백엔드 다운로드는 토큰이 **필수**다(`posts.py:344-348` `Depends(get_current_user)`).
+ *    링크로 열면 401 이 새 탭에 날 JSON 으로 뜨고 화면에는 아무 사유도 안 남는다.
+ *
+ * 🔴 `getText` 와 달리 **디코딩하지 않는다.** 백엔드가 `application/octet-stream`
+ *    으로 명시해 보내는 임의 바이트다(`posts.py:373`). 문자열로 만들면 깨진다.
+ *
+ * 파일명은 부르는 쪽이 정한다 — 서버 `Content-Disposition` 은 한글 파일명이
+ * 인코딩 방식에 따라 갈리고, 우리는 이미 `original_filename` 을 알고 있다.
+ */
+export async function getBlob(url: string): Promise<Blob> {
+  const res = await request(url);
+  return await res.blob();
 }

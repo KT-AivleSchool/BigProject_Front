@@ -140,6 +140,32 @@ const nextConfig: NextConfig = {
         source: "/api/v1/report/:path*",
         destination: `${API_ORIGIN}/api/v1/report/:path*`,
       },
+      /**
+       * 게시판(PR #62 ↔ 백엔드 `app/api/v1/posts.py`). 라우트 6개.
+       *
+       * 🔴 PR 원본은 `posts.ts:34` 에서 `NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1"`
+       *    로 **브라우저가 직접** 백엔드를 불렀다 — 바로 위 stakeholders 주석이
+       *    적어둔 ⓐⓑⓒ 와 **같은 패턴**이다. 그 키는 이 저장소 어느 env 파일에도
+       *    없어서(`.env.local` 에는 `OMNISITE_API_ORIGIN` 뿐) 폴백이 **항상** 걸렸다.
+       *
+       * 🔴 **`:path*` 는 빈 경로도 먹는다** — 목록 `GET /api/v1/posts` 와 작성
+       *    `POST /api/v1/posts` 가 슬래시 없는 자리에 산다(백엔드 `posts.py:58·143`
+       *    는 `""` 와 `"/"` 를 둘 다 등록한다). path-to-regexp 에서 `/:path*` 는
+       *    앞 슬래시까지 포함해 0개 이상이라 `/api/v1/posts` 도 이 규칙에 걸린다.
+       *
+       *    실측(2026-08-12, dev 서버 :3000 ↔ 백엔드 :8000, 토큰 없이 GET) —
+       *      `/api/v1/posts`      → **401 `application/json`** `{"detail":"인증 헤더…"}`
+       *      `/api/v1/posts/1`    → 401 `application/json`
+       *      `/api/v1/posts?page=1` → 401 `application/json`
+       *      `/api/v1/posts/`     → 308 → `/api/v1/posts` (Next 의 슬래시 정규화)
+       *    확인한 것은 「목록이 나온다」가 아니라 **「응답을 백엔드가 만들었다」**다 —
+       *    규칙에 안 걸렸다면 Next 404 **HTML** 이 나온다. 401 JSON 이라는 건 요청이
+       *    백엔드까지 갔다는 뜻이고, 그때 백엔드 사유가 화면까지 닿는다.
+       */
+      {
+        source: "/api/v1/posts/:path*",
+        destination: `${API_ORIGIN}/api/v1/posts/:path*`,
+      },
     ];
   },
 };

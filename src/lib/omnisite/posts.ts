@@ -1,4 +1,25 @@
-import { getAuthHeader } from "./auth";
+/**
+ * 게시판 API (백엔드 `app/api/v1/posts.py`).
+ *
+ * 🔴 **절대 URL 을 쓰지 않는다.** PR #62 원본은
+ *    `const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1"`
+ *    이었는데, 그 키는 이 저장소 어느 env 파일에도 없어서 폴백이 **항상** 걸렸다.
+ *    이유 셋은 `next.config.ts:126-134` 에 이미 적혀 있다(번들 유출 · 개발용 CORS
+ *    의존 · `localhost`→IPv6). 같은 자리를 PR #57 에서 한 번 접었다.
+ *    브라우저는 상대 경로만 부르고 오리진은 rewrite 프록시가 안다.
+ *
+ * 🔴 **`fetch` 를 직접 부르지 않는다.** `client.ts` 를 거쳐야 얻는 것 셋 —
+ *    ⓐ `NetworkError`(서버가 안 떴을 때. 원본은 `err.message.includes("Failed to fetch")`
+ *      라는 **문자열 대조**로 흉내내고 있었다. 브라우저마다 문구가 다르다)
+ *    ⓑ 객체형 `detail` 풀기(`readDetail`). 안 풀면 화면에 `[object Object]` 가 뜬다
+ *    ⓒ `Bearer` 자동 부착. `getAuthHeader()` 를 손으로 붙이면 붙이는 자리가 둘이 된다
+ *
+ * 🔴 실패는 **`ApiError` 그대로** 던진다. 원본은 401 을 `new Error("UNAUTHORIZED")`
+ *    라는 **문자열 신호**로 바꿨는데, 그러면 상태코드·서버 사유·URL 이 전부 사라지고
+ *    부르는 쪽은 `err.message === "UNAUTHORIZED"` 로 되받는다. 403·404·500 은
+ *    구분할 방법이 없어진다. 판정은 `e instanceof ApiError && e.status === 401` 이다.
+ */
+import { deleteJson, getBlob, getJson, postForm, putForm } from "./client";
 
 export interface PostListItem {
   id: number;
@@ -28,13 +49,15 @@ export interface PostResponse {
   file_size?: number;
   created_at: string;
   is_owner: boolean;
-
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v1";
+const API_BASE = "/api/v1";
 
 /**
- * 게시글 목록 조회
+ * 게시글 목록 조회.
+ *
+ * ⚠ 경로에 슬래시를 안 붙인다 — 백엔드는 `""` 와 `"/"` 를 둘 다 등록하지만
+ *   (`posts.py:143-144`) 프런트에서 두 모양을 섞으면 rewrite 매칭을 두 번 확인해야 한다.
  */
 export async function fetchPosts(
   page: number = 1,
@@ -43,12 +66,11 @@ export async function fetchPosts(
   order: string = "desc",
   searchType: string = "title_content",
   searchQuery: string = "",
-  mine: boolean = false
+  mine: boolean = false,
 ): Promise<PostListResponse> {
-  const headers = getAuthHeader();
   const params = new URLSearchParams({
-    page: page.toString(),
-    limit: limit.toString(),
+    page: String(page),
+    limit: String(limit),
     sort_by: sortBy,
     order: order,
     search_type: searchType,
@@ -62,92 +84,37 @@ export async function fetchPosts(
     params.append("mine", "true");
   }
 
-  const res = await fetch(`${API_BASE}/posts?${params.toString()}`, {
-    headers: {
-      ...headers,
-    },
-    cache: "no-store",
-  });
-
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error("UNAUTHORIZED");
-    }
-    const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.detail || "게시글 목록을 불러오지 못했습니다.");
-  }
-
-  return res.json();
+  return getJson<PostListResponse>(`${API_BASE}/posts?${params.toString()}`);
 }
 
-
-/**
- * 게시글 상세 조회
- */
+/** 게시글 상세 조회 */
 export async function fetchPostDetail(postId: number): Promise<PostResponse> {
-  const headers = getAuthHeader();
-  const res = await fetch(`${API_BASE}/posts/${postId}`, {
-    headers: {
-      ...headers,
-    },
-    cache: "no-store",
-  });
-
-  if (!res.ok) {
-    if (res.status === 401) {
-      throw new Error("UNAUTHORIZED");
-    }
-    const errorData = await res.json().catch(() => ({}));
-    throw new Error(errorData.detail || "게시글 상세 정보를 불러오지 못했습니다.");
-  }
-
-
-  return res.json();
+  return getJson<PostResponse>(`${API_BASE}/posts/${postId}`);
 }
 
-/**
- * 게시글 작성 (Form Data: title, content, optional file)
- */
-export async function createPost(title: string, content: string, file?: File | null): Promise<PostResponse> {
-  const headers = getAuthHeader();
+/** 게시글 작성 (multipart: title, content, optional file) */
+export async function createPost(
+  title: string,
+  content: string,
+  file?: File | null,
+): Promise<PostResponse> {
   const formData = new FormData();
   formData.append("title", title);
   formData.append("content", content);
   if (file) {
     formData.append("file", file);
   }
-
-  const res = await fetch(`${API_BASE}/posts`, {
-    method: "POST",
-    headers: {
-      ...headers, // Content-Type은 FormData 전송 시 브라우저가 자동 설정함
-    },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-      throw new Error("UNAUTHORIZED");
-    }
-    throw new Error(errorData.detail || "게시글 작성에 실패했습니다.");
-  }
-
-  return res.json();
+  return postForm<PostResponse>(`${API_BASE}/posts`, formData);
 }
 
-/**
- * 게시글 수정 (Form Data: title, content, optional file, optional removeFile)
- */
+/** 게시글 수정 (multipart: title, content, optional file, remove_file) */
 export async function updatePost(
   postId: number,
   title: string,
   content: string,
   file?: File | null,
-  removeFile: boolean = false
+  removeFile: boolean = false,
 ): Promise<PostResponse> {
-  const headers = getAuthHeader();
   const formData = new FormData();
   formData.append("title", title);
   formData.append("content", content);
@@ -155,57 +122,26 @@ export async function updatePost(
   if (file) {
     formData.append("file", file);
   }
-
-  const res = await fetch(`${API_BASE}/posts/${postId}`, {
-    method: "PUT",
-    headers: {
-      ...headers,
-    },
-    body: formData,
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-      throw new Error("UNAUTHORIZED");
-    }
-    if (res.status === 403) {
-      throw new Error("자신이 작성한 게시글만 수정할 수 있습니다.");
-    }
-    throw new Error(errorData.detail || "게시글 수정에 실패했습니다.");
-  }
-
-  return res.json();
+  return putForm<PostResponse>(`${API_BASE}/posts/${postId}`, formData);
 }
 
-
 /**
- * 게시글 삭제
+ * 게시글 삭제.
+ *
+ * ⚠ 백엔드는 204 가 아니라 **200 + 본문**을 준다
+ *   (`posts.py:288·341` `{"message": ..., "post_id": ...}`) — 그래서 `deleteJson` 이다.
  */
 export async function deletePost(postId: number): Promise<void> {
-  const headers = getAuthHeader();
-  const res = await fetch(`${API_BASE}/posts/${postId}`, {
-    method: "DELETE",
-    headers: {
-      ...headers,
-    },
-  });
-
-  if (!res.ok) {
-    const errorData = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-      throw new Error("UNAUTHORIZED");
-    }
-    if (res.status === 403) {
-      throw new Error("자신이 작성한 게시글만 삭제할 수 있습니다.");
-    }
-    throw new Error(errorData.detail || "게시글 삭제에 실패했습니다.");
-  }
+  await deleteJson<{ message: string; post_id: number }>(`${API_BASE}/posts/${postId}`);
 }
 
 /**
- * 첨부파일 다운로드 URL 링크 반환
+ * 첨부파일 내려받기.
+ *
+ * 🔴 URL 만 돌려주던 `getPostDownloadUrl` 을 없앴다 — 그 URL 을 `<a href>` 에 넣으면
+ *    `Authorization` 이 안 붙는데 백엔드는 토큰 필수다(`posts.py:348`). 실제로
+ *    부르는 쪽은 URL 이 아니라 **Blob** 이 필요했다.
  */
-export function getPostDownloadUrl(postId: number): string {
-  return `${API_BASE}/posts/${postId}/download`;
+export async function fetchPostFile(postId: number): Promise<Blob> {
+  return getBlob(`${API_BASE}/posts/${postId}/download`);
 }

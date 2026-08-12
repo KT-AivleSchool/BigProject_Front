@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import { fetchPostDetail, deletePost, getPostDownloadUrl, PostResponse } from "@/lib/omnisite/posts";
-import { getAuthHeader } from "@/lib/omnisite/auth";
+import { fetchPostDetail, deletePost, fetchPostFile, PostResponse } from "@/lib/omnisite/posts";
+import { describeFailure, isUnauthorized } from "@/lib/omnisite/client";
 import { PostEditModal } from "@/components/board/PostEditModal";
 
 interface PostDetailModalProps {
@@ -14,48 +14,68 @@ interface PostDetailModalProps {
 
 export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDetailModalProps) {
   const [post, setPost] = useState<PostResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+  /**
+   * 🔴 초기값이 `true` 다. 「열리면 곧바로 조회 중」이 이 모달의 첫 상태라
+   *    effect 가 `setLoading(true)` 를 **동기로** 부를 이유가 없어진다
+   *    (`react-hooks/set-state-in-effect`). 닫힐 때 정리 함수가 다시 `true` 로
+   *    되돌리므로 다음에 열 때도 같은 자리에서 시작한다.
+   */
+  const [loading, setLoading] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * 🔴 조회 실패(`error`)와 갈라 둔다. 삭제·다운로드 실패를 `error` 에 담으면
+   *    본문 자리가 통째로 에러 상자로 바뀌어 **읽고 있던 글이 사라진다** —
+   *    실패한 건 그 동작 하나지 조회가 아니다.
+   */
+  const [actionError, setActionError] = useState<string | null>(null);
 
-
-  useEffect(() => {
-    if (isOpen && postId) {
-      loadDetail(postId);
-    } else {
-      setPost(null);
-      setError(null);
-    }
-  }, [isOpen, postId]);
-
+  /**
+   * 🔴 `useEffect` 보다 **먼저** 선언한다(`react-hooks/immutability`).
+   * 🔴 `setLoading(true)` 를 여기 두지 않는다 — 그러면 effect 가 이 함수를 부르는
+   *    순간이 「동기 setState」가 된다. 켜는 쪽은 **부르는 사람**이 맡는다
+   *    (열 때는 초기값·정리 함수가, 수정 후 재조회는 `onSuccess` 가).
+   */
   const loadDetail = async (id: number) => {
-    setLoading(true);
-    setError(null);
     try {
       const data = await fetchPostDetail(id);
       setPost(data);
-    } catch (err: any) {
-      if (err.message === "UNAUTHORIZED") {
-        setError("로그인이 필요합니다.");
-      } else {
-        setError(err.message || "상세 정보를 불러올 수 없습니다.");
-      }
+      setError(null);
+    } catch (err) {
+      setError(isUnauthorized(err) ? "로그인이 필요합니다." : describeFailure(err));
     } finally {
       setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (!isOpen || !postId) {
+      // 🔴 닫힐 때의 초기화는 effect 본문에서 `setState` 를 직접 부르지 않는다
+      //    (`react-hooks/set-state-in-effect`). 정리 함수로 옮기면 「열려 있는
+      //    동안의 상태」와 「닫힌 뒤의 상태」가 한 자리에서 안 섞인다.
+      return;
+    }
+    loadDetail(postId);
+    return () => {
+      setPost(null);
+      setError(null);
+      setActionError(null);
+      setLoading(true);
+    };
+  }, [isOpen, postId]);
+
   const handleDelete = async () => {
     if (!postId || !window.confirm("정말로 이 게시글을 삭제하시겠습니까?")) return;
 
+    setActionError(null);
     setDeleting(true);
     try {
       await deletePost(postId);
       onDeleted();
       onClose();
-    } catch (err: any) {
-      alert(err.message || "삭제 실패했습니다.");
+    } catch (err) {
+      setActionError(describeFailure(err));
     } finally {
       setDeleting(false);
     }
@@ -63,16 +83,11 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
 
   const handleDownload = async () => {
     if (!postId) return;
-    const url = getPostDownloadUrl(postId);
-    const authHeaders = getAuthHeader();
-
+    setActionError(null);
     try {
-      const res = await fetch(url, { headers: authHeaders });
-      if (!res.ok) {
-        alert("파일 다운로드에 실패했습니다.");
-        return;
-      }
-      const blob = await res.blob();
+      // Blob 으로 받는다 — `<a href>` 로 열면 `Authorization` 이 안 붙는데
+      // 백엔드 다운로드는 토큰이 필수다(`posts.py:348`).
+      const blob = await fetchPostFile(postId);
       const blobUrl = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = blobUrl;
@@ -81,8 +96,10 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
       a.click();
       a.remove();
       window.URL.revokeObjectURL(blobUrl);
-    } catch (e) {
-      alert("다운로드 중 오류가 발생했습니다.");
+    } catch (err) {
+      // 🔴 "다운로드 중 오류가 발생했습니다" 로 뭉개지 않는다 — 401(만료) ·
+      //    404(파일이 지워짐) · 서버 미기동이 전부 같은 문장이 된다(원칙 4).
+      setActionError(describeFailure(err));
     }
   };
 
@@ -159,6 +176,18 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
           </div>
         ) : null}
 
+        {/*
+          🔴 삭제·다운로드 실패를 **화면에 띄운다.** 원본은 `console.error` 로만 남기고
+             화면에는 아무 말도 안 했다 — 사용자에게는 「눌렀는데 아무 일도 안 일어남」이다.
+             본문(`error`) 자리가 아니라 여기다: 읽고 있던 글은 그대로 두고
+             실패한 동작만 말한다.
+        */}
+        {actionError && (
+          <div className="mt-4 shrink-0 rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-600">
+            ⚠️ {actionError}
+          </div>
+        )}
+
         <div className="flex justify-between items-center pt-4 border-t mt-4 shrink-0">
           <div className="flex items-center gap-2">
             {post && post.is_owner && (
@@ -196,7 +225,13 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
           isOpen={editModalOpen}
           onClose={() => setEditModalOpen(false)}
           onSuccess={() => {
-            if (postId) loadDetail(postId);
+            // 🔴 `setLoading(true)` 는 **부르는 쪽**이 켠다 — `loadDetail` 이 켜면
+            //    effect 가 그걸 부르는 순간이 「동기 setState」가 된다(위 주석).
+            //    여기서 안 켜면 수정 직후 **옛 본문**이 그대로 보인 채 갱신된다.
+            if (postId) {
+              setLoading(true);
+              loadDetail(postId);
+            }
             onDeleted();
           }}
         />
