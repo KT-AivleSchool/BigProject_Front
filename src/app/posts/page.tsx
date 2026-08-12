@@ -9,10 +9,11 @@ import { getAuthUser } from "@/lib/omnisite/auth";
 
 
 export default function PostsPage() {
+  // 페이지네이션 및 상태 (페이지당 개수: 10, 15, 20, 30)
   const [posts, setPosts] = useState<PostListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
-  const limit = 10;
+  const [limit, setLimit] = useState<number>(10);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -37,11 +38,12 @@ export default function PostsPage() {
   const [jumpInput, setJumpInput] = useState("");
 
   useEffect(() => {
-    loadPosts(page, sortBy, order, activeSearch.type, activeSearch.query);
-  }, [page, sortBy, order, activeSearch]);
+    loadPosts(page, limit, sortBy, order, activeSearch.type, activeSearch.query);
+  }, [page, limit, sortBy, order, activeSearch]);
 
   const loadPosts = async (
     currentPage: number,
+    currentLimit = limit,
     currentSortBy = sortBy,
     currentOrder = order,
     sType = activeSearch.type,
@@ -58,10 +60,11 @@ export default function PostsPage() {
     }
 
     try {
-      const data = await fetchPosts(currentPage, limit, currentSortBy, currentOrder, sType, sQuery);
+      const data = await fetchPosts(currentPage, currentLimit, currentSortBy, currentOrder, sType, sQuery);
       setPosts(data.posts);
       setTotal(data.total);
     } catch (err: any) {
+
       if (err.message === "UNAUTHORIZED") {
         setError("UNAUTHORIZED");
       } else if (err.message?.includes("Failed to fetch") || err.name === "TypeError") {
@@ -261,8 +264,32 @@ export default function PostsPage() {
           </div>
         ) : (
           <div className="space-y-4">
+            {/* 페이지 목록 상단 헤더 유틸리티 (페이지당 표시 수 선택) */}
+            <div className="flex items-center justify-between px-1">
+              <div className="text-xs text-gray-500 font-medium">
+                전체 <strong className="text-gray-900">{total}</strong>건의 안건
+              </div>
+              <div className="flex items-center gap-2">
+                <label className="text-xs font-semibold text-gray-600">페이지당 표시:</label>
+                <select
+                  value={limit}
+                  onChange={(e) => {
+                    setLimit(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="rounded-xl border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 focus:border-primary focus:outline-none cursor-pointer shadow-sm hover:border-gray-400 transition-colors"
+                >
+                  <option value={10}>10개씩 보기</option>
+                  <option value={15}>15개씩 보기</option>
+                  <option value={20}>20개씩 보기</option>
+                  <option value={30}>30개씩 보기</option>
+                </select>
+              </div>
+            </div>
+
             {/* 게시글 목록 테이블 */}
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-200">
+
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
                   <tr className="bg-gray-100/70 border-b border-gray-200 text-gray-600 font-bold select-none">
