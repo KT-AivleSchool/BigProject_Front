@@ -774,18 +774,12 @@ export default function DynamicHearingPage() {
   ]);
 
   return (
-    <PageBody>
+    <PageBody fullWidth={true}>
       <PageHeader
         screen={SCREEN}
-        lead="AI가 주변 환경과 조례를 분석해 다자간 페르소나를 도출하고, 사용자 승인(HITL)을 거쳐 공청회를 시뮬레이션합니다."
+        lead="이해관계자를 생성해 다자간 토론을 진행합니다."
       />
 
-      <div className="mt-4 flex items-center justify-between gap-4">
-        <span className="rounded-full border border-hairline bg-black/[0.03] px-3 py-1 text-[12px] font-semibold text-ink-secondary">
-          토론 방식 B — 다인(N명) 토론
-        </span>
-
-      </div>
 
       {/* 어느 점으로 토론하는지 먼저 밝힌다. 못 이었으면 여기서 멈춘다. */}
       <div className="mt-4">
@@ -803,38 +797,45 @@ export default function DynamicHearingPage() {
         <FailureBox title="페르소나를 발굴하지 못했습니다" failure={personaFailure} />
       )}
       {streamFailure && <FailureBox title="토론 스트림에 문제가 있습니다" failure={streamFailure} />}
-
-      <div className="mb-8 mt-8 flex justify-center">
-        {[
-          { num: 1, title: "안건 설정", icon: <Info size={16} /> },
-          { num: 2, title: "페르소나 확정", icon: <Users size={16} /> },
-          { num: 3, title: "공청회 진행", icon: <MessageSquare size={16} /> },
-        ].map((s) => (
-          <div key={s.num} className="flex items-center">
-            <div
-              className={`flex items-center justify-center rounded-md border px-4 py-2 text-[13px] font-semibold transition-all duration-300 ${
-                step >= s.num
-                  ? "border-primary bg-primary text-white"
-                  : "border-hairline bg-black/[0.02] text-ink-secondary"
-              }`}
-            >
-              {s.icon}
-              <span className="ml-2 hidden sm:inline">
-                {s.num}. {s.title}
-              </span>
-            </div>
-            {s.num < 3 && (
+      <div className="mb-8 mt-4 relative flex items-center justify-center">
+        <div className="flex">
+          {[
+            { num: 1, title: "안건 확정" },
+            { num: 2, title: "이해관계자 선택" },
+            { num: 3, title: "토론진행" },
+          ].map((s) => (
+            <div key={s.num} className="flex items-center">
               <div
-                className={`mx-2 h-[2px] w-6 transition-all duration-300 md:w-10 ${
-                  step > s.num ? "bg-primary" : "bg-hairline"
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[12px] transition-colors ${
+                  step === s.num
+                    ? "bg-blue-50 border border-blue-100 text-blue-900 font-bold"
+                    : step > s.num
+                    ? "text-gray-700 border border-transparent"
+                    : "text-gray-500 border border-transparent"
                 }`}
-              />
-            )}
-          </div>
-        ))}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  step === s.num ? 'bg-blue-500 animate-pulse' : 
+                  step > s.num ? 'bg-green-500' : 'bg-gray-300'
+                }`} />
+                <span className="hidden sm:inline">
+                  {s.title}
+                </span>
+              </div>
+              {s.num < 3 && (
+                <div
+                  className={`mx-1 h-[1px] w-4 transition-all duration-300 md:w-8 ${
+                    step > s.num ? "bg-green-500" : "bg-gray-200"
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+
       </div>
 
-      <div className="relative min-h-[600px] overflow-hidden">
+      <div className={`relative ${step === 1 ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'min-h-[600px] overflow-x-hidden'}`}>
         <SetupStep
           step={step}
           topic={topic}
@@ -881,14 +882,25 @@ export default function DynamicHearingPage() {
             이전 단계
           </div>
         </Link>
-        <Link
-          href="/report"
-          className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
-        >
-          <div className="flex items-center gap-2">
-            갈등 예측 완료, 보고서로 넘어가기 &gt;
-          </div>
-        </Link>
+        {discussionStatus?.is_finished ? (
+          <Link
+            href="/report"
+            className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
+          >
+            <div className="flex items-center gap-2">
+              갈등 예측 완료, 보고서로 넘어가기 &gt;
+            </div>
+          </Link>
+        ) : (
+          <button
+            disabled
+            className="rounded-xl bg-gray-300 px-8 py-2.5 text-sm font-bold text-white cursor-not-allowed opacity-70"
+          >
+            <div className="flex items-center gap-2">
+              갈등 예측 진행 중...
+            </div>
+          </button>
+        )}
       </div>
     </PageBody>
   );
@@ -1038,37 +1050,7 @@ function OrdinanceNote({
   error: string | null;
   count: number;
 }) {
-  if (loading) return null;
-
-  if (error) {
-    return (
-      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-900">
-        STEP1 감리 산출물(`reviewed`)을 읽지 못했습니다 — 이 화면에 조례 근거를 보여줄 수
-        없습니다. 토론 자체는 서버가 parcel_id 로 조회한 근거로 진행됩니다.
-        <span className="ml-1 font-mono">{error}</span>
-      </div>
-    );
-  }
-
-  if (unavailable || count === 0) {
-    return (
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
-        <b>조례 근거 0건.</b>{" "}
-        {unavailable
-          ? "이 run 에 STEP1 감리 산출물이 없습니다."
-          : "감리 산출물에 근거문장이 하나도 없습니다."}{" "}
-        예시 조문을 대신 지어내지 않습니다. 이건 <b>이 화면이 보여줄 근거가 없다</b>는
-        뜻이고, 서버가 조회할 근거까지 없다는 뜻은 아닙니다.
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 rounded-xl border border-hairline bg-black/[0.02] px-4 py-2.5 text-[12px] text-ink-secondary">
-      이 run 의 STEP1 감리 산출물에 조례 근거 <b className="text-ink">{count}건</b>이 있습니다.
-      요청에는 싣지 않습니다 — 서버가 parcel_id 로 직접 조회합니다.
-    </div>
-  );
+  return null;
 }
 
 function FailureBox({ title, failure }: { title: string; failure: Failure }) {

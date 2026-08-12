@@ -153,7 +153,7 @@ export default function Screen3Page() {
     <PageBody>
       <PageHeader
         screen={SCREEN}
-        lead="최종 분석에 반영할 지표별 중요도를 설정하는 단계입니다. 지표의 가중치를 조정하여 분석 결과를 세밀하게 제어할 수 있습니다."
+        lead="최종 분석에 반영할 지표별 중요도를 설정하는 단계입니다."
       />
 
       <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 mt-6 overflow-hidden min-h-0">
@@ -161,11 +161,11 @@ export default function Screen3Page() {
           {/* Stepper */}
           <div className="flex items-center justify-between mb-10 pb-6 border-b border-gray-100">
             <div className="flex items-center gap-4 flex-1 pr-8">
-              <StepIcon current={currentStep} stepNum={1} label="가중치 값 설정" />
+              <StepIcon current={currentStep} stepNum={1} label="중요도 설정" />
               <div className="h-px flex-1 bg-gray-200" />
-              <StepIcon current={currentStep} stepNum={2} label="가중치 계산" />
+              <StepIcon current={currentStep} stepNum={2} label="중요도 산정" />
               <div className="h-px flex-1 bg-gray-200" />
-              <StepIcon current={currentStep} stepNum={3} label="가중치 확정 및 확인" />
+              <StepIcon current={currentStep} stepNum={3} label="중요도 확인" />
             </div>
             <div className="shrink-0 text-[11px] font-bold text-gray-500 uppercase tracking-widest px-4 py-1.5 bg-gray-50 rounded-full border border-gray-200">
               Step {currentStep} of 3
@@ -195,7 +195,7 @@ export default function Screen3Page() {
 
                   <section className="mt-6">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
-                      <h2 className="text-[14px] font-semibold">지표별 가중치</h2>
+                      <h2 className="text-[14px] font-semibold">지표별 중요도</h2>
                     </div>
                     <WeightChart indicators={sorted} labels={labels} max={maxFinal} sparseThreshold={w.notes.sparse_threshold} />
                   </section>
@@ -233,7 +233,7 @@ export default function Screen3Page() {
              }`}
           >
             <div className="flex items-center gap-2 text-sm">
-              {isSubmittingGate || (currentStep === 2 && isWaitingForSync) ? "처리 중..." : (currentStep === 3 ? "가중치 확인 완료, 위치선정으로 넘어가기 >" : "다음 단계 확인 >")}
+              {isSubmittingGate || (currentStep === 2 && isWaitingForSync) ? "처리 중..." : (currentStep === 3 ? "위치선정으로 넘어가기" : "다음 단계 >")}
             </div>
           </button>
         </div>
@@ -328,7 +328,7 @@ function IndicatorDetailPanel({ ind, labels, sparseThreshold }: { ind: Indicator
               cost ? "bg-red-50 text-red-700 border border-red-100" : "bg-emerald-50 text-emerald-700 border border-emerald-100"
             }`}
           >
-            {cost ? "낮을수록 좋음 (cost)" : "높을수록 좋음 (benefit)"}
+            {cost ? "낮을수록 좋음" : "높을수록 좋음"}
           </span>
           {excluded && (
             <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-bold text-gray-600">
@@ -341,7 +341,7 @@ function IndicatorDetailPanel({ ind, labels, sparseThreshold }: { ind: Indicator
       
       <div className="p-4 bg-white">
         <div className="flex items-baseline justify-between mb-4 pb-4 border-b border-gray-50">
-          <span className="text-[11px] font-bold text-gray-400">최종 가중치</span>
+          <span className="text-sm font-bold text-gray-900">중요도</span>
           <span className={`text-xl font-black ${excluded ? "text-gray-400" : "text-blue-600"}`}>
             {percent(ind.w_final, 1)}
           </span>
@@ -478,8 +478,8 @@ function NoGateNotice({ run, step }: { run: RunDoc | null, step?: number }) {
             <div className="w-14 h-14 bg-emerald-100 rounded-full flex items-center justify-center mb-4 shadow-sm text-emerald-600">
               <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
             </div>
-            <h3 className="text-[16px] font-bold text-emerald-900 mb-1.5">가중치 계산 및 위치 선정이 모두 완료되었습니다.</h3>
-            <p className="text-[14px] text-emerald-700/80">다음 단계(가중치 확정 및 확인)에서 최종 결과를 확인해주세요.</p>
+            <h3 className="text-[16px] font-bold text-emerald-900 mb-1.5">중요도 산정 및 위치 선정이 모두 완료되었습니다.</h3>
+            <p className="text-[14px] text-emerald-700/80">다음 단계(중요도 확인)에서 최종 결과를 확인해주세요.</p>
           </div>
         </section>
       );
@@ -491,7 +491,7 @@ function NoGateNotice({ run, step }: { run: RunDoc | null, step?: number }) {
           <h3 className="text-[15px] font-bold text-gray-700 mb-2">이전 세션의 폼 데이터를 불러올 수 없습니다.</h3>
           <p className="text-[13px] text-gray-500 max-w-md leading-relaxed">
             게이트 제출 시 캐시된 데이터가 없어 입력 폼을 표시할 수 없습니다.<br/>
-            (가중치 확정 및 확인 단계에서 최종 산출물을 확인하실 수 있습니다)
+            (중요도 확인 단계에서 최종 산출물을 확인하실 수 있습니다)
           </p>
         </div>
       );
@@ -508,17 +508,17 @@ function NoGateNotice({ run, step }: { run: RunDoc | null, step?: number }) {
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
             </span>
             <h2 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-              가중치 점수 계산 및 위치 선정 진행 중
+              중요도 산정 진행 중
             </h2>
           </div>
           <div className="text-[13.5px] leading-relaxed text-blue-700 pl-9">
-            설정된 가중치를 바탕으로 모든 지역의 점수를 계산하고 최종 후보지를 도출하는 단계입니다.
+            설정된 중요도를 바탕으로 모든 지역의 점수를 계산하고 최종 후보지를 도출합니다
           </div>
         </div>
         
         <div className="flex flex-col items-center justify-center p-14 bg-white text-center">
           <div className="w-12 h-12 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin mb-4 shadow-sm" />
-          <h3 className="text-[15px] font-bold text-blue-900 mb-1.5">AI가 가중치 계산을 위해 열심히 데이터를 처리하고 있습니다...</h3>
+          <h3 className="text-[15px] font-bold text-blue-900 mb-1.5">AI가 중요도 산정을 위해 열심히 데이터를 처리하고 있습니다...</h3>
           <p className="text-[13px] text-blue-700/80">우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다.</p>
         </div>
       </section>

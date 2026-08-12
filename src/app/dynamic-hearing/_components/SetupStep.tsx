@@ -34,29 +34,41 @@ export function SetupStep({
   generatePersonas,
 }: SetupStepProps) {
   return (
-    <div className={`transition-all duration-700 ease-in-out transform ${step === 1 ? 'translate-x-0 opacity-100 relative' : '-translate-x-full opacity-0 absolute top-0 w-full pointer-events-none'}`}>
-      <div className="glass-panel max-w-3xl mx-auto p-8 rounded-2xl">
+    <div className={`transition-all duration-700 ease-in-out transform flex flex-col h-full ${step === 1 ? 'translate-x-0 opacity-100 relative w-full' : '-translate-x-full opacity-0 absolute top-0 w-full pointer-events-none'}`}>
+      <div className="glass-panel max-w-[1200px] mx-auto w-full p-8 rounded-2xl flex-1 flex flex-col">
         <h2 className="font-semibold text-[20px] mb-6 text-ink flex items-center tracking-tight">
           <span className="bg-primary/10 text-primary p-2.5 rounded-lg mr-3"><Info size={20} /></span>
-          다자간 공청회 안건 셋업
+          이해관계자 토론 안건 확정
         </h2>
         <div className="space-y-6">
           <div>
             <label className="block text-[13px] font-semibold text-ink-secondary mb-2 ml-1">공청회 핵심 주제</label>
             <input 
-              className="text-input-notion w-full p-3.5 text-[15px]" 
+              className="w-full h-11 px-4 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary focus:ring-1 focus:ring-primary transition-colors bg-gray-50/50" 
               value={topic} 
               onChange={e => setTopic(e.target.value)} 
-              placeholder="예: 스마트 흡연부스 설치" 
+              onKeyDown={e => {
+                if (e.key === 'Tab' && !topic) {
+                  e.preventDefault();
+                  setTopic('스마트 흡연부스 설치');
+                }
+              }}
+              placeholder="예: 스마트 흡연부스 설치 (Tab 키로 자동 입력)" 
             />
           </div>
           <div>
             <label className="block text-[13px] font-semibold text-ink-secondary mb-2 ml-1">설치 목적 및 기대 효과</label>
             <input 
-              className="text-input-notion w-full p-3.5 text-[15px]" 
+              className="w-full h-11 px-4 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder:text-gray-400 focus:border-primary focus:ring-1 focus:ring-primary transition-colors bg-gray-50/50" 
               value={purpose} 
               onChange={e => setPurpose(e.target.value)} 
-              placeholder="예: 지역상권 활성화 및 담배꽁초 무단투기 방지" 
+              onKeyDown={e => {
+                if (e.key === 'Tab' && !purpose) {
+                  e.preventDefault();
+                  setPurpose('지역상권 활성화 및 담배꽁초 무단투기 방지');
+                }
+              }}
+              placeholder="예: 지역상권 활성화 및 담배꽁초 무단투기 방지 (Tab 키로 자동 입력)" 
             />
           </div>
           <button

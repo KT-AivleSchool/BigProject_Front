@@ -119,6 +119,10 @@ export function Header() {
                 done = false;
               }
               
+              if (active) {
+                allowed = true;
+              }
+              
               const inner = (
                 <>
                   <span

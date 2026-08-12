@@ -50,9 +50,9 @@ export interface Screen {
 
 export const SCREENS: readonly Screen[] = [
   { no: "1", path: "/", name: "데이터 입력", inNav: true },
-  { no: "2", path: "/audit", name: "감리 확인", inNav: true },
+  { no: "2", path: "/audit", name: "데이터 확인", inNav: true },
   { no: "2b", path: "/audit/exclusion", name: "배제 근거", inNav: false },
-  { no: "3", path: "/weights", name: "가중치", inNav: true },
+  { no: "3", path: "/weights", name: "중요도", inNav: true },
   { no: "4", path: "/sites", name: "위치 선정", inNav: true },
   {
     no: "5",

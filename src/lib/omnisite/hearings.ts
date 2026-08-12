@@ -28,7 +28,7 @@
  *      필드가 없는 것이지 빠뜨린 게 아니다. 배열을 균일하게 돌면 `undefined` 를
  *      `false` 로 읽게 되므로 **반드시 `engine` 으로 먼저 가른다.**
  */
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { ApiError, NetworkError, apiErrorCode, getJson } from "./client";
 import { useRun } from "./RunProvider";
 import { useHydrated } from "./useHydrated";

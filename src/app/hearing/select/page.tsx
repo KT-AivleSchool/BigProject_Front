@@ -22,9 +22,9 @@
  *    화면마다 다른 판정을 낸다. 이 화면은 **화면 4 의 선택이 있는지**만 본다.
  */
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Swords, Users, ArrowRight, MapPin, CheckCircle2 } from "lucide-react";
 
 import { PageBody, PageHeader, SourceNote } from "@/components/ui/Page";
@@ -55,27 +55,27 @@ const MODES = [
     tag: "찬성 · 반대",
     icon: Swords,
     lines: [
-      "찬성측과 반대측 두 에이전트가 라운드를 주고받습니다.",
-      "매 라운드 평가자가 갈등 등급(LOW·MEDIUM·HIGH)과 양측 수용도를 갱신하고, 마지막에 조정 시나리오를 냅니다.",
+      "찬성측과 반대측으로 나뉘어 토론을 진행합니다"
     ],
     saved: "결과가 서버에 저장됩니다 (같은 필지는 최신 1건만 조회됩니다).",
   },
   {
     key: "B" as const,
     path: "/dynamic-hearing",
-    title: "다인(N명) 토론",
+    title: "다자간 토론",
     tag: "이해관계자 N명",
     icon: Users,
     lines: [
-      "주제와 목적을 입력하면 대상지 주변 이해관계자 페르소나를 발굴합니다.",
-      "누구를 참여시킬지 직접 고른 뒤(HITL), 고른 인물들이 각자의 입장에서 발언합니다.",
+      "선정된 주제와 목적으로 이해관계자를 찾아 다자간 토론을 진행합니다."
     ],
     saved: "결과가 서버에 저장됩니다 (건별로 남아 옛 토론도 다시 볼 수 있습니다).",
   },
 ];
 
-export default function HearingSelectPage() {
+function HearingSelectContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const force = searchParams.get("force") === "true";
 
   /** `undefined` = 아직 안 읽음 · `null` = 고른 적 없음. 섞으면 안내가 한 번 깜빡인다. */
   const [pick, setPick] = useState<SitePick | null | undefined>(undefined);
@@ -97,29 +97,41 @@ export default function HearingSelectPage() {
     let matchB = false;
     
     if (currentPick) {
-      if (resB && resB.scope.pnu === currentPick.pnu) matchB = true;
-      // A 엔진은 pnu나 runId를 모른다. 기록이 있으면 현재 위치의 토론이라고 가정한다.
-      if (resA) matchA = true;
+      if (resB && resB.scope.pnu === currentPick.pnu && resB.scope.runId === currentPick.run_id) matchB = true;
+      
+      // A 엔진이 저장한 run_id와 pnu를 확인
+      const simRunId = window.sessionStorage.getItem("sim_run_id");
+      const simPnu = window.sessionStorage.getItem("sim_pnu");
+      
+      if (resA) {
+        if (simRunId && simRunId === currentPick.run_id && simPnu === currentPick.pnu) {
+          matchA = true;
+        } else if (!simRunId && !simPnu) {
+          // 구버전 기록 (run_id/pnu 없음)
+          matchA = true;
+        }
+      }
     }
 
-    // 이미 진행한 토론이 있다면 해당 결과 화면으로 바로 넘긴다
-    if (matchB) {
-      router.replace("/dynamic-hearing");
-      return;
-    } else if (matchA) {
-      router.replace("/hearing");
-      return;
+    // force 파라미터가 없으면 이미 진행한 토론 결과 화면으로 넘긴다 (사이드바 탭 등을 통해 진입 시)
+    if (!force) {
+      if (matchB) {
+        router.replace("/dynamic-hearing");
+        return;
+      } else if (matchA) {
+        router.replace("/hearing");
+        return;
+      }
     }
 
     // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDone({ A: resA !== null, B: resB !== null });
-  }, [router]);
+    setDone({ A: matchA, B: matchB });
+  }, [router, force]);
 
   return (
     <PageBody>
       <PageHeader
         screen={SCREEN}
-        lead="화면 4 에서 고른 위치로 공청회를 엽니다. 어떤 방식으로 진행할지 먼저 고르세요."
       />
 
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-4">
@@ -143,29 +155,7 @@ export default function HearingSelectPage() {
                 {SCREEN4.name} 화면으로 가서 고르기 <ArrowRight size={14} />
               </Link>
             </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-hairline bg-white px-5 py-4">
-              <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-                <MapPin size={15} className="text-primary" />
-                {pick.jibun || "지번 없음"}
-              </span>
-              <span className="tnum text-[12px] text-ink-secondary">PNU {pick.pnu}</span>
-              <span className="tnum rounded-md bg-black/[0.04] px-2 py-0.5 text-[12px] text-ink-secondary">
-                화면 4 표의 순위 {pick.rank}
-              </span>
-              {pick.run_id && (
-                <span className="tnum text-[12px] text-ink-secondary/80">
-                  고른 실행 {pick.run_id}
-                </span>
-              )}
-              <Link
-                href={SCREEN4.path}
-                className="ml-auto text-[12px] font-medium text-ink-secondary underline underline-offset-2 hover:text-ink"
-              >
-                다시 고르기
-              </Link>
-            </div>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-6 grid gap-5 md:grid-cols-2">
@@ -214,34 +204,31 @@ export default function HearingSelectPage() {
                   ))}
                 </div>
 
-                <p className="mt-3 border-t border-hairline pt-3 text-[11px] leading-relaxed text-ink-secondary/80">
-                  {m.saved}
-                </p>
 
-                <span
-                  className={[
-                    "mt-5 inline-flex items-center gap-1.5 text-[13px] font-semibold",
-                    blocked || pick === undefined ? "text-ink-secondary" : "text-primary",
-                  ].join(" ")}
-                >
-                  이 방식으로 시작
-                  <ArrowRight
-                    size={15}
-                    className="transition-transform group-hover:translate-x-0.5"
-                  />
-                </span>
+
+
               </button>
             );
           })}
         </div>
 
-        <p className="mt-5 text-[12px] leading-relaxed text-ink-secondary/80">
-          두 방식은 <strong>같은 위치</strong>로 각각 돌릴 수 있습니다. 결과는 방식별로 따로
-          남고, 화면 6(보고서)은 남아 있는 기록을 <strong>둘 다</strong> 싣습니다.
-        </p>
+        <div className="mt-8 flex justify-start">
+          <Link
+            href={SCREEN4.path}
+            className="inline-flex items-center justify-center rounded-xl bg-gray-800 px-10 py-3 text-[15px] font-semibold text-white hover:bg-gray-900 transition-colors shadow-md"
+          >
+            위치선정 다시 하러 가기
+          </Link>
+        </div>
       </div>
-
-      <SourceNote files={["없음 — 화면 4 에서 고른 위치(브라우저 세션)만 읽습니다"]} />
     </PageBody>
+  );
+}
+
+export default function HearingSelectPage() {
+  return (
+    <Suspense fallback={<PageBody><div className="p-8 flex justify-center text-gray-500">불러오는 중...</div></PageBody>}>
+      <HearingSelectContent />
+    </Suspense>
   );
 }

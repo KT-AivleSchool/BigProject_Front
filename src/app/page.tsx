@@ -140,9 +140,9 @@ export default function Screen1Page() {
             <div className="flex items-center gap-4 flex-1 pr-8">
               <StepIcon current={activeStep} stepNum={1} label="데이터 및 문서 업로드" />
               <div className="h-px flex-1 bg-gray-200" />
-              <StepIcon current={activeStep} stepNum={2} label="분석 기본 정보" />
+              <StepIcon current={activeStep} stepNum={2} label="분석 정보 설정" />
               <div className="h-px flex-1 bg-gray-200" />
-              <StepIcon current={activeStep} stepNum={3} label="AI 분석 모드 선택 및 실행" />
+              <StepIcon current={activeStep} stepNum={3} label="AI 분석 모드 선택" />
             </div>
             <div className="shrink-0 text-[11px] font-bold text-gray-500 uppercase tracking-widest px-4 py-1.5 bg-gray-50 rounded-full border border-gray-200">
               Step {activeStep} of 3
@@ -217,27 +217,27 @@ export default function Screen1Page() {
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
                 </div>
                 <div className="flex items-baseline gap-3">
-                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">분석 기본 정보</h2>
-                  <p className="text-[14px] text-gray-500">어떤 지역의 어떤 시설을 분석할지, 후보를 몇 개 뽑을지 정합니다.</p>
+                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">분석 정보 설정</h2>
                 </div>
               </div>
 
               <div className="grid gap-6 sm:grid-cols-2">
-                <div className="sm:col-span-2 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
-                  <span className="text-gray-500">분석 도메인 </span>
-                  {domain ? (
-                    <b className="font-mono text-gray-900">{domain}</b>
-                  ) : (
-                    <span className="text-gray-400">— Step 1 에서 먼저 정합니다</span>
-                  )}
+                <div className="sm:col-span-2">
+                  <label className="block text-sm font-semibold text-gray-800 mb-2">분석 주제</label>
+                  <div className="w-full px-4 py-3 rounded-lg border border-gray-300 bg-gray-50 text-sm">
+                    {domain ? (
+                      <b className="font-mono text-gray-900">{domain}</b>
+                    ) : (
+                      <span className="text-gray-400">— Step 1 에서 먼저 정합니다</span>
+                    )}
+                  </div>
                 </div>
 
                 <Field
-                  label="시설 유형 (조례 업로드에 쓰입니다)"
+                  label="시설 유형 (선택)"
                   placeholder="예) 흡연부스"
                   value={facility}
                   onChange={setFacility}
-                  note="조례를 벡터 DB에 넣을 때 이 값으로 태깅합니다. 비워두면 서버가 STEP1 감리 확정본에서 읽고, 그것도 없으면 400을 돌려줍니다 — 프런트가 임의로 채우지 않습니다."
                 />
                 <Field
                   label="분석 지역 (선택)"
@@ -247,7 +247,7 @@ export default function Screen1Page() {
                   note={
                     isFull
                       ? "⚠ 이 칸은 서버로 안 갑니다. full 모드에서 지역을 정하는 것은 아래 「사용자 의도」 문장입니다 — STEP0.5 가 거기서 읽습니다."
-                      : "⚠ 실행 API 는 이 값을 받지 않습니다 (fixture·hitl 은 실행 조건이 픽스처에서 옵니다)."
+                      : undefined
                   }
                 />
 
@@ -263,7 +263,7 @@ export default function Screen1Page() {
                     note={
                       isFull
                         ? "STEP0.5 가 이 문장에서 시설·지역을 확정합니다. 200자까지, '--' 로 시작할 수 없습니다."
-                        : "fixture·hitl 에 이 값을 같이 보내면 서버가 400 을 돌려줍니다 — 그 두 모드의 실행 조건은 <도메인>_FIX/기준값.json 에서 옵니다."
+                        : undefined
                     }
                   />
                 </div>
@@ -283,7 +283,7 @@ export default function Screen1Page() {
                     note={
                       isFull
                         ? `STEP4 가 뽑을 후보 개수입니다 — 화면4 목록의 길이이자 화면5 가 고를 수 있는 후보의 수입니다. 비우면 서버 기본값 ${TOPN_DEFAULT} 이 쓰입니다. 범위 1~${TOPN_MAX}.`
-                        : `fixture·hitl 은 개수를 픽스처가 정합니다. 같이 보내면 400 입니다.`
+                        : undefined
                     }
                   />
                   {isFull && topnParsed === "invalid" && (
@@ -310,8 +310,7 @@ export default function Screen1Page() {
                   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                 </div>
                 <div className="flex items-baseline gap-3">
-                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">AI 분석 모드 선택 및 실행</h2>
-                  <p className="text-[14px] text-gray-500">파이프라인을 실행할 방식을 선택합니다.</p>
+                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">AI 분석 모드 선택</h2>
                 </div>
               </div>
 
@@ -376,7 +375,7 @@ export default function Screen1Page() {
                className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-md shadow-blue-200"
             >
               <div className="flex items-center gap-2 text-sm">
-                다음 단계 확인
+                다음 단계
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </button>
@@ -596,13 +595,7 @@ function PresetPicker({
           );
         })}
       </div>
-      <p className="mt-5 text-xs leading-relaxed text-gray-500">
-        🔴 <b>프리셋으로 돌리려면 그 도메인의 회귀 픽스처(
-        <code className="font-mono">data_임시/&lt;도메인&gt;_FIX/</code>)가 있어야 합니다.</b> 없으면
-        시작할 때 서버가 400 을 돌려줍니다. 화면이 미리 못 막는 이유는{" "}
-        <code className="font-mono">GET /upload/domains</code> 응답에 픽스처 유무가 없기
-        때문입니다 — 프런트가 규칙을 흉내 내면 서버와 갈라집니다.
-      </p>
+
     </>
   );
 }
@@ -677,9 +670,9 @@ function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: str
       title: "맞춤형 대화 분석 모드",
       badge: "추천",
       badgeColor: "bg-blue-100 text-blue-700",
-      note: "분석 중간에 멈추어 AI의 감리 결과와 가중치 제안을 직접 확인하고 수정할 수 있습니다.",
-      pros: ["전문가의 도메인 지식 실시간 반영 가능", "가장 정교한 맞춤형 최적화 결과 도출"],
-      cons: ["중간 개입 시 사용자의 피드백 대기 시간 발생", "도메인 픽스처(<도메인>_FIX/)가 있어야 합니다"],
+      note: "분석 중간에 결과와 중요도에 대해 확인하고 수정할 수 있습니다.",
+      pros: ["사용자가 직접 설정이 가능해 상세 설정이 가능합니다.", "정교한 맞춤형 최적화로 결과 도출이 가능합니다."],
+      cons: ["시간이 조금 더 걸립니다."],
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"></path></svg>
       )
@@ -687,11 +680,9 @@ function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: str
     {
       value: MODE_FIXTURE,
       title: "고속 자동 분석 모드",
-      badge: "고정밀",
-      badgeColor: "bg-gray-100 text-gray-600 border border-gray-200",
-      note: "중간 개입 없이 끝까지 돕니다. 실행 조건과 HITL 답변을 회귀 픽스처에서 그대로 가져옵니다.",
-      pros: ["중간 개입이 필요 없어 가장 빠르고 편리함", "검증된 기준선 그대로라 값이 재현됨"],
-      cons: ["도메인 픽스처(<도메인>_FIX/)가 있어야 합니다", "새 의도·새 Top-N 개수를 반영할 수 없음"],
+      note: "AI가 자동으로 분석을 합니다.",
+      pros: ["중간개입없이 빠르고 편리하게 분석을 할 수 있습니다.", "이미 검증된 방식으로 분석합니다."],
+      cons: ["커스텀이 불가능합니다."],
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m13 2-2 2.5-3-1v4.5l-3 1.5 2.5 2-1 3 4.5-1 1.5 3 2-2.5 3 1v-4.5l3-1.5-2.5-2 1-3-4.5 1-1.5-3z"></path></svg>
       )
@@ -716,17 +707,15 @@ function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: str
               <div className={`p-3 rounded-xl transition-colors duration-300 ${isSelected ? 'bg-blue-600 text-white shadow-sm' : 'bg-gray-100 text-gray-500'}`}>
                 {o.icon}
               </div>
-              <span className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-wide ${o.badgeColor}`}>
-                {o.badge}
-              </span>
+              {o.badge && (
+                <span className={`px-3 py-1 rounded-full text-[11px] font-bold tracking-wide ${o.badgeColor}`}>
+                  {o.badge}
+                </span>
+              )}
             </div>
 
             <h3 className={`text-lg font-bold mb-2 transition-colors duration-300 ${isSelected ? 'text-blue-900' : 'text-gray-800'}`}>
               {o.title}
-              {/* 백엔드가 식별할 수 있도록 실제 서버 값 표시 */}
-              <span className="ml-2 inline-flex items-center text-[10px] font-mono font-medium text-gray-500 bg-black/5 px-2 py-0.5 rounded-md align-middle">
-                mode={o.value}
-              </span>
             </h3>
 
             <p className="text-sm text-gray-500 leading-relaxed">
@@ -748,16 +737,6 @@ function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: str
               </div>
             </div>
 
-            <div className="mt-6 pt-4 border-t border-gray-200/60 flex items-center gap-3">
-              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors duration-300 ${
-                isSelected ? 'border-blue-600 bg-white' : 'border-gray-300 bg-gray-50'
-              }`}>
-                {isSelected && <div className="w-2.5 h-2.5 rounded-full bg-blue-600"></div>}
-              </div>
-              <span className={`text-sm font-bold transition-colors duration-300 ${isSelected ? 'text-blue-700' : 'text-gray-500'}`}>
-                {isSelected ? '이 모드로 실행' : '선택하기'}
-              </span>
-            </div>
           </div>
         );
       })}

@@ -247,7 +247,7 @@ export function AuditGate({
     }
 
     if (unanswered.length) {
-      return `반경이 미확정인 항목이 ${unanswered.length}건 있습니다 — ${unanswered.join(" · ")}. 「반경 없음」 또는 「반경 직접 지정」 중 하나를 골라 주세요. 미확정으로 제출하면 게이트는 통과하지만 다음 단계(정제)에서 실행이 중단됩니다.`;
+      return `반경이 미확정인 항목이 ${unanswered.length}건 있습니다 — ${unanswered.join(" · ")}. 「반경 없음」 또는 「반경 지정」 중 하나를 골라 주세요. 미확정으로 제출하면 게이트는 통과하지만 다음 단계(정제)에서 실행이 중단됩니다.`;
     }
 
     const answer: AuditAnswer = { run_id: runId };
@@ -446,21 +446,6 @@ function ExclusionCard({
           </div>
 
           <div className="flex flex-wrap items-center gap-4 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
-            <div className="flex flex-col gap-1">
-              <Radio
-                name={`ex-${q.dataset_id}`}
-                checked={state.mode === "none"}
-                onChange={() => onChange({ ...state, mode: "none" })}
-                label="반경 없음 (면적 배제로 확정)"
-                title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
-                disabled={readOnly}
-              />
-              {state.mode === "none" && (
-                <span className="text-xs text-orange-600 ml-6">
-                  ⚠️ 점(Point) 데이터일 경우 &apos;반경 없음&apos;을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
-                </span>
-              )}
-            </div>
             <Radio
               name={`ex-${q.dataset_id}`}
               checked={state.mode === "value"}
@@ -470,7 +455,7 @@ function ExclusionCard({
                   value: state.value || String(q.proposed_m ?? q.radius_m ?? ""),
                 })
               }
-              label="반경 직접 지정"
+              label="반경 지정"
               disabled={readOnly}
             />
             <label
@@ -488,8 +473,23 @@ function ExclusionCard({
                 disabled={readOnly}
                 className="w-20 px-2 py-1 rounded-md border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
               />
-              <span className="text-gray-500 font-medium">m <span className="text-xs font-normal text-gray-400">(1~5000)</span></span>
+              <span className="text-gray-500 font-medium">m</span>
             </label>
+            <div className="flex items-center gap-2">
+              <Radio
+                name={`ex-${q.dataset_id}`}
+                checked={state.mode === "none"}
+                onChange={() => onChange({ ...state, mode: "none" })}
+                label="반경 없음"
+                title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
+                disabled={readOnly}
+              />
+              {state.mode === "none" && (
+                <span className="text-xs text-orange-600">
+                  ⚠️ 이 데이터에서 사용이 불가능합니다.
+                </span>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -611,26 +611,11 @@ function IntentCard({
                     title="반경을 정하지 않습니다. 이후 단계에서 실행이 멈춥니다."
                     disabled={readOnly}
                   />
-                  <div className="flex flex-col gap-1">
-                    <Radio
-                      name={`itr-${q.dataset_id}`}
-                      checked={state.radiusMode === "none"}
-                      onChange={() => onChange({ ...state, radiusMode: "none" })}
-                      label="반경 없음 (면적 배제로 확정)"
-                      title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
-                      disabled={readOnly}
-                    />
-                    {state.radiusMode === "none" && (
-                      <span className="text-xs text-orange-600 ml-6">
-                        ⚠️ 점(Point) 데이터일 경우 &apos;반경 없음&apos;을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
-                      </span>
-                    )}
-                  </div>
                   <Radio
                     name={`itr-${q.dataset_id}`}
                     checked={state.radiusMode === "value"}
                     onChange={() => onChange({ ...state, radiusMode: "value" })}
-                    label="반경 직접 지정"
+                    label="반경 지정"
                     disabled={readOnly}
                   />
                   <label
@@ -649,9 +634,24 @@ function IntentCard({
                       className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
                     />
                     <span className="text-gray-500 font-medium">
-                      m <span className="text-xs font-normal text-gray-400">(1~5000)</span>
+                      m
                     </span>
                   </label>
+                  <div className="flex items-center gap-2">
+                    <Radio
+                      name={`itr-${q.dataset_id}`}
+                      checked={state.radiusMode === "none"}
+                      onChange={() => onChange({ ...state, radiusMode: "none" })}
+                      label="반경 없음"
+                      title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
+                      disabled={readOnly}
+                    />
+                    {state.radiusMode === "none" && (
+                      <span className="text-xs text-orange-600">
+                        ⚠️ 이 데이터에서 사용이 불가능합니다.
+                      </span>
+                    )}
+                  </div>
                   {state.radiusMode === "skip" && (
                     <p className="w-full text-xs text-rose-700 mt-2 px-1">
                       아직 <strong>미확정</strong>입니다. 이대로 제출하면 다음 단계(정제)에서 실행이 중단됩니다.

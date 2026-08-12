@@ -56,30 +56,14 @@ export default function Screen4Page() {
   const exclusion = useArtifact<ExclusionDoc>("exclusion", loadExclusion);
 
   const [selected, setSelected] = useState<number | null>(null);
-  /**
-   * 사이드바 탭. 예전엔 커버율·목록·상세를 **세로로 쌓았고**, 셋을 합치면 액자
-   * 높이(최대 600px)의 세 배가 넘어 사이드바만 끝없이 스크롤됐다.
-   *
-   * 🔴 탭으로 바꾸면 예전 결정 하나를 뒤집게 된다 — "상세를 띄워도 목록을
-   *    치우지 않는다". 그때 문제는 목록이 **사라진 것**이었고 되돌아갈 길이
-   *    「목록으로」 버튼 하나뿐이었다. 탭은 다르다: 목록은 항상 **보이는 자리에
-   *    이름표로 남아** 있고 한 번 눌러 돌아온다. 사라지는 것과 접히는 것은 다르다.
-   */
-  const [tab, setTab] = useState<"list" | "detail">("list");
-  const [panel, setPanel] = useState(true);
-  const [showExcluded, setShowExcluded] = useState(true);
-  const [showGrid, setShowGrid] = useState(true);
-  const [basemap, setBasemap] = useState(true);
   const [tileFailed, setTileFailed] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   /**
-   * 선택은 **지도·목록 두 곳에서** 들어온다. 두 곳이 각자 탭을 만지면 한쪽만
-   * 고쳤을 때 조용히 갈린다 — 창구를 하나로 둔다.
-   * 빈 지도를 눌러 선택을 지우면(`null`) 상세 탭은 보여 줄 게 없으므로 목록으로 돌린다.
+   * 빈 지도를 눌러 선택을 지우면(`null`) 상세 팝업이 닫힙니다.
    */
   function select(rank: number | null) {
     setSelected(rank);
-    setTab(rank === null ? "list" : "detail");
   }
 
   /**
@@ -102,11 +86,11 @@ export default function Screen4Page() {
       pnu: row.PNU,
       jibun: row.JIBUN,
     });
-    router.push("/hearing/select");
+    router.push("/hearing/select?force=true");
   }
 
   return (
-    <PageBody>
+    <PageBody fullWidth={true}>
       <PageHeader
         screen={SCREEN}
         lead="선택된 후보지들이 얼마나 많은 수요를 감당할 수 있는지(커버율)를 확인합니다. 최종 순위는 단순 점수가 아닌 실질적인 수요 해결 기여도를 기준으로 결정됩니다."
@@ -133,134 +117,86 @@ export default function Screen4Page() {
 
             return (
               <>
-                <Toolbar
-                  grid={g}
-                  exclusion={exclusion.data}
-                  showGrid={showGrid}
-                  setShowGrid={setShowGrid}
-                  showExcluded={showExcluded}
-                  setShowExcluded={setShowExcluded}
-                  basemap={basemap}
-                  setBasemap={setBasemap}
-                  panel={panel}
-                  setPanel={setPanel}
-                />
+                <section className="flex-1 min-h-0 flex flex-col overflow-hidden rounded-xl border border-hairline bg-white shadow-sm">
 
-                <Coverage report={report.data} nTop={rows.length} />
-
-                <section className="flex-1 min-h-0 flex flex-col mt-3 overflow-hidden rounded-xl border border-hairline bg-white">
-                  {basemap && tileFailed && (
-                    <p className="border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900 shrink-0">
-                      배경 지도 타일을 받지 못했습니다(외부 망 차단이거나 타일 서버 응답 없음).
-                      <b> 격자와 후보지는 그대로 정확합니다</b> — 배경만 없습니다. 「배경 지도」를
-                      꺼도 됩니다.
-                    </p>
-                  )}
-
-                  <div
-                    className={`flex-1 min-h-0 grid ${panel ? "md:grid-cols-[minmax(0,1fr)_360px]" : ""}`}
-                  >
-                    <div className="relative h-full min-h-0">
+                  <div className="flex-1 min-h-0 grid md:grid-cols-5">
+                    {/* Left: Map (4 columns) */}
+                    <div className="relative h-full min-h-0 md:col-span-4 border-r border-hairline overscroll-none touch-none">
                       <GridMap
                         grid={g}
                         topn={rows}
                         exclusion={exclusion.data}
                         selected={selected}
                         onSelect={select}
-                        showExcluded={showExcluded}
-                        showGrid={showGrid}
-                        basemap={basemap}
+                        showExcluded={true}
+                        showGrid={true}
+                        basemap={true}
                         onTileError={() => setTileFailed(true)}
                       />
+                      
+                      {/* Floating Detail Popup */}
+                      {sel && (
+                        <div className="absolute top-4 left-4 z-10 w-96 max-h-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-white/95 backdrop-blur shadow-2xl border border-gray-200 p-4">
+                          <Detail
+                            row={sel}
+                            prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
+                            rows={rows}
+                            minSep={minSepM(report.data)}
+                            onClose={() => select(null)}
+                          />
+                        </div>
+                      )}
+                      
+                      {/* Floating Action Button */}
+                      <div className="absolute bottom-6 right-6 z-10">
+                        <button
+                          type="button"
+                          disabled={!sel}
+                          onClick={() => sel && goHearing(sel)}
+                          className={`inline-flex items-center gap-2 rounded-xl px-8 py-4 text-[15px] font-bold shadow-xl transition-all ${
+                            sel
+                              ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
+                              : "cursor-not-allowed bg-white/90 text-gray-400 backdrop-blur border border-gray-200"
+                          }`}
+                        >
+                          {sel ? "이 위치로 갈등 예측 실행" : "후보지를 먼저 선택하세요"}
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                        </button>
+                      </div>
                     </div>
 
-                    {panel && (
-                      <aside
-                        className="flex h-full flex-col min-h-0 border-hairline md:border-l"
-                      >
-                        <div className="flex shrink-0 gap-1 border-b border-hairline px-2 pt-2">
-                          <Tab on={tab === "list"} onClick={() => setTab("list")}>
-                            후보 {rows.length}곳
-                          </Tab>
-                          <Tab on={tab === "detail"} onClick={() => setTab("detail")}>
-                            {sel ? `${sel.순위}순위 상세` : "상세"}
-                          </Tab>
+                    {/* Right: Sidebar (1 column) */}
+                    <aside className="flex h-full flex-col min-h-0 bg-gray-50/80 backdrop-blur-xl border-l border-gray-200 md:col-span-1 relative">
+                      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white/50 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-sm font-bold text-gray-800">최적 입지 분석 리포트</h2>
                         </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowInfo(!showInfo)}
+                          className={`flex items-center justify-center w-6 h-6 rounded-full transition-colors ${showInfo ? "bg-gray-300 text-gray-700" : "bg-gray-200 text-gray-500 hover:bg-gray-300"}`}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
+                        </button>
+                      </div>
 
-                        <div className="min-h-0 flex-1 overflow-y-auto p-3">
-                          {tab === "list" ? (
-                            <TopList rows={rows} selected={selected} onSelect={select} />
-                          ) : sel ? (
-                            <Detail
-                              row={sel}
-                              prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
-                              rows={rows}
-                              minSep={minSepM(report.data)}
-                              onClose={() => select(null)}
-                            />
-                          ) : (
-                            /* 빈 탭을 그냥 비워 두지 않는다 — 「고장인가」와 「아직 안 골랐나」를
-                               화면만 보고 구분할 수 있어야 한다. */
-                            <div className="flex flex-col items-center justify-center h-full text-center p-6 text-gray-400">
-                              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="mb-3 opacity-50"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                              <p className="text-[12px] leading-relaxed">
-                                아직 선택된 후보지가 없습니다.<br/>지도의 번호 마커를 누르거나<br/>후보 리스트에서 항목을 선택하시면<br/>여기에 세부 정보가 나타납니다.
-                              </p>
-                            </div>
-                          )}
+                      {/* Info Panel Dropdown */}
+                      {showInfo && (
+                        <div className="absolute top-[60px] right-4 w-72 z-20 p-4 rounded-xl bg-white/95 backdrop-blur shadow-xl border border-gray-200 text-[11px] leading-relaxed text-ink-secondary flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
+                          <p><strong>내접폭</strong>은 이 필지 안에 시설이 실제로 들어가는지를 보는 값입니다. 면적이 넓어도 길쭉하면 못 놓습니다.</p>
+                          <p><strong>커버 기여</strong>는 비율이 아니라 수요값 절대량입니다(산출물 그대로). 커버율이 실제로 얼마나 올랐는지는 「실질 커버율 상승폭」으로 보십시오.</p>
+                          <p><strong>인접한 타 추천 후보지</strong>는 산출물에 없는 값이라 Top-N 좌표로 이 화면에서 계산한 것입니다. 실제 이격이 기준보다 큰지 확인하는 용도입니다.</p>
                         </div>
-                      </aside>
-                    )}
+                      )}
+
+                      <div className="min-h-0 flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-thin">
+                        <Coverage report={report.data} nTop={rows.length} />
+                        <TopList rows={rows} selected={selected} onSelect={select} />
+                      </div>
+                    </aside>
                   </div>
 
-                  <Legend grid={g} exclusion={exclusion.data} />
                 </section>
-
-                {/* 🔴 다음 단계로 가려면 **후보지를 하나 골라야 한다.** 화면 5 는
-                    고른 그 점으로 공청회를 연다 — 안 고르고 넘어가면 화면 5 가
-                    스스로 1순위를 집게 되고, 그건 추천을 결정으로 바꿔 읽는 것이다. */}
-                <div className="shrink-0 mt-4 mb-2">
-                  <div
-                    className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 p-5 shadow-sm ${
-                      sel ? "border-blue-200 bg-blue-50/60" : "border-gray-200 bg-gray-50/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                          sel ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-500"
-                        }`}
-                      >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[14px] font-bold text-gray-800">
-                          {sel
-                            ? `${sel.순위}순위 · ${sel.JIBUN} 로 공청회를 엽니다`
-                            : "공청회를 열 위치를 선택하세요"}
-                        </span>
-                        <span className="text-[13px] text-gray-500">
-                          {sel
-                            ? "이 필지로 페르소나 토론을 시작합니다. 다른 곳을 원하면 지도나 목록에서 다시 고르세요."
-                            : "지도의 번호 마커나 오른쪽 후보 목록에서 한 곳을 누르면 다음 단계로 넘어갈 수 있습니다."}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={!sel}
-                      onClick={() => sel && goHearing(sel)}
-                      className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold shadow-sm transition-all ${
-                        sel
-                          ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
-                          : "cursor-not-allowed bg-gray-300 text-gray-500"
-                      }`}
-                    >
-                      {sel ? "이 위치로 갈등 예측 실행" : "후보지를 먼저 선택하세요"}
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                    </button>
-                  </div>
-                </div>
               </>
             );
           }}
@@ -270,102 +206,11 @@ export default function Screen4Page() {
   );
 }
 
-function Toolbar({
-  grid,
-  exclusion,
-  showGrid,
-  setShowGrid,
-  showExcluded,
-  setShowExcluded,
-  basemap,
-  setBasemap,
-  panel,
-  setPanel,
-}: {
-  grid: ScoreGridDoc;
-  exclusion: ExclusionDoc | null;
-  showGrid: boolean;
-  setShowGrid: (v: boolean) => void;
-  showExcluded: boolean;
-  setShowExcluded: (v: boolean) => void;
-  basemap: boolean;
-  setBasemap: (v: boolean) => void;
-  panel: boolean;
-  setPanel: (v: boolean) => void;
-}) {
-  const excluded = grid.cells.reduce((n, c) => n + (c[3] === 1 ? 1 : 0), 0);
-  const layers = drawableLayers(exclusion);
-  return (
-    <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-hairline bg-white px-4 py-3 text-[12px] shrink-0">
-      <Toggle on={showGrid} set={setShowGrid} label={`분석 격자망 (${int(grid.count)}칸)`} />
-      <Toggle
-        on={showExcluded}
-        set={setShowExcluded}
-        /* 🔴 「칸」이라고 적으면 안 되는 경우가 생겼다 — 실제 형상을 그릴 땐 칸이
-           아니라 **구역**이다. 세는 단위를 그리는 것과 맞춘다. */
-        label={
-          layers > 0
-            ? `설치 불가 지역 (${layers}개 구역)`
-            : `설치 불가 지역 (${int(excluded)}칸 · 격자 근사)`
-        }
-      />
-      <Toggle on={basemap} set={setBasemap} label="배경 지도" />
-      <span className="ml-auto flex items-center gap-3 text-ink-secondary">
-        <span>휠 확대 · 끌어서 이동 · 마커 클릭</span>
-        <button type="button" onClick={() => setPanel(!panel)} className="btn-secondary text-[12px]">
-          {panel ? "패널 접기 ▶" : "◀ 패널 펴기"}
-        </button>
-      </span>
-    </div>
-  );
-}
 
-function Toggle({
-  on,
-  set,
-  label,
-}: {
-  on: boolean;
-  set: (v: boolean) => void;
-  label: string;
-}) {
-  return (
-    <label className="flex cursor-pointer items-center gap-1.5">
-      <input type="checkbox" checked={on} onChange={(e) => set(e.target.checked)} />
-      <span>{label}</span>
-    </label>
-  );
-}
-
-/** 사이드바 탭 머리. 두 개뿐이라 라이브러리를 들이지 않는다. */
-function Tab({
-  on,
-  onClick,
-  children,
-}: {
-  on: boolean;
-  onClick: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={on}
-      /* 선택 탭에 아래쪽 파란 줄. `-mb-px` 로 탭 테두리가 사이드바 경계선을
-         덮어 "이 탭이 아래 내용과 이어져 있다"가 보이게 한다. */
-      className={`-mb-px rounded-t border-b-2 px-3 py-1.5 text-[12px] ${
-        on
-          ? "border-primary font-semibold text-primary"
-          : "border-transparent text-ink-secondary hover:bg-black/[0.04]"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
 
 function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   if (!report) return null;
   const cov = report.coverage;
   if (!cov) return null;
@@ -374,39 +219,47 @@ function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) 
   const reach = Object.entries(cov.reach).sort((a, b) => Number(a[0]) - Number(b[0]));
 
   return (
-    <section className="mt-3 rounded-xl border border-hairline bg-white p-4 shrink-0 shadow-sm">
-      <div className="flex flex-col lg:flex-row gap-8 items-center">
-        {/* Left: Big Number & Chart */}
-        <div className="flex items-center gap-6 w-full lg:w-1/2">
-          <div className="shrink-0 text-center">
-            <div className="text-[12px] text-ink-secondary mb-1">상위 {nTop}곳 설치 시 커버율</div>
-            <div className="tnum text-[32px] font-black text-blue-600 leading-none">{percent(atTop, 1)}</div>
-          </div>
-          <div className="flex-1 h-[60px]">
-            <CoverageChart cumulative={cov.cumulative} knee={cov.knee} nTop={nTop} />
-          </div>
+    <section className="flex flex-col gap-4 shrink-0 border-b border-gray-200 pb-4">
+      {/* Top: Big Number & Chart */}
+      <div className="flex flex-col gap-3">
+        <div className="text-center">
+          <div className="text-[12px] text-ink-secondary mb-1">상위 {nTop}곳 설치 시 커버율</div>
+          <div className="tnum text-[32px] font-black text-blue-600 leading-none">{percent(atTop, 1)}</div>
         </div>
+      </div>
 
-        {/* Right: Stats */}
-        <div className="w-full lg:w-1/2 flex flex-col justify-center">
-          <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-[12px]">
+      <button 
+        type="button" 
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full text-[12px] font-semibold text-gray-600 bg-gray-100/50 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors"
+      >
+        <span>상세 통계 지표 보기</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </button>
+
+      {/* Bottom: Stats */}
+      {isOpen && (
+        <div className="flex flex-col animate-in slide-in-from-top-2 fade-in duration-200">
+          <dl className="flex flex-col gap-y-2 text-[12px]">
             {reach.map(([target, n]) => (
-              <div key={target} className="flex justify-between gap-3 border-b border-gray-50 pb-1">
-                <dt className="text-ink-secondary">전체 수요의 {percent(Number(target), 0)}를 해결하려면</dt>
+              <div key={target} className="flex justify-between gap-3 border-b border-gray-200/50 pb-1">
+                <dt className="text-ink-secondary">전체 수요의 {percent(Number(target), 0)} 해결</dt>
                 <dd className="tnum font-bold text-gray-800">{int(n)}곳 필요</dd>
               </div>
             ))}
-            <div className="flex justify-between gap-3 border-b border-gray-50 pb-1">
+            <div className="flex justify-between gap-3 border-b border-gray-200/50 pb-1 mt-2">
               <dt className="text-ink-secondary" title="더 이상 후보지를 늘려도 커버율이 크게 오르지 않는 효율성 한계점입니다.">효율성 감소 시작점 (가성비 한계)</dt>
               <dd className="tnum font-bold text-gray-800">{int(cov.knee)}곳</dd>
             </div>
-            <div className="flex justify-between gap-3 border-b border-gray-50 pb-1">
-              <dt className="text-ink-secondary" title={`물리적으로 도달 불가능한 수요점: ${int(cov.unreached_n)}개`}>최대 해결 가능 수요 (커버율 한계)</dt>
+            <div className="flex justify-between gap-3 border-b border-gray-200/50 pb-1">
+              <dt className="text-ink-secondary" title={`물리적으로 도달 불가능한 수요점: ${int(cov.unreached_n)}개`}>최대 커버율 한계</dt>
               <dd className="tnum font-bold text-gray-800">{percent(cov.ceiling, 2)}</dd>
             </div>
           </dl>
         </div>
-      </div>
+      )}
     </section>
   );
 }
@@ -453,15 +306,39 @@ function TopList({
   selected: number | null;
   onSelect: (rank: number) => void;
 }) {
+  const [showRankInfo, setShowRankInfo] = useState(false);
   const sorted = [...rows].sort((a, b) => a.순위 - b.순위);
   /* 탭 안이라 카드 테두리를 두르지 않는다 — 탭 머리가 이미 경계다. 겹치면
      상자 안의 상자가 되어 어디까지가 한 덩어리인지 흐려진다. */
   return (
-    <div>
-      <p className="text-[11px] leading-relaxed text-ink-secondary">
-        최종 순위는 <b>실질적인 수요 해결 기여도</b>에 따라 결정됩니다. (단순 점수가 높아도 주변에 다른 우수 후보지가 있어 상권이 겹치면 순위가 밀릴 수 있습니다.)
-      </p>
-      <ul className="mt-2 flex flex-col gap-1">
+    <div className="relative">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[13px] font-bold text-gray-800">최적 입지 추천 순위</h3>
+        <button
+          type="button"
+          onMouseEnter={() => setShowRankInfo(true)}
+          onMouseLeave={() => setShowRankInfo(false)}
+          className="text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
+        </button>
+      </div>
+      
+      {showRankInfo && (
+        <div className="absolute right-0 top-6 z-20 w-64 p-3 rounded-lg bg-gray-800 text-white text-[11px] leading-relaxed shadow-lg animate-in fade-in zoom-in-95">
+          최종 순위는 <b>실질적인 수요 해결 기여도</b>에 따라 결정됩니다. (단순 점수가 높아도 주변에 다른 우수 후보지가 있어 상권이 겹치면 순위가 밀릴 수 있습니다.)
+        </div>
+      )}
+
+      {/* 헤더 행 */}
+      <div className="flex w-full items-center gap-2 px-2 pb-1 text-[11px] font-semibold text-ink-secondary border-b border-gray-200/50">
+        <span className="w-6 shrink-0 text-center">순위</span>
+        <span className="flex-1">지번 주소</span>
+        <span className="w-16 shrink-0 text-right">점수</span>
+        <span className="w-16 shrink-0 text-right">누적커버율</span>
+      </div>
+
+      <ul className="mt-1 flex flex-col gap-1">
         {sorted.map((r) => {
           const on = r.순위 === selected;
           return (
@@ -478,8 +355,8 @@ function TopList({
                   {r.순위}
                 </span>
                 <span className="flex-1 truncate text-[12px]">{r.JIBUN}</span>
-                <span className="tnum text-[11px] text-ink-secondary">{fixed(r.점수, 3)}</span>
-                <span className="tnum w-12 shrink-0 text-right text-[11px] text-ink-secondary">
+                <span className="tnum w-16 shrink-0 text-right text-[11px] text-ink-secondary">{`${fixed(r.점수 * 100, 1)}점`}</span>
+                <span className="tnum w-16 shrink-0 text-right text-[11px] text-ink-secondary">
                   {percent(r.누적커버율, 1)}
                 </span>
               </button>
@@ -581,83 +458,42 @@ function Detail({
       </div>
 
       <dl className="mt-3 flex flex-col gap-1 text-[12px]">
-        <Row k="단순 평가 점수" v={fixed(row.점수, 4)} />
-        <Row k="수요 해결 기여도" v={`${fixed(row.커버기여, 4)}`} />
+        <Row k="수요 해결 기여 점수" v={`${fixed(row.커버기여, 1)}`} bold />
+        <Row k="입지 평가 점수" v={`${fixed(row.점수 * 100, 1)}`} />
         <Row
-          k="실질 커버율 상승폭"
-          v={`+${fixed(deltaCover * 100, 2)}%p${prev ? "" : " (0 에서)"}`}
+          k="추가 수요 커버"
+          v={`+${fixed(deltaCover * 100, 2)}%p`}
         />
-        <Row k="현재까지 누적 커버율" v={percent(row.누적커버율, 2)} />
-        <Row k="토지 지목" v={row.지목} />
-        <Row k="부지 면적" v={areaM2(row.면적)} />
-        <Row k="내접폭 (실제 설치 가능 폭)" v={`${fixed(row.내접폭, 2)} m`} />
+        <Row k="누적 수요 커버율" v={percent(row.누적커버율, 2)} />
+        <Row k="토지 유형" v={row.지목 === "대" ? "대지" : row.지목} />
+        <Row k="부지 면적" v={`${int(row.면적)}㎡`} />
+        <Row k="실제 설치 가능 폭" v={`${fixed(row.내접폭, 1)}m`} />
         <Row
-          k="타 시설과의 최소 이격 기준"
-          v={minSep === null ? "—" : `${fixed(minSep, 0)} m`}
+          k="시설 간 최소 설치 간격"
+          v={minSep === null ? "—" : `${fixed(minSep, 0)}m`}
         />
         <Row
-          k="인접한 타 추천 후보지"
-          v={near === null ? "주변에 후보지 없음" : `${fixed(near.m, 0)} m 거리에 ${near.rank}순위 있음`}
+          k="가장 가까운 다른 추천 후보"
+          v={near === null ? "주변에 후보지 없음" : `${fixed(near.m, 0)}m · 추천 ${near.rank}순위`}
         />
-        <Row k="국유지 필지" v={`${int(row.국유_건수)}건 · 지분 ${percent(row.국유_지분율, 1)}`} />
-        <Row k="지번 일치" v={row.국유_지번일치 ? "예" : "아니오"} />
-        <Row k="대표점 유래" v={row.from_rep ? "필지 대표점" : "격자점"} />
-        <Row k="PNU" v={row.PNU} mono />
-        <Row k="좌표" v={`${row.위도.toFixed(6)}, ${row.경도.toFixed(6)}`} mono />
+        <Row k="국가 소유 지분" v={row.국유_지분율 === 0 ? "없음" : percent(row.국유_지분율, 1)} />
+        <Row k="국유재산 지번 일치" v={row.국유_지번일치 ? "일치" : "일치하지 않음"} />
+        <Row k="후보 위치 생성 방식" v={row.from_rep ? "필지 대표점" : "격자 기반"} />
+        <Row k="필지 고유번호(PNU)" v={row.PNU} mono />
+        <Row k="위치 좌표" v={`${row.위도.toFixed(6)}, ${row.경도.toFixed(6)}`} mono />
       </dl>
 
-      <p className="mt-3 text-[11px] leading-relaxed text-ink-secondary">
-        내접폭은 이 필지 안에 시설이 실제로 들어가는지를 보는 값입니다. 면적이 넓어도
-        길쭉하면 못 놓습니다.
-        <br />
-        「커버 기여」는 비율이 아니라 <b>수요값 절대량</b>입니다(산출물 그대로). 총
-        수요값이 산출물에 없어 백분율로 바꾸지 않았습니다 — 대신 커버율이 실제로 얼마나
-        올랐는지는 「커버율 증가」로 보십시오.
-        <br />
-        「가장 가까운 후보」는 산출물에 없는 값이라 <b>Top-N 좌표로 이 화면에서
-        계산</b>한 것입니다(하버사인). 기준은 <code>report.facility_params</code> 의
-        값이고, 실제 이격이 기준보다 큰지 확인하는 용도입니다.
-      </p>
     </div>
   );
 }
 
-function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
+function Row({ k, v, mono, bold }: { k: string; v: string; mono?: boolean; bold?: boolean }) {
   return (
-    <div className="flex justify-between gap-3">
-      <dt className="shrink-0 text-ink-secondary">{k}</dt>
-      <dd className={`text-right font-medium ${mono ? "tnum text-[11px]" : "tnum"}`}>{v}</dd>
+    <div className={`flex justify-between gap-3 ${bold ? "mb-1.5" : ""}`}>
+      <dt className={`shrink-0 ${bold ? "font-bold text-gray-900 text-[13px]" : "text-ink-secondary"}`}>{k}</dt>
+      <dd className={`text-right ${bold ? "font-bold text-blue-600 text-[14px]" : "font-medium"} ${mono && !bold ? "tnum text-[11px]" : "tnum"}`}>{v}</dd>
     </div>
   );
 }
 
-function Legend({ grid, exclusion }: { grid: ScoreGridDoc; exclusion: ExclusionDoc | null }) {
-  const layers = drawableLayers(exclusion);
-  return (
-    /* 액자의 **아래 테두리**다. 위쪽 도구줄과 짝을 이룬다 — 지도를 설명하는 글이
-       지도에서 떨어져 문서 흐름에 흩어지면 무엇에 대한 범례인지 흐려진다. */
-    <div className="flex flex-wrap items-center gap-x-6 gap-y-2 border-t border-hairline bg-gray-50 px-4 py-2.5 text-[12px] text-gray-600">
-      <span className="flex items-center gap-2">
-        <span className="h-3 w-24 rounded shadow-inner" style={{ background: "linear-gradient(90deg,#e9edf2,#0075de)" }} />
-        <span className="font-medium">종합 평가 점수</span> (낮음 {fixed(grid.score_min, 3)} → 높음 {fixed(grid.score_max, 3)})
-      </span>
-      <span className="flex items-center gap-1.5 font-medium">
-        <span className="h-3 w-3 rounded shadow-sm" style={{ background: "rgba(190,60,60,0.30)" }} />
-        {/* 🔴 빨간 면이 **무엇인지**를 적는다. 산출물 형상일 때와 격자로 대신 그릴 때는
-            같은 그림이 아니다 — 뭉뚱그리면 격자 계단을 실제 경계로 읽는다. */}
-        {layers > 0
-          ? `설치 불가 지역 (배제 ${layers}종 · 실제 형상)`
-          : "설치 불가 지역 (배제 · 격자 근사)"}
-      </span>
-      <span className="flex items-center gap-1.5 font-medium">
-        <span className="grid h-4 w-4 place-items-center rounded-full border-2 border-primary bg-white text-[9px] font-bold text-primary shadow-sm">
-          1
-        </span>
-        최종 추천 후보지
-      </span>
-      <span className="ml-auto text-gray-400 text-[11px]">
-        배경 색면은 {grid.spacing_m}m 격자 점수를 이어 그린 히트맵입니다 — 한 지점의 색은 주변 격자가 섞인 값입니다.
-      </span>
-    </div>
-  );
-}
+

@@ -1,42 +1,29 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { gateScreen } from "@/lib/omnisite/gate";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { computeProgress, formatDuration, loadBaseline } from "@/lib/omnisite/progress";
-import { fetchRunLog } from "@/lib/omnisite/pipeline";
-import { datetime, int, percent } from "@/lib/omnisite/format";
-import { SCREENS } from "@/lib/omnisite/screens";
+import { percent } from "@/lib/omnisite/format";
 import type { RunDoc, RunStep } from "@/lib/omnisite/types";
 
 export function ProgressSidebar() {
   const { run, restoring, runningElapsedSec, refresh } = useRun();
   const baseline = loadBaseline();
-  const [isOpen, setIsOpen] = useState(false);
+  const pathname = usePathname();
 
-  // Auto-open sidebar when a run exists and is not succeeded/failed
-  useEffect(() => {
-    if (run && (run.status === "running" || run.status === "awaiting_hitl" || run.status === "queued")) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setIsOpen(true);
-    }
-  }, [run, run?.status]);
-
-  if (!isOpen) {
-    return (
-      <div className="fixed right-0 top-1/2 -translate-y-1/2 z-40">
-        <ToggleButton isOpen={false} onClick={() => setIsOpen(true)} run={run} />
-      </div>
-    );
+  if (
+    pathname?.startsWith("/sites") ||
+    pathname?.startsWith("/hearing") ||
+    pathname?.startsWith("/dynamic-hearing") ||
+    pathname?.startsWith("/report")
+  ) {
+    return null;
   }
 
   return (
     <aside className="relative w-[420px] bg-gray-50/80 backdrop-blur-xl border-l border-gray-200 flex flex-col h-full shadow-sm shrink-0">
-      <div className="absolute right-full top-1/2 -translate-y-1/2 z-40">
-        <ToggleButton isOpen={true} onClick={() => setIsOpen(false)} run={run} />
-      </div>
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white/50">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-gray-800">실시간 분석 모니터링</h2>
@@ -48,7 +35,7 @@ export function ProgressSidebar() {
 
       <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
         {restoring ? (
-          <p className="text-xs text-gray-500 text-center mt-10">이전 실행을 확인하는 중…</p>
+          <p className="text-xs text-gray-500 text-center mt-10">이전 실행을 확인하는 중...</p>
         ) : !run ? (
           <div className="text-center mt-20 flex flex-col items-center">
             <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
@@ -82,34 +69,30 @@ function SidebarContent({ run, baseline, runningElapsedSec, refresh }: { run: Ru
     <div className="flex flex-col gap-5">
       {/* ── 요약 메타 정보 ── */}
       <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm">
-        <dl className="grid grid-cols-2 gap-y-3 text-xs">
-          <div className="col-span-2">
-            <dt className="text-gray-400 mb-0.5">Run ID</dt>
-            <dd className="font-mono text-gray-700 bg-gray-50 px-2 py-0.5 rounded inline-block text-[10px] break-all">{run.run_id}</dd>
+        <dl className="grid grid-cols-2 gap-y-1">
+          <div>
+            <dt className="text-sm font-medium text-gray-500 mb-1">주제</dt>
+            <dd className="text-lg font-bold text-gray-800">{run.domain}</dd>
           </div>
           <div>
-            <dt className="text-gray-400 mb-0.5">도메인</dt>
-            <dd className="font-semibold text-gray-700">{run.domain}</dd>
-          </div>
-          <div>
-            <dt className="text-gray-400 mb-0.5">모드</dt>
-            <dd className="font-medium text-gray-700">{run.mode === "hitl" ? "대화형" : "자동"}</dd>
+            <dt className="text-sm font-medium text-gray-500 mb-1">모드</dt>
+            <dd className="text-lg font-bold text-gray-800">{run.mode === "hitl" ? "대화형" : "자동"}</dd>
           </div>
         </dl>
       </div>
 
       {/* ── 진행률 ── */}
-      <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm relative overflow-hidden">
-        <div className="absolute top-0 left-0 w-full h-1 bg-gray-100">
-          <div 
-            className={`h-full transition-[width] duration-500 ${run.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`}
-            style={{ width: p.ratio === null ? "0%" : `${p.ratio * 100}%` }}
-          />
-        </div>
-        
-        <div className="mt-1 flex items-center justify-between">
+      <div className="bg-white rounded-xl p-4 border border-gray-200 shadow-sm flex flex-col">
+        <div className="flex items-center justify-between mb-3">
           <span className="text-xs font-bold text-gray-800">{statusLabel(run)}</span>
           <span className="text-lg font-black text-gray-900 tracking-tight">{p.ratio === null ? "—%" : percent(p.ratio, 0)}</span>
+        </div>
+        
+        <div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden">
+          <div 
+            className={`h-full transition-[width] duration-500 rounded-full ${run.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'}`}
+            style={{ width: p.ratio === null ? "0%" : `${p.ratio * 100}%` }}
+          />
         </div>
         
         <div className="mt-3 flex justify-between text-[11px] text-gray-500">
@@ -193,18 +176,31 @@ function GateBlock({ run, onRefresh }: { run: RunDoc; onRefresh: () => void }) {
   );
 }
 
+const STEP_NAME_MAP: Record<string, string> = {
+  "정제": "데이터 정리",
+  "후보 필지 생성": "후보 지역 생성",
+  "가중치 산정": "중요도 산정",
+  "후보점 생성": "후보 위치 선정",
+  "점수화·배제 적용": "점수 계산",
+  "위치 선정": "위치 확정",
+  "감리 규칙 DB 적재 (토론 근거)": "토론 근거 생성",
+  "후보점 DB 적재 (화면5 목록)": "후보 위치 등록",
+};
+
 function StepRow({ step, baselineSec }: { step: RunStep; baselineSec: number | null }) {
   const isRunning = step.status === "running";
   const isDone = step.status === "done";
   const isFailed = step.status === "failed";
   
+  const displayLabel = STEP_NAME_MAP[step.label] || step.label;
+
   return (
     <li className={`flex items-center justify-between p-2 rounded-lg text-[11px] transition-colors ${
       isRunning ? 'bg-blue-50 border border-blue-100' : isFailed ? 'bg-red-50 border border-red-100' : 'hover:bg-gray-50'
     }`}>
       <div className="flex items-center gap-2 truncate">
         <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${isRunning ? 'bg-blue-500 animate-pulse' : isDone ? 'bg-green-500' : isFailed ? 'bg-red-500' : 'bg-gray-300'}`} />
-        <span className={`truncate ${isRunning ? 'font-bold text-blue-900' : isDone ? 'text-gray-700' : 'text-gray-500'}`}>{step.label}</span>
+        <span className={`truncate ${isRunning ? 'font-bold text-blue-900' : isDone ? 'text-gray-700' : 'text-gray-500'}`}>{displayLabel}</span>
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <span className="text-[10px] text-gray-400 font-mono">
@@ -215,10 +211,9 @@ function StepRow({ step, baselineSec }: { step: RunStep; baselineSec: number | n
   );
 }
 
-
 function statusLabel(run: RunDoc): string {
   if (run.status === "awaiting_hitl" && run.gate) {
-    if (run.gate.id === "audit") return "감리 확인 진행 중";
+    if (run.gate.id === "audit") return "데이터 분석 진행 중";
     if (run.gate.id === "weight") return "가중치 설정 진행 중";
   }
   return {
@@ -228,24 +223,4 @@ function statusLabel(run: RunDoc): string {
     succeeded: "분석 완료",
     failed: "분석 실패",
   }[run.status] ?? run.status;
-}
-
-function ToggleButton({ isOpen, onClick, run }: { isOpen: boolean; onClick: () => void; run: RunDoc | null }) {
-  return (
-    <button
-      onClick={onClick}
-      className="bg-white border border-gray-200 border-r-0 rounded-l-xl shadow-md p-3 flex flex-col items-center gap-2 hover:bg-gray-50 transition-colors"
-      title={isOpen ? "진행 현황 닫기" : "진행 현황 열기"}
-    >
-      <span className="writing-vertical text-xs font-semibold text-gray-500 tracking-widest" style={{ writingMode: 'vertical-rl' }}>
-        {isOpen ? "숨기기" : "분석 현황"}
-      </span>
-      {run && (run.status === "running" || run.status === "queued") && (
-        <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse mt-2" />
-      )}
-      {run && run.status === "awaiting_hitl" && (
-        <span className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse mt-2" />
-      )}
-    </button>
-  );
 }

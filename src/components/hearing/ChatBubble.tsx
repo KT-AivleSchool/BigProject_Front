@@ -13,6 +13,7 @@ export interface ChatMessage {
 
 interface ChatBubbleProps {
   message: ChatMessage;
+  engine?: "A" | "B";
 }
 
 // 에셋(이미지) 추가 시 이곳의 아이콘 렌더링 부분을 <img> 태그 등으로 교체해주시면 됩니다.
@@ -45,7 +46,7 @@ function AvatarPlaceholder({ role }: { role?: string }) {
   );
 }
 
-export function ChatBubble({ message }: ChatBubbleProps) {
+export function ChatBubble({ message, engine }: ChatBubbleProps) {
   // 텍스트 내의 **굵게** 마크다운과 줄바꿈, 찬성/반대 키워드를 렌더링하는 함수
   const formatText = (text: string, isSystem: boolean = false) => {
     return text.split('\n').map((line, i, arr) => {
@@ -88,7 +89,11 @@ export function ChatBubble({ message }: ChatBubbleProps) {
   };
 
   if (message.type === "system") {
-    const isFinalResult = message.text.includes("최종 종료되었습니다") || message.text.includes("정리본") || message.text.includes("결과");
+    const isFinalResult =
+      engine === "B" &&
+      (message.text.includes("최종 종료되었습니다") ||
+        message.text.includes("정리본") ||
+        message.text.includes("결과"));
     
     if (isFinalResult) {
       // 텍스트를 섹션별로 분리하여 렌더링
