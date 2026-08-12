@@ -64,12 +64,15 @@ export default function PostsPage() {
     } catch (err: any) {
       if (err.message === "UNAUTHORIZED") {
         setError("UNAUTHORIZED");
+      } else if (err.message?.includes("Failed to fetch") || err.name === "TypeError") {
+        setError("서버에 연결할 수 없습니다. 백엔드 서버 가동 상태 및 네트워크를 확인해 주세요.");
       } else {
-        setError(err.message || "게시글을 불러올 수 없습니다.");
+        setError(err.message || "게시글 목록을 불러오는 중 오류가 발생했습니다.");
       }
     } finally {
       setLoading(false);
     }
+
   };
 
   const handleSearchSubmit = (e: React.FormEvent) => {

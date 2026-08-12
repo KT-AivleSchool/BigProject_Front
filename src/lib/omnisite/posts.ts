@@ -92,8 +92,10 @@ export async function fetchPostDetail(postId: number): Promise<PostResponse> {
     if (res.status === 401) {
       throw new Error("UNAUTHORIZED");
     }
-    throw new Error("게시글 상세 정보를 불러오는데 실패했습니다.");
+    const errorData = await res.json().catch(() => ({}));
+    throw new Error(errorData.detail || "게시글 상세 정보를 불러오지 못했습니다.");
   }
+
 
   return res.json();
 }
