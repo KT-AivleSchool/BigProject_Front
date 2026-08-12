@@ -22,15 +22,16 @@
  *    화면마다 다른 판정을 낸다. 이 화면은 **화면 4 의 선택이 있는지**만 본다.
  */
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Swords, Users, ArrowRight, MapPin, CheckCircle2 } from "lucide-react";
 
 import { PageBody, PageHeader, SourceNote } from "@/components/ui/Page";
 import { SCREENS } from "@/lib/omnisite/screens";
-import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
+import { readSitePick, subscribeSitePick, type SitePick } from "@/lib/omnisite/sitePick";
 import { readHearingA, readHearingB } from "@/lib/omnisite/hearingResult";
+import { useHydrated } from "@/lib/omnisite/useHydrated";
 
 const SCREEN = SCREENS.find((s) => s.no === "5")!;
 const SCREEN4 = SCREENS.find((s) => s.no === "4")!;
@@ -77,17 +78,33 @@ const MODES = [
 export default function HearingSelectPage() {
   const router = useRouter();
 
+  /**
+   * 🔴 렌더 중에 sessionStorage 를 읽지 않는다 — 서버 프리렌더엔 없어서 초깃값을
+   *    그쪽에서 정하면 하이드레이션이 어긋난다. 예전엔 마운트 `useEffect` 안에서
+   *    `setPick(...)`·`setDone(...)` 으로 했는데, 그건 **effect 안의 동기 setState** 라
+   *    `react-hooks/set-state-in-effect` 가 잡는다. 답은 **외부 저장소로 구독하기**다.
+   *
+   *    둘의 구독 방식이 다른 것은 **쓰는 쪽이 다르기 때문**이다.
+   *      · `pick` — 쓰기가 `sitePick.ts` 를 반드시 거치므로 **값을** 구독한다
+   *                 (`useSelectedSite` 와 같은 세 인자다).
+   *      · `done` — `sim_*` 키는 화면 5 가 `sessionStorage.setItem` 으로 직접 쓴다.
+   *                 구독한다고 해놓고 못 듣는 변경이 있는 건 안 듣는 것보다 나쁘므로
+   *                 **시점만** 구독하고(`useHydrated`) 읽기는 렌더 중에 직접 한다.
+   *                 어차피 이 화면에 머무는 동안 값이 바뀔 일이 없다 — 토론은
+   *                 여기서 나간 뒤에 돈다.
+   */
   /** `undefined` = 아직 안 읽음 · `null` = 고른 적 없음. 섞으면 안내가 한 번 깜빡인다. */
-  const [pick, setPick] = useState<SitePick | null | undefined>(undefined);
-  /** 이미 돌린 기록이 있는 방식. 덮어쓰기 전에 알려주려는 것이다. */
-  const [done, setDone] = useState<{ A: boolean; B: boolean }>({ A: false, B: false });
+  const pick = useSyncExternalStore<SitePick | null | undefined>(
+    subscribeSitePick,
+    readSitePick,
+    () => undefined,
+  );
 
-  // 🔴 렌더 중에 sessionStorage 를 읽지 않는다 — 서버 프리렌더엔 없어서
-  //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다.
-  useEffect(() => {
-    setPick(readSitePick());
-    setDone({ A: readHearingA() !== null, B: readHearingB() !== null });
-  }, []);
+  /** 이미 돌린 기록이 있는 방식. 덮어쓰기 전에 알려주려는 것이다. */
+  const hydrated = useHydrated();
+  const done: { A: boolean; B: boolean } = hydrated
+    ? { A: readHearingA() !== null, B: readHearingB() !== null }
+    : { A: false, B: false };
 
   return (
     <PageBody>

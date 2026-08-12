@@ -10,8 +10,12 @@
  * 🔴 **첫 렌더에서는 아무것도 안 그린다.** 남은 시간은 `localStorage` 와 로컬
  *    시계에서 나오는데 둘 다 서버 렌더 때 없다 — 렌더 중에 읽으면 하이드레이션이
  *    깨진다(2026-08-05 에 한 번 밟은 자리다).
+ *
+ *    그 「아직 아니다」를 예전엔 `useState(null)` + 마운트 `useEffect` 로 만들었는데
+ *    그건 **effect 안의 동기 setState** 라 `react-hooks/set-state-in-effect` 가 잡는다.
+ *    지금은 **시계의 서버 스냅샷(`null`)이 곧 그 신호**다 — 상태를 하나도 안 쓴다.
  */
-import React, { useCallback, useEffect, useState } from "react";
+import React, { useCallback, useState, useSyncExternalStore } from "react";
 import { getRefreshToken, tokenExpiresAt } from "@/lib/omnisite/auth";
 import { refreshAuth, NoRefreshTokenError } from "@/lib/omnisite/authSession";
 import { ApiError, NetworkError } from "@/lib/omnisite/client";
@@ -27,29 +31,44 @@ function remainText(ms: number): string {
   return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+/**
+ * 1초마다 째깍이는 시계. **외부 저장소로 구독한다** — 시간은 React 밖의 값이다.
+ * 서버 스냅샷이 `null` 인 것이 곧 「아직 마운트 전」이다.
+ *
+ * 초 단위로 끊어서 스냅샷을 만든다. `Date.now()` 를 그대로 주면 렌더 한 판 안에서도
+ * 값이 달라져 `useSyncExternalStore` 가 무한 루프로 본다.
+ */
+const subscribeSecond = (onChange: () => void) => {
+  const id = setInterval(onChange, 1000);
+  return () => clearInterval(id);
+};
+const nowSecond = () => Math.floor(Date.now() / 1000);
+
+function useNow(): number | null {
+  const sec = useSyncExternalStore<number | null>(subscribeSecond, nowSecond, () => null);
+  return sec === null ? null : sec * 1000;
+}
+
 export function SessionBadge() {
-  /** `null` = 아직 마운트 전. `undefined` 와 구분한다. */
-  const [expiresAt, setExpiresAt] = useState<number | null>(null);
-  const [now, setNow] = useState<number | null>(null);
+  /** `null` = 아직 마운트 전. */
+  const now = useNow();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [hasRefresh, setHasRefresh] = useState(false);
 
-  useEffect(() => {
-    setExpiresAt(tokenExpiresAt());
-    setHasRefresh(getRefreshToken() !== null);
-    setNow(Date.now());
-    const id = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  /**
+   * 🔴 상태로 들고 있지 않는다 — `localStorage` 는 React 밖의 값이라 「언제 읽었나」를
+   *    상태로 굳히면 갱신 뒤에 손으로 다시 넣어줘야 한다(넣는 걸 빠뜨리면 조용히
+   *    옛 값이 남는다). 마운트 뒤에는 매 초 다시 읽으므로 항상 지금 값이다.
+   */
+  const expiresAt = now === null ? null : tokenExpiresAt();
+  const hasRefresh = now === null ? false : getRefreshToken() !== null;
 
   const onRefresh = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const next = await refreshAuth();
-      setExpiresAt(next);
-      setHasRefresh(getRefreshToken() !== null);
+      // 반환값(새 만료 시각)은 `localStorage` 에 이미 적혔다 — 위에서 다시 읽는다.
+      await refreshAuth();
     } catch (e) {
       // 사유를 만들어내지 않는다 — 서버가 준 문구를 그대로 띄운다.
       if (e instanceof NoRefreshTokenError) setError(e.message);

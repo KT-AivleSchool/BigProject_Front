@@ -27,10 +27,10 @@
  *    진입 경로 변경과 배선 교체를 한 커밋에 섞으면 토론이 안 돌 때 어느 쪽 탓인지
  *    못 가른다). 이제 **규칙을 고칠 곳은 이 파일 하나**다.
  */
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { useRun } from "./RunProvider";
 import { ApiError, NetworkError } from "./client";
-import { readSitePick, type SitePick } from "./sitePick";
+import { readSitePick, subscribeSitePick, type SitePick } from "./sitePick";
 import { fetchCandidates, type Candidate } from "./simulation";
 
 /** 화면에 띄울 실패. `code` 는 분류, `detail` 은 서버 문구 **원문**이다. */
@@ -64,45 +64,77 @@ export function useSelectedSite(): SelectedSite {
   const domain = run?.domain ?? null;
   const loadedRunId = run?.loaded?.run_id ?? null;
 
-  const [candidates, setCandidates] = useState<Candidate[] | null>(null);
-  const [failure, setFailure] = useState<Failure | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [pick, setPick] = useState<SitePick | null | undefined>(undefined);
+  /**
+   * 🔴 렌더 중에 sessionStorage 를 읽지 않는다 — 서버 프리렌더엔 없어서 초깃값을
+   *    그쪽에서 정하면 하이드레이션이 어긋난다. 예전엔 `useEffect` 안에서
+   *    `setPick(readSitePick())` 로 했는데, 그건 **effect 안의 동기 setState**라
+   *    `react-hooks/set-state-in-effect` 가 잡는다. 정답은 「effect 로 옮기기」가
+   *    아니라 **외부 저장소로 구독하기**다 — sessionStorage 는 React 밖의 값이다.
+   *
+   *    세 번째 인자(서버 스냅샷)가 `undefined` 인 것이 곧 **「아직 안 읽음」**이다.
+   *    프리렌더와 하이드레이션 첫 판은 이 값을 쓰고, 그 뒤 실제 값으로 바뀐다 —
+   *    옛 `useState(undefined)` + effect 와 **보이는 순서가 같다.**
+   */
+  const pick = useSyncExternalStore<SitePick | null | undefined>(
+    subscribeSitePick,
+    readSitePick,
+    () => undefined,
+  );
 
-  // 🔴 렌더 중에 sessionStorage 를 읽지 않는다 — 서버 프리렌더엔 없어서
-  //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다.
+  /**
+   * 🔴 「불러오는 중」을 **상태로 두지 않는다.** `setLoading(true)` 는 effect 에서
+   *    동기로 불릴 수밖에 없어 같은 규칙에 걸리고, 규칙 문제만도 아니다 —
+   *    setState 는 렌더가 끝난 뒤 도착하므로 domain·run 이 바뀐 직후 한 프레임
+   *    동안 **직전 조회 결과가 남는다.** `useArtifact.ts` 가 같은 이유로 먼저
+   *    이 모양이 됐다(그 파일 :79 주석 참고) — 여기도 같은 방식으로 맞춘다.
+   *
+   *    `key` 는 「무엇을 물었나」다. 저장된 결과의 key 가 지금 key 와 다르면 그건
+   *    **남의 답**이므로 내보내지 않고 `loading` 으로 친다.
+   *    `nonce` 는 사람이 「다시 시도」를 누른 횟수다 — 같은 질문을 다시 묻는 유일한 길이다.
+   */
+  const [nonce, setNonce] = useState(0);
+  const key = domain ? `${domain}::${loadedRunId ?? ""}::${nonce}` : null;
+
+  const [answer, setAnswer] = useState<{
+    key: string | null;
+    candidates: Candidate[] | null;
+    failure: Failure | null;
+  }>({ key: null, candidates: null, failure: null });
+
   useEffect(() => {
-    setPick(readSitePick());
-  }, []);
+    if (!domain || !key) return;
+    let cancelled = false;
+    fetchCandidates(domain, loadedRunId)
+      .then((list) => {
+        if (!cancelled) setAnswer({ key, candidates: list.candidates, failure: null });
+      })
+      .catch((e: unknown) => {
+        let failure: Failure;
+        if (e instanceof ApiError) {
+          // 404 는 "적재 안 함" 이다. 서버가 적재 명령까지 문구에 넣어 준다 — 그대로 쓴다.
+          failure = { code: `HTTP ${e.status}`, detail: e.detail };
+        } else if (e instanceof NetworkError) {
+          failure = { code: "NETWORK", detail: e.message };
+        } else {
+          failure = { code: "UNKNOWN", detail: String(e) };
+        }
+        if (!cancelled) setAnswer({ key, candidates: null, failure });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [domain, loadedRunId, key]);
 
-  const reload = useCallback(async () => {
-    if (!domain) return;
-    setLoading(true);
-    setFailure(null);
-    try {
-      const list = await fetchCandidates(domain, loadedRunId);
-      setCandidates(list.candidates);
-    } catch (e) {
-      setCandidates(null);
-      if (e instanceof ApiError) {
-        // 404 는 "적재 안 함" 이다. 서버가 적재 명령까지 문구에 넣어 준다 — 그대로 쓴다.
-        setFailure({ code: `HTTP ${e.status}`, detail: e.detail });
-      } else if (e instanceof NetworkError) {
-        setFailure({ code: "NETWORK", detail: e.message });
-      } else {
-        setFailure({ code: "UNKNOWN", detail: String(e) });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [domain, loadedRunId]);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
+  // 렌더 중에 계산한다. `key` 가 없으면(도메인 없음) 아무것도 안 물었으므로 대기도 아니다.
+  const fresh = answer.key === key;
+  const candidates = fresh ? answer.candidates : null;
+  const failure = fresh ? answer.failure : null;
+  const loading = key !== null && !fresh;
 
   const selected: Candidate | null =
     pick && candidates ? (candidates.find((c) => c.pnu === pick.pnu) ?? null) : null;
+
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
 
   return {
     domain,
@@ -114,6 +146,6 @@ export function useSelectedSite(): SelectedSite {
     selected,
     pickMissing: pick === null,
     pickUnmatched: Boolean(pick) && candidates !== null && selected === null,
-    reload: () => void reload(),
+    reload,
   };
 }
