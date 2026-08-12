@@ -47,16 +47,28 @@ export function Header() {
   const hearingDone = hearing.done;
 
   useEffect(() => {
-    setUser(getAuthUser());
-  }, []);
+    const syncUser = () => {
+      setUser(getAuthUser());
+    };
+    syncUser();
+
+    window.addEventListener("storage", syncUser);
+    window.addEventListener("omnisite-auth-change", syncUser);
+
+    return () => {
+      window.removeEventListener("storage", syncUser);
+      window.removeEventListener("omnisite-auth-change", syncUser);
+    };
+  }, [pathname]);
 
   const handleLogout = () => {
-    // 🔴 access·refresh·user 를 **같이** 지운다(`clearAuth`). 예전엔 access 와 user 만
-    //    지웠는데, refresh 키가 생긴 뒤로는 그러면 죽은 재발급 토큰이 남아 다음
-    //    로그인 세션과 섞인다.
     clearAuth();
     setUser(null);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("omnisite-auth-change"));
+    }
   };
+
 
   return (
     <>
