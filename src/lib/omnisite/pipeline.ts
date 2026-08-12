@@ -224,10 +224,14 @@ export const loadScoreGrid = (run: RunDoc) =>
  * `reviewed.json` 에는 감리 AI 제안(`exclusion_type`)만 있고, S9 지목 배수 판정이
  * 그걸 뒤집은 결과는 여기에 있다.
  *
- * 🔴 GeoJSON 이지만 **좌표는 안 읽는다.** 화면 2b 가 쓰는 것은 `properties` 뿐이다.
- *    285KB 를 판정 표 하나 때문에 받는 셈인데, 백엔드에 속성만 담긴 산출물이
- *    따로 없으므로 있는 것을 쓴다. 별도 요약 산출물을 만들어 달라고 하면
- *    같은 값이 두 곳에 생기고 언젠가 갈린다.
+ * 🔴 **좌표도 읽는다**(2026-08-12 부터). 예전 주석은 "GeoJSON 이지만 좌표는 안 읽는다 —
+ *    화면 2b 가 쓰는 것은 `properties` 뿐이고 285KB 를 판정 표 하나 때문에 받는 셈"
+ *    이었다. 그때는 참이었다. 지금은 **화면 4 지도가 이 좌표로 배제 구역을 그린다**
+ *    (`GridMap` 3번 — 격자 사각형 근사를 대신한다).
+ *
+ *    그래서 "속성만 담긴 요약 산출물을 따로 만들자"는 예전 갈림길은 **닫혔다.**
+ *    좌표가 실제로 쓰이므로 통째로 받는 것이 낭비가 아니다.
+ *    실측(`r_20260812_007`): 285,174 bytes · 54ms · MultiPolygon 5장 · 링 491 · 점 6,253.
  */
 export const loadExclusion = (run: RunDoc) =>
   getJson<ExclusionDoc>(requireUrl(run, "exclusion"));
