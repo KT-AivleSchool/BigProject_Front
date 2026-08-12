@@ -25,6 +25,7 @@ import {
   MODE_FIXTURE,
   submitAuditGate,
   submitWeightGate,
+  cancelRun,
 } from "./pipeline";
 import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
@@ -72,9 +73,7 @@ interface RunContextValue {
    */
   refresh: () => Promise<void>;
   reset: () => void;
-  /** 과거 run을 읽기 전용으로 불러옵니다. */
-  loadHistoricalRun: (runId: string) => Promise<void>;
-  isReadOnly: boolean;
+  loadHistoricalRun: (id: string) => Promise<string | null>;
 }
 
 const RunContext = createContext<RunContextValue | null>(null);
@@ -101,30 +100,6 @@ function isLive(run: RunDoc | null): boolean {
   return run?.status === "queued" || run?.status === "running";
 }
 
-/**
- * 실행 요청 실패 문구.
- *
- * 🔴 **401 에만 「무엇을 하면 되는지」를 덧붙인다.** `POST /pipeline/runs` 는
- *    2026-08-12 부터 `Authorization` 을 본다 — 헤더가 **없으면** 예전처럼 202
- *    익명 run 이고, 헤더가 **있는데 죽었으면**(만료·위조·로그아웃) 401 이다.
- *    만료를 조용히 익명으로 흘리지 않은 건 백엔드 쪽 의도다: 그러면 화면은
- *    로그인 상태인데 마이페이지에서만 그 run 이 안 보인다.
- *
- * 🔴 서버 문구를 **바꾸지 않고 앞에 그대로 둔다.** 401 의 사유는 셋(만료·위조·
- *    로그아웃)인데 우리는 어느 쪽인지 모른다 — 우리가 문장을 지어내면 「만료됐다」고
- *    단정하게 된다. 덧붙이는 건 사유가 아니라 **다음 동작**이고, 그 동작은 셋 다
- *    같다(연장하거나 다시 로그인).
- *
- * 🔴 여기서 재발급을 시도하지 않는다 — `client.ts:100-106` 과 같은 이유다.
- *    RTR 이라 재발급이 실패하면 그 사용자의 **모든 세션이 지워진다.**
- */
-function startFailureText(e: unknown): string {
-  if (e instanceof ApiError && e.status === 401) {
-    return `${e.detail} — 헤더의 ⟳ 로 로그인을 연장한 뒤 다시 실행해 주세요. 연장이 안 되면 다시 로그인하면 됩니다.`;
-  }
-  return e instanceof Error ? e.message : String(e);
-}
-
 export function RunProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,7 +109,6 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runningElapsedSec, setRunningElapsedSec] = useState(0);
-  const [isReadOnly, setIsReadOnly] = useState(false);
 
   /** 진행 중 단계가 바뀐 시각. 단계별 경과 시간을 재려고 둔다. */
   const stepStartedAt = useRef<{ id: string; at: number } | null>(null);
@@ -173,10 +147,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
       if (!id) return;
       try {
         const doc = await fetchRun(id);
-        if (!cancelled) {
-          applyRun(doc);
-          setIsReadOnly(false);
-        }
+        if (!cancelled && readRunId() === id) applyRun(doc);
       } catch (e: unknown) {
         if (cancelled) return;
         // 404 는 "서버에서 사라진 run" 이다. 조용히 넘기지 않고 알린 뒤 지운다.
@@ -231,12 +202,8 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         writeRunId(id);
         const doc = await fetchRun(id);
         applyRun(doc);
-        setIsReadOnly(false);
         return id;
       } catch (e: unknown) {
-        // 🔴 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 이미
-        //    잡고 있다. 그 run 은 살아 있으므로 새로 만들 게 아니라 **되붙는다.**
-        //    id 는 서버가 `detail` 에 적어준 것만 쓴다(프런트가 짐작하지 않는다).
         if (e instanceof ApiError && e.status === 409) {
           const match = e.detail.match(/run_id=([^)]+)/);
           if (match && match[1]) {
@@ -245,16 +212,13 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
             try {
               const doc = await fetchRun(id);
               applyRun(doc);
-              setIsReadOnly(false);
               return id;
-              // 되붙기까지 실패하면 원래 409 문구를 그대로 띄운다 — 여기서
-              // 새 사유를 지어내면 진짜 원인(점유)이 화면에서 사라진다.
-            } catch {
-              /* 아래 공통 처리로 흘린다 */
+            } catch (inner) {
+              // Ignore inner error and fall through to original error
             }
           }
         }
-        setError(startFailureText(e));
+        setError(e instanceof Error ? e.message : String(e));
         return null;
       } finally {
         setStarting(false);
@@ -289,44 +253,61 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     const id = run?.run_id ?? readRunId();
     if (!id) return;
     try {
-      applyRun(await fetchRun(id));
-      setError(null);
+      const doc = await fetchRun(id);
+      if (readRunId() === id) {
+        applyRun(doc);
+        setError(null);
+      }
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      if (readRunId() === id) {
+        setError(e instanceof Error ? e.message : String(e));
+      }
     }
   }, [run?.run_id, applyRun]);
 
   const reset = useCallback(() => {
+    const id = readRunId();
+    if (id) {
+      // 백엔드의 실행도 명시적으로 취소하여 409 Conflict(좀비 런 부활) 방지
+      cancelRun(id).catch(console.error);
+    }
+
     clearRunId();
     setRun(null);
     setError(null);
-    setIsReadOnly(false);
-  }, []);
-
-  const loadHistoricalRun = useCallback(async (runId: string) => {
-    try {
-      const doc = await fetchRun(runId);
-      setRun(doc);
-      writeRunId(runId); // 현재 보고 있는 run_id를 변경
-      setIsReadOnly(true);
-      setError(null);
-      
-      // §7-5 과거 run 진입 시 기존 상태 비움 처리
-      if (typeof window !== "undefined") {
-        sessionStorage.removeItem("omnisite.sitePick.v1");
-        sessionStorage.removeItem("omnisite.personas.v2");
-        sessionStorage.removeItem("omnisite.hearingB.v1");
-        
-        sessionStorage.removeItem("sim_messages");
-        sessionStorage.removeItem("sim_metrics");
-        sessionStorage.removeItem("sim_started");
-        sessionStorage.removeItem("sim_finished");
-        sessionStorage.removeItem("sim_parcel");
+    
+    // 진행 중이던 데이터를 모두 초기화하기 위해 관련 캐시도 모두 삭제
+    if (typeof window !== "undefined") {
+      const keys = Object.keys(window.localStorage);
+      for (const k of keys) {
+        if (k.startsWith("omnisite_gate_") || k.startsWith("unlocked_weight_") || k.startsWith("highest_nav_")) {
+          window.localStorage.removeItem(k);
+        }
       }
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const sKeys = Object.keys(window.sessionStorage);
+      for (const k of sKeys) {
+        if (k.startsWith("audit_step_")) {
+          window.sessionStorage.removeItem(k);
+        }
+      }
     }
   }, []);
+
+  const loadHistoricalRun = useCallback(async (id: string) => {
+    setStarting(true);
+    setError(null);
+    try {
+      writeRunId(id);
+      const doc = await fetchRun(id);
+      applyRun(doc);
+      return id;
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+      return null;
+    } finally {
+      setStarting(false);
+    }
+  }, [applyRun]);
 
   return (
     <RunContext.Provider
@@ -342,7 +323,6 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         refresh,
         reset,
         loadHistoricalRun,
-        isReadOnly,
       }}
     >
       {children}

@@ -82,9 +82,13 @@ export default function Screen5Page() {
       const savedFinished = sessionStorage.getItem("sim_finished");
       const savedParcel = sessionStorage.getItem("sim_parcel");
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedMessages) setMessages(JSON.parse(savedMessages));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedMetrics) setMetrics(JSON.parse(savedMetrics));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedStarted === "true") setIsStarted(true);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedFinished === "true") setIsFinished(true);
       if (savedParcel) setUsedParcelId(Number(savedParcel));
     } catch (e) {
@@ -323,20 +327,7 @@ export default function Screen5Page() {
         lead="AI 에이전트 간의 모의 공청회를 통해 잠재적 갈등 지수와 수용도를 실시간으로 분석합니다."
       />
 
-      {/*
-        여기는 **A 대립 토론**이다. 다른 방식(B 다인 토론)으로 가려면 고르는 화면으로
-        돌아간다 — B 를 직접 가리키던 임시 링크는 지웠다(2026-08-11 분기 UI 도입).
-        🔴 「B 열기」로 두지 않는 이유: 방식이 셋째로 늘면 이 화면에도 링크가 하나 더
-           붙는다. **고르는 일은 고르는 화면 한 곳에서만** 한다.
-      */}
-      <div className="mt-4 flex justify-end">
-        <Link
-          href="/hearing/select"
-          className="rounded-lg border border-hairline bg-white px-4 py-2 text-sm font-medium text-ink-secondary hover:text-ink"
-        >
-          토론 방식 다시 고르기
-        </Link>
-      </div>
+
 
       {/* 선정 위치 — 어느 점으로 토론하는지 먼저 밝힌다 */}
       <div className="mt-6">
@@ -434,9 +425,7 @@ export default function Screen5Page() {
         <div className="flex h-[700px] flex-col gap-6">
           <div className="glass-panel flex flex-1 flex-col rounded-2xl p-6">
             <h2 className="mb-1 text-[18px] font-bold text-ink">갈등 지수 (Conflict Index)</h2>
-            <p className="mb-4 text-[11px] text-ink-secondary">
-              서버는 등급(LOW/MEDIUM/HIGH)만 보냅니다. 점수로 환산하지 않습니다.
-            </p>
+
             <div className="flex flex-1 items-center justify-around">
               <ConflictGauge
                 score={metrics.cssPro ? (LEVEL_ANGLE[metrics.cssPro] ?? 50) : 0}
@@ -463,13 +452,26 @@ export default function Screen5Page() {
         </div>
       </div>
 
-      <PageFooter screen={SCREEN} />
-      <SourceNote
-        files={[
-          "GET /api/v1/simulations/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
-          "POST /api/v1/simulations/stream (SSE)",
-        ]}
-      />
+      {/* 바닥 내비게이션 바 */}
+      <div className="mt-6 mb-8 flex shrink-0 items-center justify-between rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-sm">
+        <Link
+          href="/sites"
+          className="rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-bold text-gray-500 transition-colors hover:bg-gray-50"
+        >
+          <div className="flex items-center gap-2">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+            이전 단계
+          </div>
+        </Link>
+        <Link
+          href="/report"
+          className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
+        >
+          <div className="flex items-center gap-2">
+            갈등 예측 완료, 보고서로 넘어가기 &gt;
+          </div>
+        </Link>
+      </div>
 
       <style
         dangerouslySetInnerHTML={{
@@ -611,33 +613,7 @@ function CandidatePanel({
     );
   }
 
-  if (!selected) return null;
-
-  return (
-    <div className="rounded-2xl border border-blue-200 bg-blue-50/50 px-5 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
-          rank {selected.rank} · 화면 4 에서 선택
-        </span>
-        <span className="text-[15px] font-bold text-ink">{selected.jibun}</span>
-        <span className="font-mono text-[12px] text-ink-secondary">
-          parcel_id {selected.parcel_id} · PNU {selected.pnu}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px] text-ink-secondary sm:grid-cols-4">
-        <Kv k="시설" v={selected.facility_type} />
-        <Kv k="점수" v={selected.score.toFixed(4)} />
-        <Kv k="좌표" v={`${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}`} />
-        <Kv k="run" v={selected.run_id} />
-      </div>
-      <p className="mt-2 text-[11px] text-ink-secondary">
-        후보 {candidates?.length ?? 0}건 중 화면 4 에서 고른 {selected.rank}순위입니다(PNU 로
-        이었습니다). 순위는 점수 내림차순이 아니라 <b>MCLP 커버 기여도</b> 순서이므로 점수가 더
-        높은 하위 순위가 있을 수 있습니다.
-        {selected.land_id === null && " land_id 는 NULL 입니다(공간조인 미매칭 — 정상)."}
-      </p>
-    </div>
-  );
+  return null;
 }
 
 function Kv({ k, v }: { k: string; v: string }) {
