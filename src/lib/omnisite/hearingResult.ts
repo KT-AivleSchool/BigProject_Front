@@ -269,5 +269,13 @@ export function isHearingDoneFor(runId: string | null): boolean {
     if (!b.scope.runId || !runId) return true;
     return b.scope.runId === runId;
   }
-  return readHearingA() !== null;
+  
+  if (readHearingA() !== null) {
+    if (typeof window !== "undefined") {
+      const simRunId = window.sessionStorage.getItem("sim_run_id");
+      if (simRunId && runId && simRunId !== runId) return false;
+    }
+    return true;
+  }
+  return false;
 }

@@ -89,14 +89,6 @@ const SECTIONS = [
   ["s9", "9. 미확인 · 미적용 항목"],
 ] as const;
 
-const SOURCE_FILES = [
-  "audit_result_reviewed.json",
-  "clean_report.json",
-  "report.json",
-  "topN.csv",
-  "GET /simulations/hearings (서버에 남은 공청회)",
-  "sessionStorage(화면 5 토론 기록 — 서버에 못 물었을 때만)",
-];
 
 /**
  * 발언 기록을 문서 본문에 몇 건까지 그대로 실을지.
@@ -190,7 +182,6 @@ export default function Screen6Page() {
       <div className="doc-hide">
         <PageHeader
           screen={SCREEN}
-          lead="결정을 남긴다. 근거와 하지 않은 것까지 같이 남긴다."
           right={
             <button
               type="button"
@@ -253,7 +244,6 @@ export default function Screen6Page() {
       </div>
 
       <div className="doc-hide">
-        <SourceNote files={SOURCE_FILES} />
       </div>
     </PageBody>
   );
@@ -289,9 +279,7 @@ function DocHead({
         <span className="rounded border border-primary/40 bg-primary/5 px-2 py-0.5 text-[11px] font-semibold text-primary">
           기획안
         </span>
-        <span className="rounded border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">
-          임시 배치(안)
-        </span>
+
       </div>
       <h1 className="mt-3 text-center text-[26px] font-bold tracking-[0.2em]">
         {title ? `${title} 입지 선정 기획안` : "입지 선정 기획안"}

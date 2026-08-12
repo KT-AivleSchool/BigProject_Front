@@ -36,7 +36,6 @@ export function PageHeader({
           <h1 className="text-[19px] font-semibold tracking-tight">
             {screen.name}
           </h1>
-          {screen.draft && <DraftBadge />}
         </div>
         {lead && <p className="mt-1 text-[13px] text-ink-secondary">{lead}</p>}
       </div>
@@ -68,9 +67,9 @@ export function PageFooter({
   );
 }
 
-export function PageBody({ children }: { children: React.ReactNode }) {
+export function PageBody({ children, fullWidth }: { children: React.ReactNode, fullWidth?: boolean }) {
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-5 pt-7 pb-10 h-full flex flex-col min-h-0 overflow-y-auto">
+    <div className={`mx-auto w-full px-5 pt-7 pb-10 h-full flex flex-col min-h-0 overflow-y-auto ${fullWidth ? '' : 'max-w-[1200px]'}`}>
       {children}
     </div>
   );

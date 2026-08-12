@@ -22,12 +22,12 @@
  *    화면마다 다른 판정을 낸다. 이 화면은 **화면 4 의 선택이 있는지**만 본다.
  */
 
-import { useEffect, useSyncExternalStore } from "react";
+import { Suspense, useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Swords, Users, ArrowRight, MapPin, CheckCircle2 } from "lucide-react";
 
-import { PageBody, PageHeader, SourceNote } from "@/components/ui/Page";
+import { PageBody, PageHeader } from "@/components/ui/Page";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { readSitePick, subscribeSitePick, type SitePick } from "@/lib/omnisite/sitePick";
 import { readHearingA, readHearingB } from "@/lib/omnisite/hearingResult";
@@ -56,27 +56,64 @@ const MODES = [
     tag: "찬성 · 반대",
     icon: Swords,
     lines: [
-      "찬성측과 반대측 두 에이전트가 라운드를 주고받습니다.",
-      "매 라운드 평가자가 갈등 등급(LOW·MEDIUM·HIGH)과 양측 수용도를 갱신하고, 마지막에 조정 시나리오를 냅니다.",
+      "찬성측과 반대측으로 나뉘어 토론을 진행합니다"
     ],
     saved: "결과가 서버에 저장됩니다 (같은 필지는 최신 1건만 조회됩니다).",
   },
   {
     key: "B" as const,
     path: "/dynamic-hearing",
-    title: "다인(N명) 토론",
+    title: "다자간 토론",
     tag: "이해관계자 N명",
     icon: Users,
     lines: [
-      "주제와 목적을 입력하면 대상지 주변 이해관계자 페르소나를 발굴합니다.",
-      "누구를 참여시킬지 직접 고른 뒤(HITL), 고른 인물들이 각자의 입장에서 발언합니다.",
+      "선정된 주제와 목적으로 이해관계자를 찾아 다자간 토론을 진행합니다."
     ],
     saved: "결과가 서버에 저장됩니다 (건별로 남아 옛 토론도 다시 볼 수 있습니다).",
   },
 ];
 
-export default function HearingSelectPage() {
+/**
+ * 지금 고른 위치(`pick`)로 **이미 돌린** 토론이 있는가.
+ *
+ * 🔴 「기록이 있다」가 아니라 **「이 위치의 기록이 있다」**를 묻는다. 앞엣것으로
+ *    판정하면 다른 필지에서 돈 토론이 이 위치의 완료 표시가 되고, 아래 자동
+ *    이동까지 걸려 **다른 땅의 결과 화면**으로 넘어간다(원칙 4).
+ *
+ * 대조 재료가 엔진마다 다르다 —
+ *   B  기록 자체가 `scope.pnu`·`scope.runId` 를 들고 있다. 둘 다 같아야 한다.
+ *   A  기록(`sim_*`)에는 범위가 없다. 대신 화면 5(A)가 토론을 **시작할 때**
+ *      `sim_run_id`·`sim_pnu` 를 따로 적어 둔다(`app/hearing/page.tsx:219`).
+ *      그 둘이 **아예 없으면** 그 배선이 생기기 전의 옛 기록이라 대조할 방법이
+ *      없다 — 그때만 「이 위치의 것」으로 친다. 있는데 다르면 아니다.
+ *
+ * ⚠ `runId` 가 `null` 인 B 기록은 **안 맞는 것으로 친다.** `isHearingDoneFor`
+ *   (`hearingResult.ts`)는 같은 경우를 「끝난 것으로」 치는데, 거긴 진행률
+ *   표시이고 여기는 **자동 이동**이라 틀렸을 때 값이 다르다. 여기서 틀리면
+ *   사람을 남의 결과 화면에 데려다 놓는다 — 안 맞다고 해도 카드는 눌린다.
+ */
+function matchExistingHearing(pick: SitePick): { A: boolean; B: boolean } {
+  const resB = readHearingB();
+  const B = resB !== null && resB.scope.pnu === pick.pnu && resB.scope.runId === pick.run_id;
+
+  let A = false;
+  if (readHearingA() !== null && typeof window !== "undefined") {
+    const simRunId = window.sessionStorage.getItem("sim_run_id");
+    const simPnu = window.sessionStorage.getItem("sim_pnu");
+    if (simRunId === null && simPnu === null) {
+      A = true; // 범위를 안 남기던 시절의 기록. 대조 불가 — 「있다」까지만 말한다.
+    } else {
+      A = simRunId === pick.run_id && simPnu === pick.pnu;
+    }
+  }
+
+  return { A, B };
+}
+
+function HearingSelectContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const force = searchParams.get("force") === "true";
 
   /**
    * 🔴 **`useState` + `useEffect(setState)` 로 읽지 않는다.** 그러면 effect 안의
@@ -103,39 +140,38 @@ export default function HearingSelectPage() {
    *    나쁘다(`useHydrated.ts` 머리말).
    */
   const hydrated = useHydrated();
-  const done: { A: boolean; B: boolean } = hydrated
-    ? { A: readHearingA() !== null, B: readHearingB() !== null }
-    : { A: false, B: false };
+  const done: { A: boolean; B: boolean } =
+    hydrated && pick ? matchExistingHearing(pick) : { A: false, B: false };
 
   /**
-   * 이미 이 위치로 돌린 토론이 있으면 그 결과 화면으로 바로 넘긴다.
+   * 이미 **이 위치로** 돌린 토론이 있으면 그 결과 화면으로 바로 넘긴다.
    *
-   * 🔴 이 effect 는 **setState 를 하지 않는다** — 위 두 값은 렌더 중에 구독으로
-   *    읽으므로 여기서 다시 담을 이유가 없다. effect 가 하는 일은 이동 하나뿐이다.
+   * 🔴 이 effect 는 **setState 를 하지 않는다** — 위 두 값은 렌더 중에 읽으므로
+   *    여기서 다시 담을 이유가 없다. effect 가 하는 일은 이동 하나뿐이다.
+   *
+   * 🔴 **`?force=true` 면 안 넘긴다.** 없으면 「같은 위치로 다른 방식을 한 번 더」가
+   *    영영 불가능하다 — 이 화면에 들어오는 순간 옛 결과로 튕겨 나간다.
+   *    사이드바·탭처럼 **결과를 보러** 오는 경로는 force 없이 오고, 「다시 고르기」
+   *    처럼 **새로 돌리러** 오는 경로가 force 를 붙인다.
    */
   useEffect(() => {
-    if (!pick) return;
+    if (!pick || force) return;
 
-    const resA = readHearingA();
-    const resB = readHearingB();
-
-    if (resB && resB.scope.pnu === pick.pnu) {
+    const m = matchExistingHearing(pick);
+    // B 를 먼저 본다 — 대조 재료가 확실한 쪽이다(`matchExistingHearing` 머리말).
+    if (m.B) {
       router.replace("/dynamic-hearing");
       return;
     }
-    // 🔴 A 엔진 기록에는 pnu·run_id 가 없다(`hearingResult.ts`). 그래서 「이 위치의
-    //    토론인지」를 확인할 방법이 없고, 기록이 있으면 그렇다고 **가정**한다.
-    //    B 를 먼저 보는 이유가 이것이다 — 확인할 수 있는 쪽을 먼저 본다.
-    if (resA) {
+    if (m.A) {
       router.replace("/hearing");
     }
-  }, [pick, router]);
+  }, [pick, force, router]);
 
   return (
     <PageBody>
       <PageHeader
         screen={SCREEN}
-        lead="화면 4 에서 고른 위치로 공청회를 엽니다. 어떤 방식으로 진행할지 먼저 고르세요."
       />
 
       <div className="flex-1 min-h-0 overflow-y-auto pr-1 pb-4">
@@ -160,6 +196,11 @@ export default function HearingSelectPage() {
               </Link>
             </div>
           ) : (
+            /**
+             * 🔴 **어느 점으로 토론하는지는 반드시 보인다.** 이 화면의 존재 이유가
+             *    「방식만 고르고 위치는 이미 정해져 있음」을 밝히는 것이라(머리말 :14)
+             *    이 줄을 지우면 사람이 **무엇을 대상으로 토론하는지 모른 채** 시작한다.
+             */
             <div className="flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-hairline bg-white px-5 py-4">
               <span className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink">
                 <MapPin size={15} className="text-primary" />
@@ -230,34 +271,32 @@ export default function HearingSelectPage() {
                   ))}
                 </div>
 
+                {/* 고르기 **전에** 알아야 하는 차이다 — 머리말 :47 이 이 줄을 가리킨다. */}
                 <p className="mt-3 border-t border-hairline pt-3 text-[11px] leading-relaxed text-ink-secondary/80">
                   {m.saved}
                 </p>
-
-                <span
-                  className={[
-                    "mt-5 inline-flex items-center gap-1.5 text-[13px] font-semibold",
-                    blocked || pick === undefined ? "text-ink-secondary" : "text-primary",
-                  ].join(" ")}
-                >
-                  이 방식으로 시작
-                  <ArrowRight
-                    size={15}
-                    className="transition-transform group-hover:translate-x-0.5"
-                  />
-                </span>
               </button>
             );
           })}
         </div>
 
-        <p className="mt-5 text-[12px] leading-relaxed text-ink-secondary/80">
-          두 방식은 <strong>같은 위치</strong>로 각각 돌릴 수 있습니다. 결과는 방식별로 따로
-          남고, 화면 6(보고서)은 남아 있는 기록을 <strong>둘 다</strong> 싣습니다.
-        </p>
+        <div className="mt-8 flex justify-start">
+          <Link
+            href={SCREEN4.path}
+            className="inline-flex items-center justify-center rounded-xl bg-gray-800 px-10 py-3 text-[15px] font-semibold text-white hover:bg-gray-900 transition-colors shadow-md"
+          >
+            위치선정 다시 하러 가기
+          </Link>
+        </div>
       </div>
-
-      <SourceNote files={["없음 — 화면 4 에서 고른 위치(브라우저 세션)만 읽습니다"]} />
     </PageBody>
+  );
+}
+
+export default function HearingSelectPage() {
+  return (
+    <Suspense fallback={<PageBody><div className="p-8 flex justify-center text-gray-500">불러오는 중...</div></PageBody>}>
+      <HearingSelectContent />
+    </Suspense>
   );
 }

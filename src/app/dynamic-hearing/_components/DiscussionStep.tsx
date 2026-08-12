@@ -79,7 +79,7 @@ export function DiscussionStep({
 
   return (
     <div className={`transition-all duration-700 ease-in-out transform ${step === 3 ? 'translate-x-0 opacity-100 relative' : 'translate-x-full opacity-0 absolute top-0 w-full pointer-events-none'}`}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[600px]">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[600px] max-w-[1200px] mx-auto">
         {/* 왼쪽 채팅 영역 */}
         <div className="lg:col-span-2 glass-panel p-6 md:p-8 rounded-2xl flex flex-col h-full min-h-0 overflow-hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-5 border-b border-hairline flex-shrink-0 gap-4">
@@ -229,22 +229,7 @@ export function DiscussionStep({
           </div>
         </div>
           {/* 하단 패널 */}
-          {!isDiscussing && messages.length > 0 && (
-            <div className="mt-6 pt-5 border-t border-hairline flex justify-end gap-3 flex-shrink-0">
-              <button 
-                onClick={() => setStep(1)} 
-                className="btn-secondary text-[13px]"
-              >
-                새 안건으로 다시 시작하기
-              </button>
-              <button 
-                onClick={() => router.push('/report')}
-                className="btn-primary text-[13px]"
-              >
-                최종 보고서 작성하기
-              </button>
-            </div>
-          )}
+
         </div>
 
         {/* 오른쪽 현황 대시보드 */}
@@ -289,12 +274,12 @@ export function DiscussionStep({
               </div>
 
               <div className="glass-panel p-4 rounded-xl border border-hairline space-y-3">
-                <h3 className="text-[12px] font-semibold text-ink mb-2 border-b border-hairline pb-2">페르소나별 수용도 분석</h3>
+                <h3 className="text-[12px] font-semibold text-ink mb-2 border-b border-hairline pb-2">이해관계자별 수용도 분석</h3>
                 {/* `evaluations` → `acceptance`(evaluation 이벤트). 값은 0~1 숫자만 들어온다. */}
                 {Object.entries(discussionStatus.acceptance || {}).map(([key, val]: any, idx) => {
                   const personaId = key.replace('_acceptance', '');
                   const pIdx = parseInt(personaId.replace('persona_', ''));
-                  const displayName = !isNaN(pIdx) && activePersonas[pIdx] ? activePersonas[pIdx].name : personaId;
+                  const displayName = !isNaN(pIdx) && activePersonas[pIdx] ? activePersonas[pIdx].display_name : personaId;
                   
                   return (
                   <div key={idx} className="flex flex-col">

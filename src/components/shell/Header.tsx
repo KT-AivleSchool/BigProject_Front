@@ -169,6 +169,11 @@ export function Header() {
                 done = false;
               }
 
+              // 지금 보고 있는 화면은 언제나 열려 있다(순차 잠금이 자기 자신을 잠그지 않게).
+              if (active) {
+                allowed = true;
+              }
+
               /**
                * 🔴 **기록 다시보기 중에는 화면 1 로 못 간다.**
                *    화면 1 은 파일을 올려 **새 실행을 만드는** 화면이다. 지난 기록을
@@ -178,6 +183,8 @@ export function Header() {
                * 🔴 위 순차 잠금으로는 못 막는다 — 다시보기는 `/report`(마지막 화면)에
                *    떨어지므로 `highest_nav_index_*` 가 곧바로 전 화면을 열어 준다.
                *    그래서 **잠금 뒤에** 따로 닫는다.
+               * ⚠ 바로 위 `if (active)` 보다 **뒤에** 있어야 한다 — 앞에 두면 다시보기
+               *   중에 화면 1 에 서 있을 때 잠금이 풀린다.
                */
               const blocked = reviewing && s.no === "1";
               if (blocked) {

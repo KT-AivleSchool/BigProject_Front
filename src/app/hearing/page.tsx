@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
-import { type SitePick } from "@/lib/omnisite/sitePick";
+import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { useSelectedSite, type Failure } from "@/lib/omnisite/useSelectedSite";
 import {
@@ -47,7 +47,7 @@ const EMPTY_METRICS: Metrics = {
   conAccept: null,
 };
 
-const SS_KEYS = ["sim_messages", "sim_metrics", "sim_started", "sim_finished", "sim_parcel"];
+const SS_KEYS = ["sim_messages", "sim_metrics", "sim_started", "sim_finished", "sim_parcel", "sim_run_id", "sim_pnu"];
 
 export default function Screen5Page() {
   /**
@@ -76,6 +76,19 @@ export default function Screen5Page() {
   // 세션 복원
   useEffect(() => {
     try {
+      const pick = readSitePick();
+      const currentRunId = pick?.run_id ?? null;
+      const currentPnu = pick?.pnu ?? null;
+
+      const savedRunId = sessionStorage.getItem("sim_run_id");
+      const savedPnu = sessionStorage.getItem("sim_pnu");
+
+      // 새 실행(run)이거나 다른 위치(pnu)면 과거 기록을 무시하고 지운다
+      if ((savedRunId && savedRunId !== currentRunId) || (savedPnu && savedPnu !== currentPnu)) {
+        SS_KEYS.forEach((k) => sessionStorage.removeItem(k));
+        return;
+      }
+
       const savedMessages = sessionStorage.getItem("sim_messages");
       const savedMetrics = sessionStorage.getItem("sim_metrics");
       const savedStarted = sessionStorage.getItem("sim_started");
@@ -99,7 +112,9 @@ export default function Screen5Page() {
   }, []);
 
   useEffect(() => {
-    if (messages.length > 0) sessionStorage.setItem("sim_messages", JSON.stringify(messages));
+    if (messages.length > 0) {
+      sessionStorage.setItem("sim_messages", JSON.stringify(messages));
+    }
   }, [messages]);
   useEffect(() => {
     sessionStorage.setItem("sim_metrics", JSON.stringify(metrics));
@@ -169,7 +184,11 @@ export default function Screen5Page() {
       try {
         await fetchEventSource(STREAM_URL, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream",
+            "Cache-Control": "no-cache",
+          },
           body: JSON.stringify({
             // 🔴 하드코딩하지 않는다. 화면 4 에서 고른 필지(PNU 로 이은 것)다.
             //    `audit_data` 는 2026-08-11 계약에서 빠졌다 — 감리 근거는 요청이
@@ -195,6 +214,11 @@ export default function Screen5Page() {
                *    에도 걸렸고, 규칙이 받아주는 자리(콜백)가 마침 **더 정확한 자리**다.
                */
               setUsedParcelId(selected.parcel_id);
+              
+              // 스트림이 정상적으로 열렸을 때 현재 run_id와 pnu를 한 번만 기록한다
+              if (site.pick?.run_id) sessionStorage.setItem("sim_run_id", site.pick.run_id);
+              if (site.pick?.pnu) sessionStorage.setItem("sim_pnu", site.pick.pnu);
+              
               return;
             }
             if (ct.includes("application/json")) {
@@ -303,7 +327,9 @@ export default function Screen5Page() {
   }, [isStarted, isFinished, selected]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    // 🔴 smooth 스크롤을 쓰면 SSE 토큰이 초당 수십 번씩 렌더링될 때 브라우저 렌더링 엔진이 마비되어
+    // 통신이 끝날 때까지 화면이 멈추는(한 번에 나오는) 버그가 발생하므로 auto 를 쓴다.
+    chatEndRef.current?.scrollIntoView({ behavior: "auto" });
   }, [messages]);
 
   function reset() {
@@ -463,14 +489,25 @@ export default function Screen5Page() {
             이전 단계
           </div>
         </Link>
-        <Link
-          href="/report"
-          className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
-        >
-          <div className="flex items-center gap-2">
-            갈등 예측 완료, 보고서로 넘어가기 &gt;
-          </div>
-        </Link>
+        {isFinished ? (
+          <Link
+            href="/report"
+            className="rounded-xl bg-green-600 px-8 py-2.5 text-sm font-bold text-white shadow-md shadow-green-200 transition-colors hover:bg-green-700"
+          >
+            <div className="flex items-center gap-2">
+              갈등 예측 완료, 보고서로 넘어가기 &gt;
+            </div>
+          </Link>
+        ) : (
+          <button
+            disabled
+            className="rounded-xl bg-gray-300 px-8 py-2.5 text-sm font-bold text-white cursor-not-allowed opacity-70"
+          >
+            <div className="flex items-center gap-2">
+              갈등 예측 진행 중...
+            </div>
+          </button>
+        )}
       </div>
 
       <style

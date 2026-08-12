@@ -341,11 +341,11 @@ function WeightCard({
                     />
                     <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-gray-400 pointer-events-none">m</span>
                   </div>
-                  <span className="text-[11px] text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md">정수 1~5000</span>
+
                 </div>
               ) : (
                 <p className="mt-1.5 max-w-[220px] text-[12px] leading-relaxed text-gray-500">
-                  행정동 단위 지표라 <b>반경이 없습니다</b>.
+                  면적 데이터 없음
                 </p>
               )}
             </div>
@@ -354,18 +354,6 @@ function WeightCard({
             <div className="min-w-[320px] flex-1">
               <div className="flex items-end justify-between gap-2 mb-2">
                 <span className="text-[12px] font-bold text-gray-700">중요도</span>
-                <span className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-md shadow-sm border border-gray-100">
-                  <b
-                    className={`font-mono text-[16px] leading-none tracking-tight ${
-                      v === 0 ? "text-gray-400" : cost ? "text-red-600" : "text-emerald-600"
-                    }`}
-                  >
-                    {signed(v)}
-                  </b>
-                  <span className="text-[11px] font-medium text-gray-500">
-                    {v === 0 ? "지표 제외됨" : dirWord(cost ? "cost" : "benefit")}
-                  </span>
-                </span>
               </div>
 
               <SignedSlider id={`w-${q.indicator_id}`} v={v} disabled={acked} onChange={onSlider} />
@@ -427,9 +415,11 @@ function SignedSlider({
   const half = Math.abs(pct - 50);
   const color = v === 0 ? "bg-ink-secondary" : v < 0 ? "bg-red-600" : "bg-emerald-600";
 
+  const textColor = v === 0 ? "text-gray-400" : v < 0 ? "text-red-600" : "text-emerald-600";
+
   return (
     <>
-      <div className="relative mt-2 h-5">
+      <div className="relative mt-2 mb-5 h-5">
         <div className="pointer-events-none absolute inset-x-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-black/[0.10]" />
         <div
           className={`pointer-events-none absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full ${color}`}
@@ -444,9 +434,13 @@ function SignedSlider({
           style={{ left: at(50) }}
         />
         <div
-          className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow ${color}`}
+          className={`pointer-events-none absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow flex flex-col items-center ${color}`}
           style={{ left: at(pct) }}
-        />
+        >
+          <span className={`absolute top-full mt-1.5 text-[12px] font-black tracking-tight whitespace-nowrap bg-white/50 px-1 rounded ${textColor}`}>
+            {signed(v)}
+          </span>
+        </div>
         <input
           id={id}
           type="range"
@@ -461,9 +455,9 @@ function SignedSlider({
         />
       </div>
       <div className="mt-1 flex justify-between text-[10px] text-gray-400 font-medium px-1">
-        <span>−1 (점수 하락)</span>
-        <span>0 (제외)</span>
-        <span>+1 (점수 상승)</span>
+        <span>−1</span>
+        <span>0</span>
+        <span>+1</span>
       </div>
     </>
   );

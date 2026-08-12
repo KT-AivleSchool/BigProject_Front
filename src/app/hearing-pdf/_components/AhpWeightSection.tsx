@@ -14,7 +14,7 @@ export function AhpWeightSection({ ahpWeights }: AhpWeightSectionProps) {
     <section className="mb-8">
       <h2 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2 border-l-4 border-blue-600 pl-3">
         <CheckCircle2 size={16} className="text-blue-600" />
-        다. AHP 지표별 가중치 분석 (수요 및 제한 요소)
+        다. AHP 지표별 중요도 분석 (수요 및 제한 요소)
       </h2>
       <div className="border border-slate-200 rounded-xl overflow-hidden text-xs mb-4">
         <table className="w-full text-left border-collapse">

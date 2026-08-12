@@ -124,10 +124,40 @@ export function computeProgress(
     };
   }
 
+  let pipelineRatio = 0;
+  let pipelineNote: string | null = null;
+
+  if (!baseline) {
+    pipelineRatio = total > 0 ? Math.min(done / total, 0.999) : 0;
+    pipelineNote = "이 브라우저의 첫 실행입니다 — 과거 데이터가 없어 단계 수 기준으로 진행률을 표시합니다.";
+  } else {
+    const missing = run.steps.filter((s) => baseline![s.id] === undefined);
+    if (missing.length > 0) {
+      pipelineRatio = total > 0 ? Math.min(done / total, 0.999) : 0;
+      pipelineNote =
+        `기준선에 없는 단계가 있어 단계 수 기준으로 진행률을 계산합니다: ` +
+        `${missing.map((s) => s.id).join(", ")} (파이프라인 단계 구성이 바뀌었습니다)`;
+    } else {
+      const totalSec = run.steps.reduce((a, s) => a + (baseline![s.id] as number), 0);
+      if (totalSec > 0) {
+        let elapsed = 0;
+        for (const s of run.steps) {
+          const base = baseline![s.id] as number;
+          if (s.status === "done" || s.status === "failed") {
+            elapsed += base;
+          } else if (s.status === "running") {
+            elapsed += Math.min(runningElapsedSec, base);
+          }
+        }
+        pipelineRatio = Math.min(elapsed / totalSec, 0.999);
+      }
+    }
+  }
+
   if (run.status === "awaiting_hitl" && run.gate) {
     const runId = run.run_id;
-    let done = 0;
-    let total = 0;
+    let gateDone = 0;
+    let gateTotal = 0;
     let note = "사람 확인 대기 중";
 
     if (run.gate.id === "audit") {
@@ -142,7 +172,7 @@ export function computeProgress(
         (q): q is GateAuditQuestion =>
           q.kind === "exclusion" || q.kind === "intent" || q.kind === "code_prefix",
       );
-      total = qs.length;
+      gateTotal = qs.length;
 
       let confirmed: Record<string, boolean> = {};
       if (typeof window !== "undefined") {
@@ -158,9 +188,9 @@ export function computeProgress(
       for (const q of qs) {
         const datasetId = q.dataset_id;
         if (!q.editable && confirmed[datasetId] === undefined) {
-          done++;
+          gateDone++;
         } else if (confirmed[datasetId]) {
-          done++;
+          gateDone++;
         }
       }
       note = "감리 확인 대기 중";
@@ -169,7 +199,7 @@ export function computeProgress(
       //    또 `@ts-ignore` 가 필요해진다. 분모도 필터 뒤 개수로 센다 — 못 읽는
       //    질문을 분모에 넣으면 다 답해도 100% 가 안 된다.
       const qs = run.gate.questions.filter((q): q is GateWeightQuestion => q.kind === "weight");
-      total = qs.length;
+      gateTotal = qs.length;
 
       let weightStates: Record<string, { acked?: boolean }> = {};
       if (typeof window !== "undefined") {
@@ -183,68 +213,42 @@ export function computeProgress(
 
       for (const q of qs) {
         if (weightStates[q.indicator_id]?.acked) {
-          done++;
+          gateDone++;
         }
       }
       note = "가중치 설정 대기 중";
     }
 
     return {
-      ratio: total > 0 ? Math.min(done / total, 0.999) : 0,
+      ratio: pipelineRatio,
       remainSec: null,
-      doneCount: done,
-      totalCount: total,
+      doneCount: gateDone,
+      totalCount: gateTotal,
       note,
     };
   }
 
-  if (!baseline) {
-    return {
-      ratio: total > 0 ? Math.min(done / total, 0.999) : 0,
-      remainSec: null,
-      doneCount: done,
-      totalCount: total,
-      note: "이 브라우저의 첫 실행입니다 — 과거 데이터가 없어 단계 수 기준으로 진행률을 표시합니다.",
-    };
-  }
-
-  const missing = run.steps.filter((s) => baseline[s.id] === undefined);
-  if (missing.length > 0) {
-    return {
-      ratio: total > 0 ? Math.min(done / total, 0.999) : 0,
-      remainSec: null,
-      doneCount: done,
-      totalCount: total,
-      note:
-        `기준선에 없는 단계가 있어 단계 수 기준으로 진행률을 계산합니다: ` +
-        `${missing.map((s) => s.id).join(", ")} (파이프라인 단계 구성이 바뀌었습니다)`,
-    };
-  }
-
-  const totalSec = run.steps.reduce((a, s) => a + (baseline[s.id] as number), 0);
-  if (totalSec <= 0) {
-    return { ratio: total > 0 ? Math.min(done / total, 0.999) : 0, remainSec: null, doneCount: done, totalCount: total, note: null };
-  }
-
-  let elapsed = 0;
-  for (const s of run.steps) {
-    const base = baseline[s.id] as number;
-    if (s.status === "done" || s.status === "failed") {
-      elapsed += base;
-    } else if (s.status === "running") {
-      // 예상보다 오래 걸려도 그 단계를 넘어서지는 않게 막는다. 100% 를 찍고
-      // 계속 도는 화면보다, 99% 에서 멈춰 있는 화면이 사실에 가깝다.
-      elapsed += Math.min(runningElapsedSec, base);
+  let remainSec: number | null = null;
+  if (baseline && !pipelineNote) {
+    const totalSec = run.steps.reduce((a, s) => a + (baseline![s.id] as number), 0);
+    let elapsed = 0;
+    for (const s of run.steps) {
+      const base = baseline![s.id] as number;
+      if (s.status === "done" || s.status === "failed") {
+        elapsed += base;
+      } else if (s.status === "running") {
+        elapsed += Math.min(runningElapsedSec, base);
+      }
     }
+    remainSec = Math.max(totalSec - elapsed, 0);
   }
 
-  const ratio = Math.min(elapsed / totalSec, 0.999);
   return {
-    ratio,
-    remainSec: Math.max(totalSec - elapsed, 0),
+    ratio: pipelineRatio,
+    remainSec,
     doneCount: done,
     totalCount: total,
-    note: null,
+    note: pipelineNote,
   };
 }
 

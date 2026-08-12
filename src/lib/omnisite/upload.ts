@@ -41,6 +41,18 @@ export interface DomainItem {
   data_files: number;
   /** STEP1 감리 확정본이 있는가 = `facility_type` 을 생략해도 되는가. */
   has_audit_reviewed: boolean;
+  /**
+   * `mode=fixture`·`hitl` 로 돌릴 수 있는가(= `<도메인>_FIX` 픽스처가 온전한가).
+   * `false` 면 그 두 모드는 **400** 이다. `mode=full` 은 픽스처와 무관하다.
+   *
+   * 🔴 판정은 **서버가 러너 자신의 사전검사로** 한다(`upload.py:302`
+   *    `fixture_blocker(name) is None`). 프런트가 「`_FIX` 폴더가 있으면 가능」 같은
+   *    규칙을 흉내 내면 서버와 갈라진다 — 실제 조건은 폴더가 아니라 **파일 둘**이라
+   *    폴더만 보면 "가능"이라 그려놓고 실행이 400 으로 죽는다.
+   * ⚠ 막힌 **이유**는 응답에 없다(저장소 절대경로가 새기 때문). 그래서 화면도
+   *   「안 된다」까지만 말하고 사유를 지어내지 않는다.
+   */
+  has_fixture: boolean;
 }
 
 /**
