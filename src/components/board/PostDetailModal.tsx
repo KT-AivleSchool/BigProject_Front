@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { fetchPostDetail, deletePost, getPostDownloadUrl, PostResponse } from "@/lib/omnisite/posts";
 import { getAuthHeader } from "@/lib/omnisite/auth";
+import { PostEditModal } from "@/components/board/PostEditModal";
 
 interface PostDetailModalProps {
   postId: number | null;
@@ -15,7 +16,9 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
   const [post, setPost] = useState<PostResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
 
   useEffect(() => {
     if (isOpen && postId) {
@@ -157,16 +160,25 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
         ) : null}
 
         <div className="flex justify-between items-center pt-4 border-t mt-4 shrink-0">
-          <div>
+          <div className="flex items-center gap-2">
             {post && post.is_owner && (
-              <button
-                type="button"
-                onClick={handleDelete}
-                disabled={deleting}
-                className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50 flex items-center gap-1"
-              >
-                <span>🗑️</span> {deleting ? "삭제 중..." : "게시글 삭제"}
-              </button>
+              <>
+                <button
+                  type="button"
+                  onClick={() => setEditModalOpen(true)}
+                  className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2 text-xs font-bold text-blue-600 hover:bg-blue-100 transition-colors flex items-center gap-1"
+                >
+                  <span>✏️</span> 게시글 수정
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs font-bold text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50 flex items-center gap-1"
+                >
+                  <span>🗑️</span> {deleting ? "삭제 중..." : "게시글 삭제"}
+                </button>
+              </>
             )}
           </div>
           <button
@@ -177,7 +189,19 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
             닫기
           </button>
         </div>
+
+        {/* 수정 모달 */}
+        <PostEditModal
+          postId={postId}
+          isOpen={editModalOpen}
+          onClose={() => setEditModalOpen(false)}
+          onSuccess={() => {
+            if (postId) loadDetail(postId);
+            onDeleted();
+          }}
+        />
       </div>
     </div>
   );
 }
+

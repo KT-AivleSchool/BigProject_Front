@@ -138,6 +138,48 @@ export async function createPost(title: string, content: string, file?: File | n
 }
 
 /**
+ * 게시글 수정 (Form Data: title, content, optional file, optional removeFile)
+ */
+export async function updatePost(
+  postId: number,
+  title: string,
+  content: string,
+  file?: File | null,
+  removeFile: boolean = false
+): Promise<PostResponse> {
+  const headers = getAuthHeader();
+  const formData = new FormData();
+  formData.append("title", title);
+  formData.append("content", content);
+  formData.append("remove_file", removeFile ? "true" : "false");
+  if (file) {
+    formData.append("file", file);
+  }
+
+  const res = await fetch(`${API_BASE}/posts/${postId}`, {
+    method: "PUT",
+    headers: {
+      ...headers,
+    },
+    body: formData,
+  });
+
+  if (!res.ok) {
+    const errorData = await res.json().catch(() => ({}));
+    if (res.status === 401) {
+      throw new Error("UNAUTHORIZED");
+    }
+    if (res.status === 403) {
+      throw new Error("자신이 작성한 게시글만 수정할 수 있습니다.");
+    }
+    throw new Error(errorData.detail || "게시글 수정에 실패했습니다.");
+  }
+
+  return res.json();
+}
+
+
+/**
  * 게시글 삭제
  */
 export async function deletePost(postId: number): Promise<void> {
