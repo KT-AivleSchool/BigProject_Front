@@ -129,6 +129,10 @@ function RunList() {
   const [runs, setRuns] = useState<import('@/lib/omnisite/pipeline').RunMeta[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  /** 「다시보기」를 누른 run. 두 번 눌러 두 run 을 동시에 불러오지 않게 막는다. */
+  const [opening, setOpening] = useState<string | null>(null);
+  /** 그 run 을 못 연 사유. 목록이 아니라 **그 줄**에 붙는다. */
+  const [openError, setOpenError] = useState<{ runId: string; message: string } | null>(null);
 
   const fetchData = () => {
     setLoading(true);
@@ -202,10 +206,33 @@ function RunList() {
   const myRuns = runs.filter((r) => r.is_mine);
   const unassignedRuns = runs.filter((r) => !r.is_mine);
 
+  /**
+   * 🔴 **못 열면 이동하지 않는다.** 예전엔 결과를 안 보고 `/report` 로 넘겼다 —
+   *    그러면 서버에서 사라진 run(폴더가 정리됐거나 404)을 눌러도 화면이 넘어가고,
+   *    거기 그려지는 건 **직전에 보던 run** 이다. 다른 실행의 숫자를 이 실행의
+   *    것으로 읽게 된다(원칙 4).
+   * 🔴 사유는 목록 전체가 아니라 **누른 줄 옆**에 붙인다. 줄이 여럿이라 한 곳에
+   *    모아 띄우면 어느 run 얘기인지가 사라진다.
+   */
   const handleOpenRun = async (runId: string) => {
-    await loadHistoricalRun(runId);
-    router.push("/report");
+    setOpening(runId);
+    setOpenError(null);
+    try {
+      await loadHistoricalRun(runId);
+      router.push("/report");
+    } catch (e) {
+      setOpenError({ runId, message: describeFailure(e) });
+    } finally {
+      setOpening(null);
+    }
   };
+
+  const cardProps = (r: import('@/lib/omnisite/pipeline').RunMeta) => ({
+    run: r,
+    busy: opening === r.run_id,
+    failure: openError?.runId === r.run_id ? openError.message : null,
+    onOpen: () => handleOpenRun(r.run_id),
+  });
 
   return (
     <div className="w-full text-left space-y-10">
@@ -213,9 +240,9 @@ function RunList() {
       {myRuns.length > 0 && (
         <div>
           <h3 className="text-md font-semibold text-gray-700 mb-4">내 분석 내역</h3>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {myRuns.map((r) => (
-              <RunCard key={r.run_id} run={r} onClick={() => handleOpenRun(r.run_id)} />
+              <RunCard key={r.run_id} {...cardProps(r)} />
             ))}
           </div>
         </div>
@@ -232,9 +259,9 @@ function RunList() {
       {unassignedRuns.length > 0 && (
         <div>
           <h3 className="text-md font-semibold text-gray-700 mb-4">로그인 없이 실행된 분석 내역</h3>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {unassignedRuns.map((r) => (
-              <RunCard key={r.run_id} run={r} onClick={() => handleOpenRun(r.run_id)} />
+              <RunCard key={r.run_id} {...cardProps(r)} />
             ))}
           </div>
         </div>
@@ -243,39 +270,80 @@ function RunList() {
   );
 }
 
-function RunCard({ run, onClick }: { run: import('@/lib/omnisite/pipeline').RunMeta, onClick: () => void }) {
+/**
+ * 한 줄 = **[날짜, 도메인] + 「다시보기」** 다(2026-08-12, 사람 지시).
+ *
+ * 🔴 `{domain} 입지 분석` 같은 제목을 다시 만들지 않는다 — 그건 우리가 지어낸
+ *    문장이고, 도메인은 이미 옆에 그대로 있다.
+ * ⚠ `status` 는 `run_records.last_known_status` 라 **세 값뿐**이다
+ *    (`queued` · `succeeded` · `failed`). `running`·`awaiting_hitl` 은 DB 에
+ *    일부러 안 적는다 — 진행 상태의 정본은 `status.json` 이다. 그래서 여기 값은
+ *    「지금 어떤가」가 아니라 **「마지막으로 알려진 것」**이고, 작은 글씨로만 둔다.
+ */
+function RunCard({
+  run,
+  busy,
+  failure,
+  onOpen,
+}: {
+  run: import('@/lib/omnisite/pipeline').RunMeta;
+  busy: boolean;
+  failure: string | null;
+  onOpen: () => void;
+}) {
   return (
-    <div className="border border-gray-200 rounded-lg p-6 bg-white shadow-sm flex flex-col sm:flex-row sm:items-center justify-between hover:border-primary/50 transition-colors gap-4">
-      <div>
-        <div className="flex items-center gap-2 mb-2">
-          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200">
+    <div className="border border-gray-200 rounded-lg bg-white shadow-sm hover:border-primary/50 transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 px-5 py-4">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className="text-sm font-medium text-gray-800 tabular-nums">
+            {run.started_at ? datetime(run.started_at) : "날짜 미상"}
+          </span>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 border border-blue-200 shrink-0">
             {run.domain}
           </span>
-          <span className="text-xs font-medium text-gray-500">
-            일시: {run.started_at ? datetime(run.started_at) : "알 수 없음"}
+          <span
+            className={
+              "text-xs shrink-0 " +
+              (run.status === "succeeded"
+                ? "text-green-600"
+                : run.status === "failed"
+                  ? "text-red-600"
+                  : "text-yellow-600")
+            }
+            title="마지막으로 기록된 상태"
+          >
+            {run.status}
           </span>
         </div>
-        <h3 className="text-lg font-bold text-gray-800">
-          {run.domain} 입지 분석
-        </h3>
-        <p className="text-sm text-gray-500 mt-1">
-          상태: <span className={run.status === 'succeeded' ? 'text-green-600 font-semibold' : run.status === 'failed' ? 'text-red-600 font-semibold' : 'text-yellow-600 font-semibold'}>{run.status}</span>
-        </p>
+
+        <button
+          onClick={onOpen}
+          disabled={busy}
+          className="shrink-0 flex items-center gap-2 px-4 py-2 bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors font-medium text-sm"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="1 4 1 10 7 10"></polyline>
+            <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"></path>
+          </svg>
+          {busy ? "불러오는 중..." : "다시보기"}
+        </button>
       </div>
 
-      <button 
-        onClick={onClick}
-        className="shrink-0 flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white rounded-md hover:bg-gray-800 transition-colors font-medium text-sm"
-      >
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-          <polyline points="14 2 14 8 20 8"></polyline>
-          <line x1="16" y1="13" x2="8" y2="13"></line>
-          <line x1="16" y1="17" x2="8" y2="17"></line>
-          <polyline points="10 9 9 9 8 9"></polyline>
-        </svg>
-        보고서 보기
-      </button>
+      {/*
+        🔴 못 열었으면 **그 자리에** 적는다. 이동은 안 했으므로 사용자는 아직
+           목록에 있고, 사유가 없으면 「버튼이 안 눌린다」로 읽는다.
+           문구는 서버 것을 그대로 쓴다 — 우리가 만들면 사유를 지어내게 된다.
+      */}
+      {failure !== null && (
+        <div className="border-t border-red-100 bg-red-50 px-5 py-3">
+          <p className="text-xs font-semibold text-red-700">이 실행의 기록을 열지 못했습니다.</p>
+          <p className="mt-1 break-all text-xs text-red-600">{failure}</p>
+          <p className="mt-1.5 text-[11px] text-red-500">
+            목록에 남아 있어도 <strong>산출물은 정리(prune)돼 사라질 수 있습니다</strong> —
+            실행 기록(DB)과 산출물 파일은 수명이 다릅니다.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

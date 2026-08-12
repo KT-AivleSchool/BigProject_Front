@@ -19,7 +19,7 @@
  * `steps[].status` 는 `idle·running·done·failed` 네 가지뿐이고 대기 상태가 없다
  * (계약 3절). 게이트는 단계 **사이**에 서지 단계 안에 서지 않기 때문이다.
  */
-import type { RunDoc, RunStep } from "./types";
+import type { GateAuditQuestion, GateWeightQuestion, RunDoc, RunStep } from "./types";
 
 /** 단계 id → 지난 완주 run 의 실측 소요(초). */
 export type Baseline = Record<string, number>;
@@ -76,18 +76,22 @@ export function computeProgress(
   /** 진행 중 단계의 경과 시간(초). 없으면 그 단계는 0 으로 본다. */
   runningElapsedSec = 0,
 ): Progress {
-  // 사용자가 "데이터 감리하는 %"라고 인식하는 비율과 남은 시간을 제공하기 위해
-  // 첫 실행(baseline이 없는 상태)일 때 가상의 기준선을 제공합니다.
-  if (!baseline) {
-    baseline = {
-      "s_01_clean": 30,
-      "s_02_candidates": 20,
-      "s_03_weights": 10,
-      "s_04_point": 10,
-      "s_05_score": 20,
-    };
-  }
-
+  /**
+   * 🔴 **여기에 「첫 실행용 가상 기준선」을 넣지 않는다.**
+   *
+   *    한때 `if (!baseline) baseline = {s_01_clean: 30, …}` 로 초를 지어내
+   *    채워 넣은 적이 있다. 두 가지가 걸린다 —
+   *    ⓐ 그 초는 **아무도 잰 적이 없다.** 거기서 나온 `remainSec` 는 측정값의
+   *      모양을 하고 있지만 근거가 없다(절대원칙 4). 게다가 단계 id 다섯 개는
+   *      실제 `status.json` 의 단계 id 와 맞지도 않아, 맞았다면 곧바로 아래
+   *      `missing` 검사에 걸릴 값이었다.
+   *    ⓑ 더 조용한 쪽은 이거다 — 여기서 채워 버리면 **아래의 `if (!baseline)`
+   *      세 갈래가 영원히 도달 불가**가 된다. 「첫 실행이라 단계 수로 센다」는
+   *      정직한 안내문이 화면에서 사라지고, 대신 지어낸 % 가 그 자리를 차지한다.
+   *
+   *    기준선이 없을 때 무엇을 보여줄지는 아래(`:180`)가 이미 답한다 —
+   *    단계 수 비율 + 「과거 데이터가 없다」는 문구. 그게 잴 수 있는 전부다.
+   */
   const total = run.steps.length;
   const done = run.steps.filter((s) => s.status === "done").length;
 
@@ -127,7 +131,17 @@ export function computeProgress(
     let note = "사람 확인 대기 중";
 
     if (run.gate.id === "audit") {
-      const qs = run.gate.questions.filter((q) => q.kind === "exclusion" || q.kind === "intent" || q.kind === "code_prefix");
+      /**
+       * 🔴 `.filter()` 는 **타입을 좁히지 않는다** — 그래서 아래에서 `q.dataset_id`
+       *    가 안 읽히고, 한때 `@ts-ignore` 로 덮여 있었다. 억제할 이유가 없다:
+       *    `dataset_id` 는 감리 질문 3종에 **전부** 있다(`types.ts:54·93·103`).
+       *    모자란 건 필드가 아니라 **서술어**였다. `@ts-ignore` 는 이 줄만 끄는 게
+       *    아니라 **그 아래 줄 전체의 검사를 끈다** — 나중에 진짜 오타가 나도 조용하다.
+       */
+      const qs = run.gate.questions.filter(
+        (q): q is GateAuditQuestion =>
+          q.kind === "exclusion" || q.kind === "intent" || q.kind === "code_prefix",
+      );
       total = qs.length;
 
       let confirmed: Record<string, boolean> = {};
@@ -135,13 +149,15 @@ export function computeProgress(
         try {
           const item = window.localStorage.getItem(`omnisite_gate_confirmed_${runId}`);
           if (item) confirmed = JSON.parse(item);
-        } catch {}
+        } catch {
+          // 손상된 값은 「아직 아무것도 확정 안 됨」으로 본다. 이건 보조 표시라
+          // 못 읽었다고 실행을 막지 않는다 — 확정 여부의 정본은 서버다.
+        }
       }
 
       for (const q of qs) {
-        // @ts-ignore: dataset_id exists on audit questions
         const datasetId = q.dataset_id;
-        if ("editable" in q && !q.editable && confirmed[datasetId] === undefined) {
+        if (!q.editable && confirmed[datasetId] === undefined) {
           done++;
         } else if (confirmed[datasetId]) {
           done++;
@@ -149,18 +165,23 @@ export function computeProgress(
       }
       note = "감리 확인 대기 중";
     } else if (run.gate.id === "weight") {
-      total = run.gate.questions.length;
+      // 🔴 감리 쪽과 **같은 방식으로** 좁힌다. 안 좁히면 `indicator_id` 를 못 읽어
+      //    또 `@ts-ignore` 가 필요해진다. 분모도 필터 뒤 개수로 센다 — 못 읽는
+      //    질문을 분모에 넣으면 다 답해도 100% 가 안 된다.
+      const qs = run.gate.questions.filter((q): q is GateWeightQuestion => q.kind === "weight");
+      total = qs.length;
 
-      let weightStates: Record<string, any> = {};
+      let weightStates: Record<string, { acked?: boolean }> = {};
       if (typeof window !== "undefined") {
         try {
           const item = window.localStorage.getItem(`omnisite_gate_weight_${runId}`);
           if (item) weightStates = JSON.parse(item);
-        } catch {}
+        } catch {
+          // 위와 같다 — 못 읽으면 0 으로 본다.
+        }
       }
 
-      for (const q of run.gate.questions) {
-        // @ts-ignore: indicator_id exists on weight questions
+      for (const q of qs) {
         if (weightStates[q.indicator_id]?.acked) {
           done++;
         }

@@ -22,15 +22,16 @@
  *    화면마다 다른 판정을 낸다. 이 화면은 **화면 4 의 선택이 있는지**만 본다.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useSyncExternalStore } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Swords, Users, ArrowRight, MapPin, CheckCircle2 } from "lucide-react";
 
 import { PageBody, PageHeader, SourceNote } from "@/components/ui/Page";
 import { SCREENS } from "@/lib/omnisite/screens";
-import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
+import { readSitePick, subscribeSitePick, type SitePick } from "@/lib/omnisite/sitePick";
 import { readHearingA, readHearingB } from "@/lib/omnisite/hearingResult";
+import { useHydrated } from "@/lib/omnisite/useHydrated";
 
 const SCREEN = SCREENS.find((s) => s.no === "5")!;
 const SCREEN4 = SCREENS.find((s) => s.no === "4")!;
@@ -77,43 +78,58 @@ const MODES = [
 export default function HearingSelectPage() {
   const router = useRouter();
 
-  /** `undefined` = 아직 안 읽음 · `null` = 고른 적 없음. 섞으면 안내가 한 번 깜빡인다. */
-  const [pick, setPick] = useState<SitePick | null | undefined>(undefined);
-  /** 이미 돌린 기록이 있는 방식. 덮어쓰기 전에 알려주려는 것이다. */
-  const [done, setDone] = useState<{ A: boolean; B: boolean }>({ A: false, B: false });
+  /**
+   * 🔴 **`useState` + `useEffect(setState)` 로 읽지 않는다.** 그러면 effect 안의
+   *    동기 setState 라 `react-hooks/set-state-in-effect` 를 억제(`eslint-disable`)
+   *    해야 하고, 더 나쁜 건 **화면 4 에서 고른 값이 바뀌어도 못 듣는다**는 것이다.
+   *    `sitePick.ts` 는 쓰는 쪽이 전부 그 모듈을 거치므로 **값을 구독**할 수 있다.
+   *
+   *    `undefined` = 아직 안 읽음 · `null` = 고른 적 없음. 서버 스냅샷을
+   *    `() => undefined` 로 두어 둘을 갈라둔다 — 섞으면 프리렌더에서 「고른 적 없음」
+   *    안내가 한 번 깜빡였다가 사라진다(없는 사실을 잠깐 말하는 것이다).
+   */
+  const pick = useSyncExternalStore<SitePick | null | undefined>(
+    subscribeSitePick,
+    readSitePick,
+    () => undefined,
+  );
 
-  // 🔴 렌더 중에 sessionStorage 를 읽지 않는다 — 서버 프리렌더엔 없어서
-  //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다.
+  /**
+   * 이미 돌린 기록이 있는 방식. 덮어쓰기 전에 알려주려는 것이다.
+   *
+   * 🔴 이쪽은 **값이 아니라 시점만** 구독한다(`useHydrated`). `hearingResult.ts` 의
+   *    `sim_*` 키는 화면 5 가 `sessionStorage.setItem` 으로 **직접** 쓰므로 구독을
+   *    걸어도 못 듣는 변경이 생긴다 — 「구독한다」고 해놓고 못 듣는 건 안 듣는 것보다
+   *    나쁘다(`useHydrated.ts` 머리말).
+   */
+  const hydrated = useHydrated();
+  const done: { A: boolean; B: boolean } = hydrated
+    ? { A: readHearingA() !== null, B: readHearingB() !== null }
+    : { A: false, B: false };
+
+  /**
+   * 이미 이 위치로 돌린 토론이 있으면 그 결과 화면으로 바로 넘긴다.
+   *
+   * 🔴 이 effect 는 **setState 를 하지 않는다** — 위 두 값은 렌더 중에 구독으로
+   *    읽으므로 여기서 다시 담을 이유가 없다. effect 가 하는 일은 이동 하나뿐이다.
+   */
   useEffect(() => {
-    const currentPick = readSitePick();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setPick(currentPick);
-    
+    if (!pick) return;
+
     const resA = readHearingA();
     const resB = readHearingB();
-    
-    // 현재 고른 위치(currentPick)에 대해 이미 진행된 토론이 있는지 판별
-    let matchA = false;
-    let matchB = false;
-    
-    if (currentPick) {
-      if (resB && resB.scope.pnu === currentPick.pnu) matchB = true;
-      // A 엔진은 pnu나 runId를 모른다. 기록이 있으면 현재 위치의 토론이라고 가정한다.
-      if (resA) matchA = true;
-    }
 
-    // 이미 진행한 토론이 있다면 해당 결과 화면으로 바로 넘긴다
-    if (matchB) {
+    if (resB && resB.scope.pnu === pick.pnu) {
       router.replace("/dynamic-hearing");
       return;
-    } else if (matchA) {
-      router.replace("/hearing");
-      return;
     }
-
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setDone({ A: resA !== null, B: resB !== null });
-  }, [router]);
+    // 🔴 A 엔진 기록에는 pnu·run_id 가 없다(`hearingResult.ts`). 그래서 「이 위치의
+    //    토론인지」를 확인할 방법이 없고, 기록이 있으면 그렇다고 **가정**한다.
+    //    B 를 먼저 보는 이유가 이것이다 — 확인할 수 있는 쪽을 먼저 본다.
+    if (resA) {
+      router.replace("/hearing");
+    }
+  }, [pick, router]);
 
   return (
     <PageBody>

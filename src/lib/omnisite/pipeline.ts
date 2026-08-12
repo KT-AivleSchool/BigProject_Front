@@ -159,12 +159,23 @@ export function fetchRun(runId: string): Promise<RunDoc> {
   return getJson<RunDoc>(`${BASE}/runs/${encodeURIComponent(runId)}`);
 }
 
-export async function cancelRun(runId: string): Promise<void> {
-  const res = await fetch(`${BASE}/runs/${runId}`, { method: "DELETE" });
-  if (!res.ok) {
-    console.warn(`cancelRun failed: ${res.status}`);
-  }
-}
+/**
+ * 🔴 **`cancelRun`(`DELETE /runs/{id}`)은 없앴다. 그런 라우트가 없다.**
+ *
+ * 2026-08-12 실측 — 살아 있는 서버(`127.0.0.1:8000`)의 `/openapi.json` 에 있는
+ * pipeline 라우트는 **5개**이고 DELETE 는 그중에 없다:
+ *   `POST /runs` · `GET /runs/{run_id}` · `GET /runs/{run_id}/artifacts/{name}`
+ *   `POST /runs/{run_id}/hitl/{gate_id}` · `GET /runs/{run_id}/log`
+ *
+ * 없앤 이유가 「안 쓰니까」가 아니다 — 그 함수는 **세 겹으로 조용했다**:
+ * ⓐ `client.ts` 의 공통 `request()` 를 안 거쳐 `Authorization` 이 안 붙었고
+ * ⓑ 실패를 `console.warn` 으로 삼켜 화면에는 아무 말도 안 했으며
+ * ⓒ 애초에 405 밖에 못 받는다. 즉 「취소했다」고 믿게 만들고 아무것도 안 한다.
+ *
+ * 목적(같은 도메인 409 좀비런 방지)은 이미 다른 자리가 맡는다 —
+ * `RunProvider` 가 409 를 **실패가 아니라 점유**로 읽고 서버가 `detail` 에 적어준
+ * run 에 되붙는다. 취소가 정말 필요하면 백엔드에 라우트가 먼저 생겨야 한다.
+ */
 
 /**
  * 실행 로그(`run.log`). 백엔드 커밋 `836455e`.

@@ -25,7 +25,6 @@ import {
   MODE_FIXTURE,
   submitAuditGate,
   submitWeightGate,
-  cancelRun,
 } from "./pipeline";
 import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
@@ -73,7 +72,10 @@ interface RunContextValue {
    */
   refresh: () => Promise<void>;
   reset: () => void;
-  loadHistoricalRun: (id: string) => Promise<string | null>;
+  /**
+   * 지난 run 을 현재 run 으로 되돌려 놓는다. **실패하면 던진다**(위 게이트와 같은 이유).
+   */
+  loadHistoricalRun: (id: string) => Promise<string>;
 }
 
 const RunContext = createContext<RunContextValue | null>(null);
@@ -98,6 +100,30 @@ export function useRun(): RunContextValue {
  */
 function isLive(run: RunDoc | null): boolean {
   return run?.status === "queued" || run?.status === "running";
+}
+
+/**
+ * 실행 요청 실패 문구.
+ *
+ * 🔴 **401 에만 「무엇을 하면 되는지」를 덧붙인다.** `POST /pipeline/runs` 는
+ *    2026-08-12 부터 `Authorization` 을 본다 — 헤더가 **없으면** 예전처럼 202
+ *    익명 run 이고, 헤더가 **있는데 죽었으면**(만료·위조·로그아웃) 401 이다.
+ *    만료를 조용히 익명으로 흘리지 않은 건 백엔드 쪽 의도다: 그러면 화면은
+ *    로그인 상태인데 마이페이지에서만 그 run 이 안 보인다.
+ *
+ * 🔴 서버 문구를 **바꾸지 않고 앞에 그대로 둔다.** 401 의 사유는 셋(만료·위조·
+ *    로그아웃)인데 우리는 어느 쪽인지 모른다 — 우리가 문장을 지어내면 「만료됐다」고
+ *    단정하게 된다. 덧붙이는 건 사유가 아니라 **다음 동작**이고, 그 동작은 셋 다
+ *    같다(연장하거나 다시 로그인).
+ *
+ * 🔴 여기서 재발급을 시도하지 않는다 — `client.ts` 의 401 처리와 같은 이유다.
+ *    RTR 이라 재발급이 실패하면 그 사용자의 **모든 세션이 지워진다.**
+ */
+function startFailureText(e: unknown): string {
+  if (e instanceof ApiError && e.status === 401) {
+    return `${e.detail} — 헤더의 ⟳ 로 로그인을 연장한 뒤 다시 실행해 주세요. 연장이 안 되면 다시 로그인하면 됩니다.`;
+  }
+  return e instanceof Error ? e.message : String(e);
 }
 
 export function RunProvider({ children }: { children: React.ReactNode }) {
@@ -204,6 +230,9 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         applyRun(doc);
         return id;
       } catch (e: unknown) {
+        // 🔴 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 이미
+        //    잡고 있다. 그 run 은 살아 있으므로 새로 만들 게 아니라 **되붙는다.**
+        //    id 는 서버가 `detail` 에 적어준 것만 쓴다(프런트가 짐작하지 않는다).
         if (e instanceof ApiError && e.status === 409) {
           const match = e.detail.match(/run_id=([^)]+)/);
           if (match && match[1]) {
@@ -213,12 +242,14 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
               const doc = await fetchRun(id);
               applyRun(doc);
               return id;
-            } catch (inner) {
-              // Ignore inner error and fall through to original error
+              // 되붙기까지 실패하면 원래 409 문구를 그대로 띄운다 — 여기서
+              // 새 사유를 지어내면 진짜 원인(점유)이 화면에서 사라진다.
+            } catch {
+              /* 아래 공통 처리로 흘린다 */
             }
           }
         }
-        setError(e instanceof Error ? e.message : String(e));
+        setError(startFailureText(e));
         return null;
       } finally {
         setStarting(false);
@@ -265,13 +296,15 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     }
   }, [run?.run_id, applyRun]);
 
+  /**
+   * 🔴 **여기서 백엔드 run 을 취소하지 않는다 — 취소 라우트가 없다.**
+   *    한때 `cancelRun(id)`(=`DELETE /runs/{id}`)을 불렀는데 그 라우트는
+   *    `/openapi.json` 에 없다(2026-08-12 실측, pipeline 라우트 5개 중 DELETE 없음).
+   *    실패는 `console.error` 로 삼켜져 화면엔 아무 말도 없었다 — **취소했다고
+   *    믿게 만들고 아무것도 안 하는** 모양이다(절대원칙 4).
+   *    같은 도메인 409 는 `start` 가 **점유로 읽고 되붙어서** 이미 처리한다.
+   */
   const reset = useCallback(() => {
-    const id = readRunId();
-    if (id) {
-      // 백엔드의 실행도 명시적으로 취소하여 409 Conflict(좀비 런 부활) 방지
-      cancelRun(id).catch(console.error);
-    }
-
     clearRunId();
     setRun(null);
     setError(null);
@@ -293,17 +326,38 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  /**
+   * 지난 run 을 현재 run 으로 삼는다(마이페이지 「다시보기」).
+   *
+   * 🔴 **오류를 삼키지 않고 던진다** — 게이트와 같은 이유다. 목록에는 줄이 여럿이라
+   *    사유가 **누른 그 줄 옆**에 붙어야 한다. context `error` 하나로만 알리면
+   *    「어느 run 이 왜 안 열렸는지」가 사라지고, 호출부는 실패를 모른 채 화면을
+   *    넘겨 **직전 run** 을 그 run 인 척 보여준다.
+   * 🔴 `writeRunId` 는 **불러온 뒤**에 한다. 먼저 쓰면 서버에 없는 run(폴더가 정리됨 ·
+   *    404)을 눌렀을 때 저장된 id 만 그쪽으로 바뀌어, 보고 있던 run 을 잃는다.
+   * 🔴 **화면 4·5 의 sessionStorage 를 비운다**(계약 §7-5). 그 값들은 `run_id` 를
+   *    안 달고 있어서, 안 지우면 **지난 run 을 열었는데 직전 run 의 선택 입지·
+   *    페르소나·토론 로그가 그대로 붙어 보인다** — 화면이 두 실행을 섞어 한 실행인
+   *    척한다(절대원칙 4). 지우는 쪽이 맞다: 이 값들은 서버에서 다시 받을 수 있다.
+   */
   const loadHistoricalRun = useCallback(async (id: string) => {
     setStarting(true);
     setError(null);
     try {
-      writeRunId(id);
       const doc = await fetchRun(id);
+      writeRunId(id);
       applyRun(doc);
+      if (typeof window !== "undefined") {
+        window.sessionStorage.removeItem("omnisite.sitePick.v1");
+        window.sessionStorage.removeItem("omnisite.personas.v2");
+        window.sessionStorage.removeItem("omnisite.hearingB.v1");
+        window.sessionStorage.removeItem("sim_messages");
+        window.sessionStorage.removeItem("sim_metrics");
+        window.sessionStorage.removeItem("sim_started");
+        window.sessionStorage.removeItem("sim_finished");
+        window.sessionStorage.removeItem("sim_parcel");
+      }
       return id;
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-      return null;
     } finally {
       setStarting(false);
     }
