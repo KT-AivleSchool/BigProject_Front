@@ -294,7 +294,7 @@ export function AuditGate({
     if (submitRef) {
       submitRef.current = onSubmit;
     }
-  }, [submitRef, ex, it, pf, confirmed]);
+  }, [submitRef, ex, it, pf, confirmed, onSubmit]);
 
   return (
     <>
@@ -427,7 +427,7 @@ function ExclusionCard({
         <div className="mt-2 flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <p className="text-[14px] text-blue-900 font-bold leading-relaxed bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-              "{
+              &quot;{
                 (() => {
                   let text = q.evidence || q.summary;
                   const targetNum = String(q.proposed_m ?? q.radius_m ?? "");
@@ -436,7 +436,7 @@ function ExclusionCard({
                   }
                   return text;
                 })()
-              }"
+              }&quot;
             </p>
             {suspect && (
               <div className="mt-0.5 flex flex-wrap gap-2">
@@ -457,7 +457,7 @@ function ExclusionCard({
               />
               {state.mode === "none" && (
                 <span className="text-xs text-orange-600 ml-6">
-                  ⚠️ 점(Point) 데이터일 경우 '반경 없음'을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
+                  ⚠️ 점(Point) 데이터일 경우 &apos;반경 없음&apos;을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
                 </span>
               )}
             </div>
@@ -541,7 +541,7 @@ function IntentCard({
       {isExpanded && (
         <div className="mt-2 flex flex-col gap-4">
           <div className="flex flex-col gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-            <p className="text-[14px] text-blue-900 font-bold">"{q.summary}"</p>
+            <p className="text-[14px] text-blue-900 font-bold">&quot;{q.summary}&quot;</p>
             <p className="text-[13px] text-gray-500 mt-1">{q.message}</p>
           </div>
 
@@ -622,7 +622,7 @@ function IntentCard({
                     />
                     {state.radiusMode === "none" && (
                       <span className="text-xs text-orange-600 ml-6">
-                        ⚠️ 점(Point) 데이터일 경우 '반경 없음'을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
+                        ⚠️ 점(Point) 데이터일 경우 &apos;반경 없음&apos;을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
                       </span>
                     )}
                   </div>
@@ -718,7 +718,7 @@ function PrefixCard({
       {isExpanded && (
         <div className="mt-2 flex flex-col gap-4">
           <div className="flex flex-col gap-2 bg-blue-50/50 p-3 rounded-lg border border-blue-100">
-            <p className="text-[14px] text-blue-900 font-bold">"{q.summary}"</p>
+            <p className="text-[14px] text-blue-900 font-bold">&quot;{q.summary}&quot;</p>
             {q.recheck_skipped && (
               <div className="mt-0.5 flex flex-wrap gap-2">
                 <WarningBadge text="코드표 대조 누락" title="AI가 코드 검증을 수행하지 못했으므로, 사람이 직접 확인해야 합니다." />

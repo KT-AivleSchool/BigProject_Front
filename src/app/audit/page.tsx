@@ -52,6 +52,7 @@ export default function Screen2Page() {
     if (typeof window !== "undefined" && run?.run_id && !cachedGate) {
       try {
         const item = window.localStorage.getItem(`omnisite_gate_${run.run_id}_audit`);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         if (item) setCachedGate(JSON.parse(item));
       } catch (e) {}
     }
@@ -59,6 +60,7 @@ export default function Screen2Page() {
 
   useEffect(() => {
     if (gate && run?.run_id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCachedGate(gate);
       window.localStorage.setItem(`omnisite_gate_${run.run_id}_audit`, JSON.stringify(gate));
     }
@@ -115,6 +117,7 @@ export default function Screen2Page() {
       const isRunning = run.status === "queued" || run.status === "running";
       
       if (run.status === "failed") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsWaitingForSync(false);
         return;
       }
@@ -125,7 +128,7 @@ export default function Screen2Page() {
         setIsWaitingForSync(false);
       }
     }
-  }, [run?.status, run?.gate?.id, isWaitingForSync, step]);
+  }, [run, run?.status, run?.gate?.id, isWaitingForSync, step]);
 
   return (
     <PageBody>
