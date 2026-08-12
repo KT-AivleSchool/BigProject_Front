@@ -1,14 +1,15 @@
-"use client";
-
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { AuthModal } from "@/components/shell/AuthModal";
 import { PostCreateModal } from "@/components/board/PostCreateModal";
 import { PostDetailModal } from "@/components/board/PostDetailModal";
 import { fetchPosts, PostListItem } from "@/lib/omnisite/posts";
 import { getAuthUser } from "@/lib/omnisite/auth";
 
+function PostsPageContent() {
+  const searchParams = useSearchParams();
+  const isMineFilter = searchParams.get("mine") === "true";
 
-export default function PostsPage() {
   // 페이지네이션 및 상태 (페이지당 개수: 10, 15, 20, 30)
   const [posts, setPosts] = useState<PostListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -38,8 +39,8 @@ export default function PostsPage() {
   const [jumpInput, setJumpInput] = useState("");
 
   useEffect(() => {
-    loadPosts(page, limit, sortBy, order, activeSearch.type, activeSearch.query);
-  }, [page, limit, sortBy, order, activeSearch]);
+    loadPosts(page, limit, sortBy, order, activeSearch.type, activeSearch.query, isMineFilter);
+  }, [page, limit, sortBy, order, activeSearch, isMineFilter]);
 
   const loadPosts = async (
     currentPage: number,
@@ -47,7 +48,8 @@ export default function PostsPage() {
     currentSortBy = sortBy,
     currentOrder = order,
     sType = activeSearch.type,
-    sQuery = activeSearch.query
+    sQuery = activeSearch.query,
+    mineOnly = isMineFilter
   ) => {
     setLoading(true);
     setError(null);
@@ -60,10 +62,11 @@ export default function PostsPage() {
     }
 
     try {
-      const data = await fetchPosts(currentPage, currentLimit, currentSortBy, currentOrder, sType, sQuery);
+      const data = await fetchPosts(currentPage, currentLimit, currentSortBy, currentOrder, sType, sQuery, mineOnly);
       setPosts(data.posts);
       setTotal(data.total);
     } catch (err: any) {
+
 
       if (err.message === "UNAUTHORIZED") {
         setError("UNAUTHORIZED");
@@ -236,7 +239,28 @@ export default function PostsPage() {
               </button>
             </div>
           )}
+
+          {/* 내 작성글 필터링 배지 */}
+          {isMineFilter && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-gray-600 font-medium">
+                <span className="rounded-md bg-blue-100 px-2 py-0.5 font-bold text-blue-700">
+                  👤 내 작성글 필터링
+                </span>
+                <span>
+                  내가 작성한 안건 모아보기: 총 <strong className="text-primary font-bold">{total}</strong>건
+                </span>
+              </div>
+              <a
+                href="/posts"
+                className="text-gray-400 hover:text-gray-600 underline text-[11px]"
+              >
+                전체 안건 보기
+              </a>
+            </div>
+          )}
         </div>
+
 
 
         {/* 미인증 상태 처리 */}
@@ -538,4 +562,13 @@ export default function PostsPage() {
     </div>
   );
 }
+
+export default function PostsPage() {
+  return (
+    <Suspense fallback={<div className="p-10 text-center text-xs text-gray-400">게시판 로딩 중...</div>}>
+      <PostsPageContent />
+    </Suspense>
+  );
+}
+
 

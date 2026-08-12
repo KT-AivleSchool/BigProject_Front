@@ -42,7 +42,8 @@ export async function fetchPosts(
   sortBy: string = "created_at",
   order: string = "desc",
   searchType: string = "title_content",
-  searchQuery: string = ""
+  searchQuery: string = "",
+  mine: boolean = false
 ): Promise<PostListResponse> {
   const headers = getAuthHeader();
   const params = new URLSearchParams({
@@ -57,12 +58,17 @@ export async function fetchPosts(
     params.append("search_query", searchQuery.trim());
   }
 
+  if (mine) {
+    params.append("mine", "true");
+  }
+
   const res = await fetch(`${API_BASE}/posts?${params.toString()}`, {
     headers: {
       ...headers,
     },
     cache: "no-store",
   });
+
 
   if (!res.ok) {
     if (res.status === 401) {
