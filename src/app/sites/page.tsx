@@ -19,17 +19,29 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
-import { GridMap } from "@/components/map/GridMap";
+import { GridMap, polygonsOf } from "@/components/map/GridMap";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { writeSitePick } from "@/lib/omnisite/sitePick";
-import { loadReport, loadScoreGrid, loadTopN } from "@/lib/omnisite/pipeline";
+import { loadExclusion, loadReport, loadScoreGrid, loadTopN } from "@/lib/omnisite/pipeline";
 import { areaM2, fixed, int, percent } from "@/lib/omnisite/format";
 import { SCREENS } from "@/lib/omnisite/screens";
-import type { ReportDoc, ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
+import type { ExclusionDoc, ReportDoc, ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
 
 const SCREEN = SCREENS.find((s) => s.no === "4")!;
+
+/**
+ * 지도가 **실제로 면으로 그린** 배제 레이어 수. 도구줄·범례가 이 값으로 말을 고른다.
+ *
+ * 🔴 파일에 feature 가 5개 있다고 5개가 그려지는 게 아니다 — `GridMap` 이 면이 아닌
+ *    geometry 는 안 그린다. 여기서 따로 세면 「실제 형상」이라고 적어놓고 격자가
+ *    그려지는 상태가 만들어진다. 그래서 **그리는 쪽 판정 함수를 그대로 부른다.**
+ */
+function drawableLayers(doc: ExclusionDoc | null): number {
+  if (!doc) return 0;
+  return doc.features.reduce((n, f) => n + (polygonsOf(f.geometry) ? 1 : 0), 0);
+}
 
 export default function Screen4Page() {
   const router = useRouter();
@@ -37,6 +49,11 @@ export default function Screen4Page() {
   const grid = useArtifact<ScoreGridDoc>("score_grid", loadScoreGrid);
   const topn = useArtifact<TopNCsvRow[]>("topN", loadTopN);
   const report = useArtifact<ReportDoc>("report", loadReport);
+  /**
+   * 배제 구역의 **실제 형상**. 없으면 `null` 이고 지도는 격자 사각형으로 떨어진다 —
+   * 그 사실을 범례가 말한다(아래 `Legend`). 조용히 바뀌지 않는다.
+   */
+  const exclusion = useArtifact<ExclusionDoc>("exclusion", loadExclusion);
 
   const [selected, setSelected] = useState<number | null>(null);
   const [tileFailed, setTileFailed] = useState(false);
@@ -114,6 +131,7 @@ export default function Screen4Page() {
                       <GridMap
                         grid={g}
                         topn={rows}
+                        exclusion={exclusion.data}
                         selected={selected}
                         onSelect={select}
                         showExcluded={true}
@@ -183,6 +201,7 @@ export default function Screen4Page() {
                       </div>
                     </aside>
                   </div>
+
                 </section>
               </>
             );
@@ -192,6 +211,7 @@ export default function Screen4Page() {
     </PageBody>
   );
 }
+
 
 
 function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) {
@@ -472,4 +492,5 @@ function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
     </div>
   );
 }
+
 

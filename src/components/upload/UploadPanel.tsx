@@ -81,10 +81,6 @@ export function UploadPanel({
   const [createDomain, setCreateDomain] = useState(false);
   const [ingest, setIngest] = useState(true);
 
-  const [dataList, setDataList] = useState<DataListResult | null>(null);
-  const [lawList, setLawList] = useState<RegulationItem[] | null>(null);
-  const [listError, setListError] = useState<string | null>(null);
-  const [listLoading, setListLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
 
@@ -96,46 +92,80 @@ export function UploadPanel({
   const entry = domains?.find((d) => d.domain === trimmed) ?? null;
 
   // ── 도메인 목록 ─────────────────────────────────────────────
-  const loadDomains = useCallback(async () => {
-    try {
-      setDomainsError(null);
-      setDomains(await fetchDomains());
-    } catch (e) {
-      setDomains(null);
-      setDomainsError(describe(e));
-    }
-  }, []);
+  /**
+   * 🔴 **`async/await` 가 아니라 `.then()/.catch()` 다.**
+   *    `react-hooks/set-state-in-effect` 는 **await 뒤도 동기로 친다** — effect 에서
+   *    부르는 async 함수 안이면 첫 await 뒤에 있어도 걸린다(실측). 규칙이 받아주는
+   *    모양은 **콜백 안의 setState** 뿐이다. 반환값은 그대로 Promise 라 업로드·삭제
+   *    뒤의 `await loadDomains()` 는 안 바뀐다.
+   */
+  const loadDomains = useCallback(
+    () =>
+      fetchDomains()
+        .then((list) => {
+          setDomains(list);
+          setDomainsError(null);
+        })
+        .catch((e: unknown) => {
+          setDomains(null);
+          setDomainsError(describe(e));
+        }),
+    [],
+  );
 
   useEffect(() => {
     void loadDomains();
   }, [loadDomains]);
 
   // ── 현재 도메인의 파일 목록 ──────────────────────────────────
-  const loadList = useCallback(async () => {
-    if (!trimmed) {
-      setDataList(null);
-      setLawList(null);
-      setListError(null);
-      return;
-    }
-    try {
-      setListError(null);
-      setListLoading(true);
-      if (tab === "data") setDataList(await fetchDataFiles(trimmed));
-      else setLawList(await fetchRegulations(trimmed));
-    } catch (e) {
+  /**
+   * 🔴 「불러오는 중」을 **상태로 두지 않는다.** `setListLoading(true)` 는 effect 에서
+   *    동기로 불릴 수밖에 없어 같은 규칙에 걸리고, 규칙 문제만도 아니다 — setState 는
+   *    렌더가 끝난 뒤 도착하므로 탭·도메인이 바뀐 직후 한 프레임 동안 **직전 목록이
+   *    남는다**(`useArtifact.ts` :79 · `useSelectedSite.ts` 가 같은 이유로 먼저 이
+   *    모양이 됐다).
+   *
+   *    `listKey` 는 「무엇을 물었나」다. 저장된 답의 key 가 지금 key 와 다르면 그건
+   *    **남의 답**이므로 안 내보내고 「불러오는 중」으로 친다. `listNonce` 는 사람이
+   *    「새로고침」을 누른 횟수다 — 같은 것을 다시 묻는 유일한 길이다.
+   */
+  const [listNonce, setListNonce] = useState(0);
+  const listKey = trimmed ? `${trimmed}::${tab}::${listNonce}` : null;
+
+  const [listAnswer, setListAnswer] = useState<{
+    key: string | null;
+    dataList: DataListResult | null;
+    lawList: RegulationItem[] | null;
+    error: string | null;
+  }>({ key: null, dataList: null, lawList: null, error: null });
+
+  /** 🔴 위 `loadDomains` 와 같은 이유로 `.then()/.catch()` 다. */
+  const loadList = useCallback((): Promise<void> => {
+    if (!listKey) return Promise.resolve();
+    const asked =
+      tab === "data"
+        ? fetchDataFiles(trimmed).then((r) =>
+            setListAnswer({ key: listKey, dataList: r, lawList: null, error: null }),
+          )
+        : fetchRegulations(trimmed).then((r) =>
+            setListAnswer({ key: listKey, dataList: null, lawList: r, error: null }),
+          );
+    return asked.catch((e: unknown) => {
       // 400 = 아직 없는 도메인. 이건 오류가 아니라 "만들어야 한다" 는 안내다.
-      if (tab === "data") setDataList(null);
-      else setLawList(null);
-      setListError(describe(e));
-    } finally {
-      setListLoading(false);
-    }
-  }, [trimmed, tab]);
+      setListAnswer({ key: listKey, dataList: null, lawList: null, error: describe(e) });
+    });
+  }, [listKey, trimmed, tab]);
 
   useEffect(() => {
     void loadList();
   }, [loadList]);
+
+  // 렌더 중에 계산한다. `listKey` 가 없으면(도메인 비었음) 아무것도 안 물었으므로 대기도 아니다.
+  const listFresh = listAnswer.key === listKey;
+  const dataList = listFresh ? listAnswer.dataList : null;
+  const lawList = listFresh ? listAnswer.lawList : null;
+  const listError = listFresh ? listAnswer.error : null;
+  const listLoading = listKey !== null && !listFresh;
 
   function resetPicked() {
     setPicked([]);
@@ -459,7 +489,10 @@ export function UploadPanel({
           </h4>
           <button
             type="button"
-            onClick={() => void loadList()}
+            // 🔴 `loadList()` 를 직접 부르지 않는다 — key 가 그대로라 「불러오는 중」이
+            //    안 뜬다. 조례 목록은 매번 약 130초라 그 표시가 없으면 눌러도
+            //    아무 일도 안 일어난 것처럼 보인다.
+            onClick={() => setListNonce((n) => n + 1)}
             disabled={!trimmed || busy}
             className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
           >

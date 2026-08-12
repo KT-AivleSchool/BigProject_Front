@@ -29,8 +29,9 @@
  *      `false` 로 읽게 되므로 **반드시 `engine` 으로 먼저 가른다.**
  */
 import { useCallback, useEffect, useState } from "react";
-import { ApiError, NetworkError, getJson } from "./client";
+import { ApiError, NetworkError, apiErrorCode, getJson } from "./client";
 import { useRun } from "./RunProvider";
+import { useHydrated } from "./useHydrated";
 
 /** 🔴 복수형이 정본이다 — 이유는 `simulation.ts` 머리말. */
 const BASE = "/api/v1/simulations";
@@ -213,43 +214,68 @@ export function useHearingDone(
   const loadedRunId = run?.loaded?.run_id ?? null;
   const runId = run?.run_id ?? null;
 
-  const [state, setState] = useState<HearingDone>({
-    done: false,
-    source: "pending",
-    count: null,
-    reason: null,
-  });
+  /**
+   * 🔴 **폴백은 `sessionStorage` 를 읽는다** — 서버 프리렌더엔 없다. 그래서 렌더 중에
+   *    부르려면 「하이드레이션이 끝났는가」를 먼저 물어야 한다(`useHydrated`).
+   *    여기서 `sitePick.ts` 처럼 **값을** 구독하지 않는 이유: 폴백이 보는 `sim_*` 키는
+   *    화면 5 가 `sessionStorage.setItem` 으로 직접 쓴다 — 이 모듈이 구독을 걸어봐야
+   *    그 변경을 못 듣는다. 못 듣는 구독을 다는 건 안 다느니만 못하다.
+   */
+  const hydrated = useHydrated();
 
-  const ask = useCallback(async () => {
-    if (!loadedRunId) {
-      setState({
-        done: localFallback(runId),
-        source: "local",
-        count: null,
-        reason: "이 실행은 DB 적재 단계가 없어(fixture·hitl) 서버에 물을 수 없습니다.",
-      });
-      return;
-    }
-    try {
-      const list = await fetchHearings(loadedRunId);
-      setState({ done: list.count > 0, source: "server", count: list.count, reason: null });
-    } catch (e) {
-      setState({
-        done: localFallback(loadedRunId),
-        source: "local",
-        count: null,
-        reason: describeFailure(e),
-      });
-    }
-    // refreshKey 는 값을 안 쓰고 **다시 묻는 계기**로만 쓴다.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loadedRunId, runId, localFallback, refreshKey]);
+  /**
+   * 🔴 서버에 물은 답만 상태로 둔다. 「불러오는 중」·「폴백」은 **렌더 중에 계산**한다 —
+   *    `setState(대기중)` 은 effect 에서 동기로 불릴 수밖에 없어
+   *    `react-hooks/set-state-in-effect` 에 걸리고, 규칙 문제만도 아니다:
+   *    run 이 바뀐 직후 한 프레임 동안 **직전 run 의 답**이 남는다
+   *    (`useArtifact.ts` :79 가 같은 이유로 먼저 이 모양이 됐다).
+   *
+   *    `runId` 는 「무엇을 물었나」다. 저장된 답의 `runId` 가 지금 것과 다르면 그건
+   *    **남의 답**이므로 안 내보낸다.
+   *    🔴 `refreshKey` 는 **이 비교에 넣지 않는다.** 그건 `pathname` 이라, 넣으면
+   *    화면을 옮길 때마다 상단 표시가 **매번 빈칸으로 깜빡인다.** 다시 묻는 계기일
+   *    뿐이고 답이 낡았다는 뜻이 아니다 — 그래서 effect 의 deps 에만 있다.
+   */
+  const [answer, setAnswer] = useState<{
+    runId: string | null;
+    count: number | null;
+    reason: string | null;
+  }>({ runId: null, count: null, reason: null });
 
   useEffect(() => {
-    void ask();
-  }, [ask]);
+    if (!loadedRunId) return;
+    let alive = true;
+    fetchHearings(loadedRunId)
+      .then((list) => {
+        if (alive) setAnswer({ runId: loadedRunId, count: list.count, reason: null });
+      })
+      .catch((e: unknown) => {
+        if (alive) setAnswer({ runId: loadedRunId, count: null, reason: describeFailure(e) });
+      });
+    return () => {
+      alive = false;
+    };
+    // refreshKey 는 값을 안 쓰고 **다시 묻는 계기**로만 쓴다.
+  }, [loadedRunId, refreshKey]);
 
-  return state;
+  if (!hydrated) return { done: false, source: "pending", count: null, reason: null };
+
+  if (!loadedRunId) {
+    return {
+      done: localFallback(runId),
+      source: "local",
+      count: null,
+      reason: "이 실행은 DB 적재 단계가 없어(fixture·hitl) 서버에 물을 수 없습니다.",
+    };
+  }
+  if (answer.runId !== loadedRunId) {
+    return { done: false, source: "pending", count: null, reason: null };
+  }
+  if (answer.reason !== null) {
+    return { done: localFallback(loadedRunId), source: "local", count: null, reason: answer.reason };
+  }
+  // 여기서 `count 0` 은 「물었더니 없다」다 — 로컬로 되짚지 않는다(위 머리말).
+  return { done: (answer.count ?? 0) > 0, source: "server", count: answer.count, reason: null };
 }
 
 // ── 이 run 의 공청회 목록 ──────────────────────────────────────
@@ -269,50 +295,43 @@ export function useRunHearings(): RunHearings {
   const { run } = useRun();
   const loadedRunId = run?.loaded?.run_id ?? null;
 
-  const [state, setState] = useState<RunHearings>({
-    loading: false,
-    items: null,
-    failure: null,
-    askedRunId: null,
-  });
+  /** 위 `useHearingDone` 과 같은 모양이다 — 답만 담고 「불러오는 중」은 렌더에서 계산한다. */
+  const [answer, setAnswer] = useState<{
+    runId: string | null;
+    items: HearingItem[] | null;
+    failure: string | null;
+  }>({ runId: null, items: null, failure: null });
 
   useEffect(() => {
-    if (!loadedRunId) {
-      setState({
-        loading: false,
-        items: null,
-        failure: "이 실행은 DB 적재 단계가 없어(fixture·hitl) 서버에 물을 수 없습니다.",
-        askedRunId: null,
-      });
-      return;
-    }
+    if (!loadedRunId) return;
     let alive = true;
-    setState({ loading: true, items: null, failure: null, askedRunId: loadedRunId });
     fetchHearings(loadedRunId)
       .then((list) => {
-        if (!alive) return;
-        setState({
-          loading: false,
-          items: list.hearings,
-          failure: null,
-          askedRunId: loadedRunId,
-        });
+        if (alive) setAnswer({ runId: loadedRunId, items: list.hearings, failure: null });
       })
       .catch((e: unknown) => {
-        if (!alive) return;
-        setState({
-          loading: false,
-          items: null,
-          failure: describeFailure(e),
-          askedRunId: loadedRunId,
-        });
+        if (alive) setAnswer({ runId: loadedRunId, items: null, failure: describeFailure(e) });
       });
     return () => {
       alive = false;
     };
   }, [loadedRunId]);
 
-  return state;
+  if (!loadedRunId) {
+    return {
+      loading: false,
+      items: null,
+      failure: "이 실행은 DB 적재 단계가 없어(fixture·hitl) 서버에 물을 수 없습니다.",
+      askedRunId: null,
+    };
+  }
+  const fresh = answer.runId === loadedRunId;
+  return {
+    loading: !fresh,
+    items: fresh ? answer.items : null,
+    failure: fresh ? answer.failure : null,
+    askedRunId: loadedRunId,
+  };
 }
 
 /**
@@ -361,19 +380,25 @@ export interface RunHearingDetails {
  */
 export function useRunHearingDetails(): RunHearingDetails {
   const list = useRunHearings();
-  const [state, setState] = useState<Omit<RunHearingDetails, "loading" | "failure" | "total">>({
-    detailFailure: { A: null, B: null },
-    a: null,
-    b: null,
-  });
+
+  /**
+   * 🔴 `key` 는 **어느 목록에 대한 본문인가**다. 목록이 바뀌면 저장된 본문은 남의 답이라
+   *    내보내지 않는다 — 예전엔 목록이 `null` 이 될 때 effect 안에서 동기로 비웠는데,
+   *    그게 `react-hooks/set-state-in-effect` 에 걸리는 자리였다(위 두 훅과 같은 모양).
+   *    배열 **동일성**으로 판정하는 게 맞다: `useRunHearings` 가 같은 답을 들고 있는 한
+   *    같은 배열을 돌려주고, 다시 물으면 새 배열이 온다.
+   */
+  const [answer, setAnswer] = useState<{
+    key: HearingItem[] | null;
+    detailFailure: { A: string | null; B: string | null };
+    a: ServerHearingA | null;
+    b: ServerHearingB | null;
+  }>({ key: null, detailFailure: { A: null, B: null }, a: null, b: null });
 
   const items = list.items;
 
   useEffect(() => {
-    if (items === null) {
-      setState({ detailFailure: { A: null, B: null }, a: null, b: null });
-      return;
-    }
+    if (items === null) return;
     let alive = true;
 
     const asA = items.filter((h): h is HearingItemA => h.engine === "A" && h.result_url !== null);
@@ -400,7 +425,7 @@ export function useRunHearingDetails(): RunHearingDetails {
         }
       }
       if (!alive) return;
-      setState({ detailFailure: fail, a, b });
+      setAnswer({ key: items, detailFailure: fail, a, b });
     })();
 
     return () => {
@@ -408,10 +433,13 @@ export function useRunHearingDetails(): RunHearingDetails {
     };
   }, [items]);
 
+  const fresh = answer.key === items;
   return {
     loading: list.loading,
     failure: list.failure,
     total: items === null ? null : items.length,
-    ...state,
+    detailFailure: fresh ? answer.detailFailure : { A: null, B: null },
+    a: fresh ? answer.a : null,
+    b: fresh ? answer.b : null,
   };
 }
