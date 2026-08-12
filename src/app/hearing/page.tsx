@@ -613,31 +613,7 @@ function CandidatePanel({
 
   if (!selected) return null;
 
-  return (
-    <div className="rounded-2xl border border-blue-200 bg-blue-50/50 px-5 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
-          rank {selected.rank} · 화면 4 에서 선택
-        </span>
-        <span className="text-[15px] font-bold text-ink">{selected.jibun}</span>
-        <span className="font-mono text-[12px] text-ink-secondary">
-          parcel_id {selected.parcel_id} · PNU {selected.pnu}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px] text-ink-secondary sm:grid-cols-4">
-        <Kv k="시설" v={selected.facility_type} />
-        <Kv k="점수" v={selected.score.toFixed(4)} />
-        <Kv k="좌표" v={`${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}`} />
-        <Kv k="run" v={selected.run_id} />
-      </div>
-      <p className="mt-2 text-[11px] text-ink-secondary">
-        후보 {candidates?.length ?? 0}건 중 화면 4 에서 고른 {selected.rank}순위입니다(PNU 로
-        이었습니다). 순위는 점수 내림차순이 아니라 <b>MCLP 커버 기여도</b> 순서이므로 점수가 더
-        높은 하위 순위가 있을 수 있습니다.
-        {selected.land_id === null && " land_id 는 NULL 입니다(공간조인 미매칭 — 정상)."}
-      </p>
-    </div>
-  );
+  return null;
 }
 
 function Kv({ k, v }: { k: string; v: string }) {

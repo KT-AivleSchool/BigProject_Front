@@ -774,28 +774,11 @@ export default function DynamicHearingPage() {
   ]);
 
   return (
-    <PageBody>
+    <PageBody fullWidth={true}>
       <PageHeader
         screen={SCREEN}
-        lead="AI가 주변 환경과 조례를 분석해 다자간 페르소나를 도출하고, 사용자 승인(HITL)을 거쳐 공청회를 시뮬레이션합니다."
+        lead="이해관계자를 생성해 다자간 토론을 진행합니다."
       />
-
-      <div className="mt-4 flex items-center justify-between gap-4">
-        <span className="rounded-full border border-hairline bg-black/[0.03] px-3 py-1 text-[12px] font-semibold text-ink-secondary">
-          토론 방식 B — 다인(N명) 토론
-        </span>
-        {/*
-          A 를 직접 가리키던 임시 링크는 지웠다(2026-08-11 분기 UI 도입).
-          방식을 바꾸려면 **고르는 화면**으로 돌아간다 — 화면끼리 서로를 가리키면
-          방식이 늘 때마다 링크가 화면 수의 제곱으로 는다.
-        */}
-        <Link
-          href="/hearing/select"
-          className="rounded-lg border border-hairline bg-white px-3 py-1.5 text-[12px] font-medium text-ink-secondary hover:bg-black/[0.03]"
-        >
-          토론 방식 다시 고르기
-        </Link>
-      </div>
 
       {/* 어느 점으로 토론하는지 먼저 밝힌다. 못 이었으면 여기서 멈춘다. */}
       <div className="mt-4">
@@ -813,38 +796,52 @@ export default function DynamicHearingPage() {
         <FailureBox title="페르소나를 발굴하지 못했습니다" failure={personaFailure} />
       )}
       {streamFailure && <FailureBox title="토론 스트림에 문제가 있습니다" failure={streamFailure} />}
-
-      <div className="mb-8 mt-8 flex justify-center">
-        {[
-          { num: 1, title: "안건 설정", icon: <Info size={16} /> },
-          { num: 2, title: "페르소나 확정", icon: <Users size={16} /> },
-          { num: 3, title: "공청회 진행", icon: <MessageSquare size={16} /> },
-        ].map((s) => (
-          <div key={s.num} className="flex items-center">
-            <div
-              className={`flex items-center justify-center rounded-md border px-4 py-2 text-[13px] font-semibold transition-all duration-300 ${
-                step >= s.num
-                  ? "border-primary bg-primary text-white"
-                  : "border-hairline bg-black/[0.02] text-ink-secondary"
-              }`}
-            >
-              {s.icon}
-              <span className="ml-2 hidden sm:inline">
-                {s.num}. {s.title}
-              </span>
-            </div>
-            {s.num < 3 && (
+      <div className="mb-8 mt-4 relative flex items-center justify-center">
+        <div className="flex">
+          {[
+            { num: 1, title: "안건 확정" },
+            { num: 2, title: "이해관계자 선택" },
+            { num: 3, title: "토론진행" },
+          ].map((s) => (
+            <div key={s.num} className="flex items-center">
               <div
-                className={`mx-2 h-[2px] w-6 transition-all duration-300 md:w-10 ${
-                  step > s.num ? "bg-primary" : "bg-hairline"
+                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-[12px] transition-colors ${
+                  step === s.num
+                    ? "bg-blue-50 border border-blue-100 text-blue-900 font-bold"
+                    : step > s.num
+                    ? "text-gray-700 border border-transparent"
+                    : "text-gray-500 border border-transparent"
                 }`}
-              />
-            )}
-          </div>
-        ))}
+              >
+                <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                  step === s.num ? 'bg-blue-500 animate-pulse' : 
+                  step > s.num ? 'bg-green-500' : 'bg-gray-300'
+                }`} />
+                <span className="hidden sm:inline">
+                  {s.title}
+                </span>
+              </div>
+              {s.num < 3 && (
+                <div
+                  className={`mx-1 h-[1px] w-4 transition-all duration-300 md:w-8 ${
+                    step > s.num ? "bg-green-500" : "bg-gray-200"
+                  }`}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+        <div className="absolute right-0">
+          <Link
+            href="/hearing/select"
+            className="rounded-lg border border-hairline bg-white px-3 py-1.5 text-[12px] font-medium text-ink-secondary hover:bg-black/[0.03]"
+          >
+            토론 방식 다시 고르기
+          </Link>
+        </div>
       </div>
 
-      <div className="relative min-h-[600px] overflow-hidden">
+      <div className={`relative ${step === 1 ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'min-h-[600px] overflow-x-hidden'}`}>
         <SetupStep
           step={step}
           topic={topic}
@@ -881,14 +878,6 @@ export default function DynamicHearingPage() {
       </div>
 
       <PageFooter screen={SCREEN} />
-      <SourceNote
-        files={[
-          "GET /api/v1/simulations/candidates?domain=<도메인> (STEP4 Top-N · 화면 4 선택을 PNU 로 이음)",
-          "audit_result_reviewed.json (시설·지역 · 조례 근거문장)",
-          "POST /api/v1/stakeholders/generate",
-          "POST /api/v1/stakeholders/dynamic/discuss/stream (SSE)",
-        ]}
-      />
     </PageBody>
   );
 }
@@ -1015,30 +1004,7 @@ function SitePanel({ site }: { site: ReturnType<typeof useSelectedSite> }) {
 
   if (!selected) return null;
 
-  return (
-    <div className="rounded-2xl border border-blue-200 bg-blue-50/50 px-5 py-4">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <span className="rounded-md bg-blue-600 px-2 py-0.5 text-[11px] font-bold text-white">
-          rank {selected.rank} · 화면 4 에서 선택
-        </span>
-        <span className="text-[15px] font-bold text-ink">{selected.jibun}</span>
-        <span className="font-mono text-[12px] text-ink-secondary">
-          parcel_id {selected.parcel_id} · PNU {selected.pnu}
-        </span>
-      </div>
-      <div className="mt-2 grid grid-cols-2 gap-x-6 gap-y-1 text-[12px] text-ink-secondary sm:grid-cols-4">
-        <Kv k="시설" v={selected.facility_type} />
-        <Kv k="점수" v={selected.score.toFixed(4)} />
-        <Kv k="좌표" v={`${selected.lat.toFixed(5)}, ${selected.lng.toFixed(5)}`} />
-        <Kv k="run" v={selected.run_id} />
-      </div>
-      <p className="mt-2 text-[11px] text-ink-secondary">
-        요청에는 <b>parcel_id {selected.parcel_id}</b> 만 실립니다 — 좌표·지번·조례는 서버가 이
-        번호로 조회합니다(2026-08-11 계약). 화면에 뜬 값은 <b>그 조회의 입력</b>이 무엇인지
-        보여주는 것입니다.
-      </p>
-    </div>
-  );
+  return null;
 }
 
 /**
@@ -1062,37 +1028,7 @@ function OrdinanceNote({
   error: string | null;
   count: number;
 }) {
-  if (loading) return null;
-
-  if (error) {
-    return (
-      <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-[12px] text-red-900">
-        STEP1 감리 산출물(`reviewed`)을 읽지 못했습니다 — 이 화면에 조례 근거를 보여줄 수
-        없습니다. 토론 자체는 서버가 parcel_id 로 조회한 근거로 진행됩니다.
-        <span className="ml-1 font-mono">{error}</span>
-      </div>
-    );
-  }
-
-  if (unavailable || count === 0) {
-    return (
-      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-900">
-        <b>조례 근거 0건.</b>{" "}
-        {unavailable
-          ? "이 run 에 STEP1 감리 산출물이 없습니다."
-          : "감리 산출물에 근거문장이 하나도 없습니다."}{" "}
-        예시 조문을 대신 지어내지 않습니다. 이건 <b>이 화면이 보여줄 근거가 없다</b>는
-        뜻이고, 서버가 조회할 근거까지 없다는 뜻은 아닙니다.
-      </div>
-    );
-  }
-
-  return (
-    <div className="mt-3 rounded-xl border border-hairline bg-black/[0.02] px-4 py-2.5 text-[12px] text-ink-secondary">
-      이 run 의 STEP1 감리 산출물에 조례 근거 <b className="text-ink">{count}건</b>이 있습니다.
-      요청에는 싣지 않습니다 — 서버가 parcel_id 로 직접 조회합니다.
-    </div>
-  );
+  return null;
 }
 
 function FailureBox({ title, failure }: { title: string; failure: Failure }) {

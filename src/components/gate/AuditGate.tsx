@@ -179,7 +179,7 @@ export function AuditGate({ gate, runId }: { gate: RunGate; runId: string }) {
     }
 
     if (unanswered.length) {
-      return `반경이 미확정인 항목이 ${unanswered.length}건 있습니다 — ${unanswered.join(" · ")}. 「반경 없음」 또는 「반경 직접 지정」 중 하나를 골라 주세요. 미확정으로 제출하면 게이트는 통과하지만 다음 단계(정제)에서 실행이 중단됩니다.`;
+      return `반경이 미확정인 항목이 ${unanswered.length}건 있습니다 — ${unanswered.join(" · ")}. 「AI 제안값 수락」, 「반경 없음」, 또는 「반경 직접 지정」 중 하나를 골라 주세요. 모든 항목의 반경을 확정해야 다음 단계로 넘어갈 수 있습니다.`;
     }
 
     const answer: AuditAnswer = { run_id: runId };
@@ -272,6 +272,11 @@ function ExclusionCard({
 }) {
   // 근거문장에 시설명이 없다 = 다른 시설 규정을 긁었을 수 있다.
   const suspect = q.evidence_matches_facility === false;
+  
+  // AI 제안값이 있는지 확인
+  const hasProposal = q.proposed_m != null;
+  const isAcceptingProposal = state.mode === "value" && state.value === String(q.proposed_m);
+
   return (
     <QuestionCard
       id={q.dataset_id}
@@ -306,33 +311,45 @@ function ExclusionCard({
       )}
 
       {q.editable ? (
-        <div className="mt-4 flex flex-wrap items-center gap-4 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
-          <Radio
-            name={`ex-${exKey(q)}`}
-            checked={state.mode === "skip"}
-            onChange={() => onChange({ ...state, mode: "skip" })}
-            label="미확정 유지 (건너뜀)"
-            title="현재 제안된 값을 선택하지 않고 보류합니다."
-          />
-          <Radio
-            name={`ex-${exKey(q)}`}
-            checked={state.mode === "none"}
-            onChange={() => onChange({ ...state, mode: "none" })}
-            label="반경 없음 (면적 배제로 확정)"
-            title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
-          />
-          <Radio
-            name={`ex-${exKey(q)}`}
-            checked={state.mode === "value"}
-            onChange={() =>
-              onChange({
-                mode: "value",
-                value: state.value || String(q.proposed_m ?? q.radius_m ?? ""),
-              })
-            }
-            label="반경 직접 지정"
-          />
-          <label className={`flex items-center gap-2 transition-opacity ${state.mode === 'value' ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+        <div className="mt-4 flex flex-col gap-3 text-sm bg-gray-50 p-3 rounded-xl border border-gray-100">
+          <div className="flex flex-wrap items-center gap-4">
+            <Radio
+              name={`ex-${exKey(q)}`}
+              checked={state.mode === "skip"}
+              onChange={() => onChange({ ...state, mode: "skip" })}
+              label="미확정 유지 (건너뜀)"
+              title="현재 제안된 값을 선택하지 않고 보류합니다."
+            />
+            {hasProposal && (
+              <Radio
+                name={`ex-${exKey(q)}`}
+                checked={isAcceptingProposal}
+                onChange={() => onChange({ mode: "value", value: String(q.proposed_m) })}
+                label={`AI 제안값 수락 (${q.proposed_m}m)`}
+              />
+            )}
+            <Radio
+              name={`ex-${exKey(q)}`}
+              checked={state.mode === "none"}
+              onChange={() => onChange({ ...state, mode: "none" })}
+              label="반경 없음 (면적 배제로 확정)"
+              title="구체적인 반경 없이 면적 자체를 배제 대상으로 확정합니다."
+            />
+            <Radio
+              name={`ex-${exKey(q)}`}
+              checked={state.mode === "value" && !isAcceptingProposal}
+              onChange={() =>
+                onChange({
+                  mode: "value",
+                  value: state.value === String(q.proposed_m) ? "" : state.value,
+                })
+              }
+              label="반경 직접 지정"
+            />
+          </div>
+          
+          <label className={`flex items-center gap-2 transition-opacity ml-1 ${state.mode === 'value' ? 'opacity-100' : 'opacity-40 pointer-events-none'}`}>
+            <span className="text-gray-500 text-sm font-medium">적용 반경:</span>
             <input
               type="number"
               min={1}
@@ -340,13 +357,14 @@ function ExclusionCard({
               step={1}
               value={state.value}
               onChange={(e) => onChange({ mode: "value", value: e.target.value })}
-              className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all"
+              className="w-24 px-3 py-1.5 rounded-lg border border-gray-200 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none transition-all bg-white"
             />
             <span className="text-gray-500 font-medium">m <span className="text-xs font-normal text-gray-400">(1~5000)</span></span>
           </label>
+          
           {state.mode === "skip" && (
-            <p className="w-full text-xs text-rose-700">
-              아직 <strong>미확정</strong>입니다. 이대로 제출하면 다음 단계(정제)에서 실행이 중단됩니다.
+            <p className="w-full text-xs text-rose-700 mt-1">
+              아직 <strong>미확정</strong>입니다. 모든 항목을 확정해야 다음 단계로 넘어갈 수 있습니다.
             </p>
           )}
         </div>

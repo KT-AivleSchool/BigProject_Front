@@ -29,9 +29,9 @@ export function PersonaStep({
           <div>
             <h2 className="font-semibold text-[20px] mb-2 text-ink flex items-center tracking-tight">
               <span className="bg-primary/10 text-primary p-2.5 rounded-lg mr-3"><Users size={20} /></span>
-              이해관계자 페르소나 확정 (HITL)
+              이해관계자 선택
             </h2>
-            <p className="text-[13px] text-ink-secondary ml-[52px]">자동 발굴된 페르소나 중 공청회 시뮬레이션에 참여할 대상을 직접 선택해주세요.</p>
+            <p className="text-[13px] text-ink-secondary ml-[52px]">토론에 참여할 이해관계자를 선택해주세요.</p>
           </div>
           <div className="flex items-center gap-3">
             <button 
@@ -61,7 +61,7 @@ export function PersonaStep({
           </div>
         )}
         
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           {personas.map((p, idx) => {
             const isSelected = selectedPersonaIds.has(idx);
             return (
@@ -69,19 +69,13 @@ export function PersonaStep({
                 key={idx} 
                 onClick={() => togglePersona(idx)}
                 style={{ animation: `staggerFadeIn 0.5s ease-out ${idx * 0.15}s both` }}
-                className={`cursor-pointer border p-5 rounded-xl transition-all duration-300 relative group overflow-hidden ${
+                className={`cursor-pointer border p-4 rounded-xl transition-all duration-300 relative group overflow-hidden ${
                   isSelected 
                     ? 'border-primary bg-primary/5 shadow-sm' 
                     : 'border-hairline bg-white hover:border-primary/40 hover:shadow-sm'
                 }`}
               >
-                <div className={`absolute top-4 right-4 w-5 h-5 rounded-md border flex items-center justify-center transition-colors ${
-                  isSelected ? 'bg-primary border-primary text-white' : 'border-hairline text-transparent bg-slate-50 group-hover:border-primary/40'
-                }`}>
-                  <Check size={14} strokeWidth={3} />
-                </div>
-                
-                <div className="pr-8">
+                <div className="pr-6">
                   {/*
                     🔴 등급이 비면 **`C` 를 지어내지 않는다**(2026-08-11). 백엔드
                     `_map_persona:211` 이 기본 `"C"` 를 넣는데 여기서 또 `|| 'C'`
@@ -92,10 +86,12 @@ export function PersonaStep({
                     남고, 두 겹이 이번엔 **같은 뜻**이라 값이 뭉개지지 않는다.
                     (위 사고는 두 기본값이 「모른다」와 「C등급」으로 갈렸던 것이다)
                   */}
-                  <div className="inline-block px-2.5 py-1 rounded bg-black/[0.04] text-[11px] font-semibold mb-3 text-ink-secondary border border-hairline">
-                    중요도: {p.importance_grade || '미상'}
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <h3 className="font-semibold text-[16px] text-ink truncate">{p.display_name}</h3>
+                    <div className="shrink-0 px-2 py-0.5 rounded bg-black/[0.04] text-[10px] font-semibold text-ink-secondary border border-hairline">
+                      중요도: {p.importance_grade || '미상'}
+                    </div>
                   </div>
-                  <h3 className="font-semibold text-[16px] text-ink mb-1.5">[{p.stakeholder_type}] {p.display_name}</h3>
                   <div className="text-[12px] font-medium text-ink-secondary mb-3 line-clamp-3 leading-relaxed">{p.relationship_to_topic}</div>
 
                   {/*
