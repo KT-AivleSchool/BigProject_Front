@@ -113,8 +113,29 @@ export const TOPN_DEFAULT = 20;
 /** 계약 8-2 의 상한. 벗어나면 서버가 400. */
 export const TOPN_MAX = 200;
 
-export async function fetchRuns(mine: boolean = true): Promise<{ runs: RunMeta[] }> {
-  return getJson<{ runs: RunMeta[] }>(`${BASE}/runs?mine=${mine}`);
+/**
+ * `GET /pipeline/runs` 응답 (계약 §3-3).
+ *
+ * 🔴 **`runs` 는 전부가 아니다.** 서버가 `?limit=`(기본 100 · 범위 1~500)로 자르고,
+ *    잘렸다는 사실을 `truncated` 로 알린다. 화면이 이걸 안 적으면 사용자는
+ *    **옛 run 이 지워진 줄 안다** — 실제로는 안 물어봤을 뿐이다(절대원칙 4).
+ *
+ * ⚠ `limit` 인자는 **일부러 안 받는다.** 지금 화면에 그 값을 정할 자리가 없어서
+ *   받아놓고 안 쓰는 인자가 된다(위 `FullParams` 주석과 같은 이유).
+ *   「더 보기」를 붙이는 날 같이 연다.
+ */
+export interface RunListResponse {
+  runs: RunMeta[];
+  /** 서버가 아는 전체 건수. `runs.length` 와 다를 수 있다. */
+  total: number;
+  /** 이번에 적용된 상한. */
+  limit: number;
+  /** `total > limit` 이라 잘렸다. */
+  truncated: boolean;
+}
+
+export async function fetchRuns(mine: boolean = true): Promise<RunListResponse> {
+  return getJson<RunListResponse>(`${BASE}/runs?mine=${mine}`);
 }
 
 export async function createRun(

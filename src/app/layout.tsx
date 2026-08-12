@@ -3,6 +3,7 @@ import "./globals.css";
 import { RunProvider } from "@/lib/omnisite/RunProvider";
 import { Header } from "@/components/shell/Header";
 import { Footer } from "@/components/shell/Footer";
+import { ReviewBanner } from "@/components/shell/ReviewBanner";
 
 import { ProgressSidebar } from "@/components/shell/ProgressSidebar";
 import { ScaleToFit } from "@/components/shell/ScaleToFit";
@@ -33,6 +34,8 @@ export default function RootLayout({
           <div className="h-full flex flex-col overflow-hidden">
             <RunProvider>
               <Header />
+              {/* 다시보기 중에만 보인다. 그 외에는 아무 자리도 안 차지한다. */}
+              <ReviewBanner />
               <div className="flex flex-1 relative min-h-0">
                 <main className="flex-1 flex flex-col min-w-0 min-h-0 overflow-y-auto">
                   {children}

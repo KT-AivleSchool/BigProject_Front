@@ -28,7 +28,14 @@ import {
 } from "./pipeline";
 import type { FullParams } from "./pipeline";
 import { saveBaseline } from "./progress";
-import { clearRunId, readRunId, writeRunId } from "./runStore";
+import {
+  clearReviewRunId,
+  clearRunId,
+  readReviewRunId,
+  readRunId,
+  writeReviewRunId,
+  writeRunId,
+} from "./runStore";
 import { gateScreen } from "./gate";
 import { usePathname, useRouter } from "next/navigation";
 import type { AuditAnswer, RunDoc, WeightAnswer } from "./types";
@@ -46,6 +53,15 @@ interface RunContextValue {
   error: string | null;
   /** 진행 중 단계가 시작된 뒤 흐른 시간(초). 진행률 계산에 쓴다. */
   runningElapsedSec: number;
+  /**
+   * 지금 보고 있는 run 이 **마이페이지에서 연 지난 기록**인가.
+   *
+   * 🔴 서버 응답으로는 알 수 없다 — 다시보기로 연 run 과 방금 돌린 run 의 `RunDoc`
+   *    은 구분이 안 된다. 이건 브라우저에서 일어난 일이라 `runStore` 에 적어 둔다.
+   * 🔴 `run` 과 **대조해서** 판정한다(id 일치). 깃발만 보면 다시보기 중에 새로
+   *    실행했을 때 새 run 을 지난 기록인 척 보여준다.
+   */
+  reviewing: boolean;
   /**
    * 실행 시작. `full` 은 실행 조건(`user_input` 필수 · `topn`)을 같이 보낸다 —
    * 계약 8-2. 다른 모드에 넘기면 `createRun` 이 버린다(보내면 400 이다).
@@ -135,6 +151,8 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [runningElapsedSec, setRunningElapsedSec] = useState(0);
+  /** 「다시보기」로 연 run 의 id. 현재 run 과 같을 때만 다시보기다(위 주석). */
+  const [reviewRunId, setReviewRunId] = useState<string | null>(null);
 
   /** 진행 중 단계가 바뀐 시각. 단계별 경과 시간을 재려고 둔다. */
   const stepStartedAt = useRef<{ id: string; at: number } | null>(null);
@@ -170,15 +188,24 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     const id = readRunId();
 
     const restore = async () => {
-      if (!id) return;
+      if (!id) {
+        // 현재 run 이 없으면 다시보기 깃발도 가리킬 데가 없다 — 같이 지운다.
+        clearReviewRunId();
+        return;
+      }
       try {
         const doc = await fetchRun(id);
-        if (!cancelled && readRunId() === id) applyRun(doc);
+        if (!cancelled && readRunId() === id) {
+          applyRun(doc);
+          // 깃발이 **이 run 을** 가리킬 때만 다시보기다. 어긋나면 남은 찌꺼기다.
+          setReviewRunId(readReviewRunId() === id ? id : null);
+        }
       } catch (e: unknown) {
         if (cancelled) return;
         // 404 는 "서버에서 사라진 run" 이다. 조용히 넘기지 않고 알린 뒤 지운다.
         if (e instanceof ApiError && e.status === 404) {
           clearRunId();
+          clearReviewRunId();
           setError(`이전 실행 ${id} 이 서버에 없습니다. 다시 실행해 주세요.`);
         } else {
           setError(e instanceof Error ? e.message : String(e));
@@ -226,6 +253,11 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
       try {
         const id = await createRun(domain, mode, full);
         writeRunId(id);
+        // 🔴 새 실행은 다시보기가 아니다. **성공한 뒤에** 깃발을 지운다 —
+        //    먼저 지우면 실행이 실패했을 때 화면엔 여전히 지난 run 이 떠 있는데
+        //    다시보기 표시만 사라진다.
+        clearReviewRunId();
+        setReviewRunId(null);
         const doc = await fetchRun(id);
         applyRun(doc);
         return id;
@@ -240,6 +272,9 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
             writeRunId(id);
             try {
               const doc = await fetchRun(id);
+              // 되붙은 run 은 **지금 돌고 있는** 실행이다 — 다시보기가 아니다.
+              clearReviewRunId();
+              setReviewRunId(null);
               applyRun(doc);
               return id;
               // 되붙기까지 실패하면 원래 409 문구를 그대로 띄운다 — 여기서
@@ -306,7 +341,9 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
    */
   const reset = useCallback(() => {
     clearRunId();
+    clearReviewRunId();
     setRun(null);
+    setReviewRunId(null);
     setError(null);
     
     // 진행 중이던 데이터를 모두 초기화하기 위해 관련 캐시도 모두 삭제
@@ -346,6 +383,10 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
     try {
       const doc = await fetchRun(id);
       writeRunId(id);
+      // 🔴 여기가 다시보기 깃발이 서는 **유일한** 자리다. `writeRunId` 와 붙여
+      //    둔다 — 떨어뜨리면 「run 은 바뀌었는데 깃발은 안 선」 창이 생긴다.
+      writeReviewRunId(id);
+      setReviewRunId(id);
       applyRun(doc);
       if (typeof window !== "undefined") {
         window.sessionStorage.removeItem("omnisite.sitePick.v1");
@@ -371,6 +412,7 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
         starting,
         error,
         runningElapsedSec,
+        reviewing: run !== null && reviewRunId !== null && reviewRunId === run.run_id,
         start,
         answerAudit,
         answerWeight,

@@ -55,7 +55,7 @@ export default function MyPage() {
   if (!user) return <div className="p-10 text-center text-gray-500">로딩 중...</div>;
 
   return (
-    <div className="mx-auto max-w-4xl px-5 py-12">
+    <div className="mx-auto max-w-6xl px-5 py-12">
       <h1 className="text-2xl font-bold text-gray-900 mb-8 tracking-tight">마이페이지</h1>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-shadow hover:shadow-md">
@@ -84,15 +84,26 @@ export default function MyPage() {
         </div>
       </div>
 
-      {/* 파이프라인 분석 내역 */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-shadow hover:shadow-md">
-        <div className="py-10 px-10 min-h-[400px] flex flex-col items-center justify-start">
-          <RunList />
-        </div>
-      </div>
+      {/*
+        두 카드를 **가로로 나란히** 둔다(2026-08-12, 사람 지시). 둘 다 한 줄이
+        짧아서 세로로 쌓으면 오른쪽이 통째로 비고 목록은 화면 밖으로 밀린다.
 
-      {/* 내가 작성한 안건 카드 (최근 5개 요약 + 우상단 모두보기 버튼) */}
-      <MyPostList />
+        ⚠ `items-start` 가 있어야 한다 — 없으면 grid 가 두 칸의 높이를 맞추려고
+          짧은 카드를 늘려, 게시글 3건짜리 카드 아래에 빈 흰 판이 붙는다.
+        ⚠ 쌓는 기준을 `lg`(1024px)로 잡았다. `md`(768px)에서 두 칸이면 한 칸이
+          384px 라 `RunCard` 의 [날짜 · 도메인 · 상태 + 버튼] 한 줄이 뭉개진다.
+      */}
+      <div className="grid grid-cols-1 items-start gap-8 lg:grid-cols-2">
+        {/* 파이프라인 분석 내역 */}
+        <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-shadow hover:shadow-md">
+          <div className="px-6 py-8 min-h-[420px]">
+            <RunList />
+          </div>
+        </div>
+
+        {/* 내가 작성한 안건 카드 (최근 5개 요약 + 우상단 모두보기 버튼) */}
+        <MyPostList />
+      </div>
     </div>
   );
 }
@@ -133,14 +144,25 @@ function RunList() {
   const [opening, setOpening] = useState<string | null>(null);
   /** 그 run 을 못 연 사유. 목록이 아니라 **그 줄**에 붙는다. */
   const [openError, setOpenError] = useState<{ runId: string; message: string } | null>(null);
+  /** 서버가 아는 전체 건수. 목록이 잘렸는지 판단하는 근거다. `null` = 서버가 안 줬다. */
+  const [total, setTotal] = useState<number | null>(null);
+  /** 서버가 잘랐다고 **말한** 값. 위 `total` 과 따로 본다 — 아래 주석 참조. */
+  const [truncated, setTruncated] = useState(false);
+  /** 보고 있는 쪽(1부터). 목록이 화면을 넘기지 않게 자른다. */
+  const [page, setPage] = useState(1);
 
   const fetchData = () => {
     setLoading(true);
     setError(null);
+    // 목록이 바뀌면 1쪽으로 돌아간다 — 3쪽을 보다 새로고침해서 2쪽이 되면
+    // 빈 쪽이 뜬다(아래 clamp 가 막긴 하지만, 보던 자리도 이미 남의 자리다).
+    setPage(1);
     import('@/lib/omnisite/pipeline').then(({ fetchRuns }) => {
       fetchRuns(true)
         .then((res) => {
           setRuns(res.runs);
+          setTotal(typeof res.total === "number" ? res.total : null);
+          setTruncated(res.truncated === true);
           setLoading(false);
         })
         .catch((e) => {
@@ -163,6 +185,49 @@ function RunList() {
     return <div className="text-gray-500 w-full text-center">불러오는 중...</div>;
   }
 
+  /**
+   * 🔴 **잘렸으면 잘렸다고 적는다**(계약 §3-3, 2026-08-12 백엔드 결정 ⓑ+가시화).
+   *    서버가 `?limit=`(기본 100)로 자르는데 화면이 아무 말도 안 하면 사용자는
+   *    **옛 run 이 지워진 줄 안다** — 실제로는 안 물어봤을 뿐이다(절대원칙 4).
+   *
+   * 🔴 서버의 `truncated` **하나만 믿지 않는다.** `total > runs.length` 는 화면이
+   *    직접 관측할 수 있는 사실이고, 플래그는 서버가 계산한 주장이다. 둘 중
+   *    하나라도 참이면 적는다 — 플래그 쪽이 틀렸을 때 조용히 안 적는 것이 바로
+   *    이 조치가 막으려던 상황이다.
+   * ⚠ N 은 `total` 에서 뺀 값이 아니라 **지금 화면에 있는 수**(`runs.length`)다.
+   *   `limit` 을 쓰면 서버가 상한보다 적게 줬을 때 없는 줄을 있다고 말한다.
+   */
+  const missing = total !== null ? total - runs.length : 0;
+  const truncNotice =
+    truncated || missing > 0 ? (
+      <p className="mt-4 rounded-md border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+        최근 <strong>{runs.length}</strong>건만 보입니다
+        {total !== null && <> (전체 <strong>{total}</strong>건)</>}. 나머지는 이 화면에서
+        볼 수 없습니다 — 지워진 것이 아니라 <strong>불러오지 않은</strong> 것입니다.
+      </p>
+    ) : null;
+
+  /**
+   * 🔴 **내 것만 보여준다**(2026-08-12, 사람 지시). 서버 `mine=true` 는 계약대로
+   *    **내 것 + 익명**을 준다 — 거르는 자리는 여기다.
+   *
+   * 🔴 **거른 수를 적는다.** 익명 run 을 말없이 숨기면 「전체 12건」이라는 위 안내와
+   *    화면의 3줄이 안 맞아, 9건이 사라진 것처럼 보인다(절대원칙 4). 「이관 전」이
+   *    아니다 — 로그인 없이 실행할 수 있는 건 의도된 정상 상태이고, 나중에 그 계정
+   *    것으로 옮겨주는 경로는 **만들지 않기로 결정돼 있다.**
+   * ⚠ 위 `truncNotice` 는 거르기 **전** 수(`runs.length`)로 센다. 거른 뒤로 바꾸면
+   *   익명이 섞인 응답마다 「잘렸다」고 거짓말한다.
+   */
+  const myRuns = runs.filter((r) => r.is_mine);
+  const hiddenAnon = runs.length - myRuns.length;
+  const anonNotice =
+    hiddenAnon > 0 ? (
+      <p className="mt-3 text-xs text-gray-400">
+        로그인 없이 실행된 <strong>{hiddenAnon}</strong>건은 표시하지 않습니다. 지워진 것이
+        아니라 <strong>주인이 없는</strong> 기록입니다.
+      </p>
+    ) : null;
+
   // 🔴 **빈 목록보다 먼저 본다.** 실패했으면 목록은 `[]` 인데, 그 `[]` 는
   //    「없다」가 아니라 「모른다」다. 순서를 바꾸면 "아직 실행한 내역이 없습니다"
   //    가 뜨고 사용자는 자기 기록이 지워진 줄 안다.
@@ -182,7 +247,10 @@ function RunList() {
     );
   }
 
-  if (runs.length === 0) {
+  // ⚠ 여기서도 `truncNotice`·`anonNotice` 를 먼저 본다. 0건인데 서버가 「전체 N건」
+  //   이라고 하거나 익명 N건을 우리가 감춘 상태면, 그건 「없다」가 아니라 **감췄다**
+  //   이고 "없습니다" 라고 적으면 화면이 거짓말을 한다.
+  if (myRuns.length === 0 && truncNotice === null && anonNotice === null) {
     return (
       <div className="w-full">
         <HeaderSection onRefresh={fetchData} />
@@ -203,8 +271,24 @@ function RunList() {
     );
   }
 
-  const myRuns = runs.filter((r) => r.is_mine);
-  const unassignedRuns = runs.filter((r) => !r.is_mine);
+  /**
+   * 쪽 나누기 — 목록이 옆 카드(「내가 작성한 안건」)보다 길어지지 않게 자른다.
+   *
+   * ⚠ `page` 를 `useEffect` 로 되맞추지 않고 **계산으로 가둔다**(clamp). 효과로
+   *   `setPage` 하면 한 번 더 그려지는 사이에 **빈 쪽**이 스쳐 지나가고, 이 저장소의
+   *   `react-hooks/set-state-in-effect` 규칙에도 걸린다.
+   * ⚠ 목록이 줄어 지금 쪽이 사라져도(새로고침 후 3쪽→2쪽) 마지막 쪽을 보여준다.
+   */
+  const PAGE_SIZE = 5;
+  const pageCount = Math.max(1, Math.ceil(myRuns.length / PAGE_SIZE));
+  const safePage = Math.min(Math.max(page, 1), pageCount);
+  const pageRuns = myRuns.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
+  // 쪽 번호는 최대 5개만 — 100건이면 20쪽이라 다 그리면 페이저가 카드보다 넓어진다.
+  const winStart = Math.max(1, Math.min(safePage - 2, pageCount - 4));
+  const pageNums = Array.from(
+    { length: Math.min(5, pageCount) },
+    (_, i) => winStart + i,
+  );
 
   /**
    * 🔴 **못 열면 이동하지 않는다.** 예전엔 결과를 안 보고 `/report` 로 넘겼다 —
@@ -235,37 +319,66 @@ function RunList() {
   });
 
   return (
-    <div className="w-full text-left space-y-10">
+    <div className="w-full text-left">
       <HeaderSection onRefresh={fetchData} />
-      {myRuns.length > 0 && (
-        <div>
-          <h3 className="text-md font-semibold text-gray-700 mb-4">내 분석 내역</h3>
-          <div className="space-y-3">
-            {myRuns.map((r) => (
+      {truncNotice}
+
+      {myRuns.length === 0 ? (
+        // 위 빈 화면 분기를 못 탄 경우 — 응답에 줄은 있는데 **내 것이 없다**.
+        // "없습니다" 로 뭉뚱그리면 감춘 익명 건이 지워진 것처럼 읽힌다.
+        <p className="mt-6 text-sm text-gray-500">내 이름으로 실행된 분석 내역이 없습니다.</p>
+      ) : (
+        <>
+          <div className="mt-6 space-y-3">
+            {pageRuns.map((r) => (
               <RunCard key={r.run_id} {...cardProps(r)} />
             ))}
           </div>
-        </div>
+
+          <div className="mt-5 flex items-center justify-between border-t border-gray-100 pt-4">
+            <span className="text-xs text-gray-400">
+              총 <strong className="text-gray-600">{myRuns.length}</strong>건 · {safePage}/
+              {pageCount} 쪽
+            </span>
+            {pageCount > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(safePage - 1)}
+                  disabled={safePage <= 1}
+                  className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
+                  aria-label="이전 쪽"
+                >
+                  ‹
+                </button>
+                {pageNums.map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setPage(n)}
+                    aria-current={n === safePage ? "page" : undefined}
+                    className={
+                      n === safePage
+                        ? "min-w-[28px] rounded bg-gray-800 px-2 py-1 text-sm font-semibold text-white"
+                        : "min-w-[28px] rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100"
+                    }
+                  >
+                    {n}
+                  </button>
+                ))}
+                <button
+                  onClick={() => setPage(safePage + 1)}
+                  disabled={safePage >= pageCount}
+                  className="rounded px-2 py-1 text-sm text-gray-600 hover:bg-gray-100 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
+                  aria-label="다음 쪽"
+                >
+                  ›
+                </button>
+              </div>
+            )}
+          </div>
+        </>
       )}
 
-      {/*
-        🔴 「주인 미상(이관 전)」이라고 적었던 자리다(2026-08-12 정정).
-           **「이관 전」은 사실이 아니다.** 로그인 없이 실행할 수 있는 건 미구현이
-           아니라 의도된 정상 상태이고, 로그인 전에 시작한 run 을 나중에 그 계정
-           것으로 만드는 경로는 **만들지 않기로 결정돼 있다**(만들면 「누구 run
-           이었나」의 정본이 둘이 된다). 옛 문구는 로그인하면 이 목록이 옮겨온다고
-           약속하는데 그런 일은 안 일어난다.
-      */}
-      {unassignedRuns.length > 0 && (
-        <div>
-          <h3 className="text-md font-semibold text-gray-700 mb-4">로그인 없이 실행된 분석 내역</h3>
-          <div className="space-y-3">
-            {unassignedRuns.map((r) => (
-              <RunCard key={r.run_id} {...cardProps(r)} />
-            ))}
-          </div>
-        </div>
-      )}
+      {anonNotice}
     </div>
   );
 }
@@ -383,7 +496,7 @@ function MyPostList() {
   }, []);
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-shadow hover:shadow-md">
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-shadow hover:shadow-md">
       <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-1.5">

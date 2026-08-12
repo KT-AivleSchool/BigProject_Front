@@ -27,7 +27,7 @@ import { getAuthUser, clearAuth, UserResponse } from "@/lib/omnisite/auth";
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
-  const { run, reset } = useRun();
+  const { run, reset, reviewing } = useRun();
   const current = screenOf(pathname);
   const live = run?.status === "queued" || run?.status === "running";
 
@@ -135,9 +135,23 @@ export function Header() {
     <>
       <header className="sticky top-0 z-50 border-b border-hairline bg-glass-mid backdrop-blur-xl">
         <div className="mx-auto flex h-14 max-w-[1600px] items-center gap-6 px-5">
-          <Link href="/" className="flex shrink-0 items-baseline gap-2">
-            <span className="text-[15px] font-semibold tracking-tight">OmniSite</span>
-          </Link>
+          {/*
+            🔴 로고도 **화면 1 로 가는 문**이다. 내비만 잠그면 다시보기 중에 로고를
+               눌러 데이터 입력 화면으로 들어갈 수 있다 — 잠근 문 옆에 열린 문을
+               두는 셈이다. 다시보기 동안에는 링크를 걷는다(문구는 그대로 둔다).
+          */}
+          {reviewing ? (
+            <span
+              className="flex shrink-0 cursor-not-allowed items-baseline gap-2 text-ink-secondary/60"
+              title="기록 다시보기 중입니다. 새로 시작하려면 아래 띠의 「나가기」를 누르세요."
+            >
+              <span className="text-[15px] font-semibold tracking-tight">OmniSite</span>
+            </span>
+          ) : (
+            <Link href="/" className="flex shrink-0 items-baseline gap-2">
+              <span className="text-[15px] font-semibold tracking-tight">OmniSite</span>
+            </Link>
+          )}
 
           <nav className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
             {NAV_SCREENS.map((s, i) => {
@@ -148,13 +162,28 @@ export function Header() {
               if (s.no === "3" && run?.status === "awaiting_hitl" && !unlockedWeight) {
                 allowed = false;
               }
-              
+
               // 데모 시연을 위한 순차 진행 강제 잠금
               if (i > highestIndex) {
                 allowed = false;
                 done = false;
               }
-              
+
+              /**
+               * 🔴 **기록 다시보기 중에는 화면 1 로 못 간다.**
+               *    화면 1 은 파일을 올려 **새 실행을 만드는** 화면이다. 지난 기록을
+               *    보다가 여기로 들어가면 화면은 그 run 을 열어 둔 채 다른 run 을
+               *    시작하게 되고, 그 뒤 화면 2~6 은 **어느 실행의 산출물인지가 섞인다**.
+               *    나가는 문은 헤더의 「데이터 초기화」다(`reset()` 이 깃발을 지운다).
+               * 🔴 위 순차 잠금으로는 못 막는다 — 다시보기는 `/report`(마지막 화면)에
+               *    떨어지므로 `highest_nav_index_*` 가 곧바로 전 화면을 열어 준다.
+               *    그래서 **잠금 뒤에** 따로 닫는다.
+               */
+              const blocked = reviewing && s.no === "1";
+              if (blocked) {
+                allowed = false;
+              }
+
               const inner = (
                 <>
                   <span
@@ -202,7 +231,16 @@ export function Header() {
                   ) : (
                     <div
                       className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-ink-secondary/40 cursor-not-allowed"
-                      title="이전 단계를 먼저 완료해주세요."
+                      /*
+                       * ⚠ 막힌 이유가 둘이므로 문구도 둘이다. 다시보기에서 화면 1 에
+                       *   「이전 단계를 먼저 완료해주세요」가 뜨면 **거짓말**이다 —
+                       *   화면 1 앞에는 이전 단계가 없고, 완료해도 안 열린다.
+                       */
+                      title={
+                        blocked
+                          ? "기록 다시보기 중입니다. 새로 시작하려면 아래 띠의 「나가기」를 누르세요."
+                          : "이전 단계를 먼저 완료해주세요."
+                      }
                     >
                       {inner}
                     </div>
