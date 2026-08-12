@@ -126,11 +126,13 @@ export function QuestionCard({
   confirmLabel,
   rejectLabel,
   onClick,
+  readOnly,
 }: {
   id: string;
   title: React.ReactNode;
   warn?: boolean;
   confirmed?: boolean;
+  readOnly?: boolean;
   onConfirm?: () => void;
   onReject?: () => void;
   isEditing?: boolean;
@@ -140,6 +142,7 @@ export function QuestionCard({
   rejectLabel?: string;
   onClick?: () => void;
 }) {
+  const isReadOnly = readOnly;
   return (
     <div
       onClick={onClick}
@@ -165,7 +168,7 @@ export function QuestionCard({
       <div className="flex-1 min-w-0 flex flex-col justify-center">{children}</div>
       {(onConfirm || onReject) && (
         <div className="mt-2 sm:mt-0 shrink-0 self-end sm:self-center flex gap-1.5">
-          {onConfirm && (
+          {(!isReadOnly && onConfirm) ? (
             isEditing ? (
               <button
                 onClick={(e) => { e.stopPropagation(); onConfirm(); }}
@@ -191,8 +194,13 @@ export function QuestionCard({
                 )}
               </div>
             )
-          )}
-          {onReject && (
+          ) : isReadOnly && confirmed ? (
+            <div className="px-3 py-1.5 text-[13px] font-bold rounded-lg border flex items-center gap-1.5 bg-blue-50 text-blue-700 border-blue-200">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              승인 완료
+            </div>
+          ) : null}
+          {!isReadOnly && onReject && (
             <button
               onClick={(e) => { e.stopPropagation(); onReject(); }}
               className={`px-3 py-1.5 text-[13px] font-semibold rounded-lg transition-colors shadow-sm border ${

@@ -186,19 +186,14 @@ export default function Screen3Page() {
   
               return (
                 <>
-                  <HitlState hitl={w.hitl} />
+
 
                   <section className="mt-6">
                     <div className="flex flex-wrap items-baseline justify-between gap-2">
                       <h2 className="text-[14px] font-semibold">지표별 가중치</h2>
-                      <p className="text-[11px] text-ink-secondary">
-                        가중치가 큰 순. 막대 길이는 <b>최종 가중치(w_final)</b> 기준입니다.
-                      </p>
                     </div>
-                    <WeightChart indicators={sorted} labels={labels} max={maxFinal} />
+                    <WeightChart indicators={sorted} labels={labels} max={maxFinal} sparseThreshold={w.notes.sparse_threshold} />
                   </section>
-
-                  <Method w={w} />
                 </>
               );
             }}
@@ -242,7 +237,7 @@ export default function Screen3Page() {
   );
 }
 
-function WeightChart({ indicators, labels, max }: { indicators: Indicator[], labels: Map<string, any>, max: number }) {
+function WeightChart({ indicators, labels, max, sparseThreshold }: { indicators: Indicator[], labels: Map<string, any>, max: number, sparseThreshold?: number }) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const activeInd = indicators.find((i) => i.id === hoveredId) || indicators[0];
 
@@ -288,7 +283,7 @@ function WeightChart({ indicators, labels, max }: { indicators: Indicator[], lab
               <div className={`w-14 text-right font-mono text-xs font-black ${
                 isHovered ? 'text-blue-600' : excluded ? 'text-gray-400' : 'text-gray-600'
               }`}>
-                {fixed(ind.w_final, 4)}
+                {percent(ind.w_final, 1)}
               </div>
             </div>
           );
@@ -298,7 +293,7 @@ function WeightChart({ indicators, labels, max }: { indicators: Indicator[], lab
       {/* Info Panel Column */}
       <div className="w-full md:w-[340px] shrink-0 sticky top-6">
         {activeInd ? (
-          <IndicatorDetailPanel ind={activeInd} labels={labels} />
+          <IndicatorDetailPanel ind={activeInd} labels={labels} sparseThreshold={sparseThreshold} />
         ) : (
           <div className="h-64 rounded-2xl border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-sm text-gray-400">
             차트에 마우스를 올려 상세 정보를 확인하세요
@@ -309,7 +304,7 @@ function WeightChart({ indicators, labels, max }: { indicators: Indicator[], lab
   );
 }
 
-function IndicatorDetailPanel({ ind, labels }: { ind: Indicator, labels: Map<string, any> }) {
+function IndicatorDetailPanel({ ind, labels, sparseThreshold }: { ind: Indicator, labels: Map<string, any>, sparseThreshold?: number }) {
   const name = indicatorLabel(ind.id, ind.components, labels);
   const cost = ind.direction === "cost";
   const excluded = ind.sparse_excluded;
@@ -343,17 +338,18 @@ function IndicatorDetailPanel({ ind, labels }: { ind: Indicator, labels: Map<str
         <div className="flex items-baseline justify-between mb-4 pb-4 border-b border-gray-50">
           <span className="text-[11px] font-bold text-gray-400">최종 가중치</span>
           <span className={`text-xl font-black ${excluded ? "text-gray-400" : "text-blue-600"}`}>
-            {fixed(ind.w_final, 4)}
+            {percent(ind.w_final, 1)}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 mb-4">
-          <Cell k="사용자 설정 가중치" v={fixed(ind.w_human, 4)} />
-          <Cell k="AI 분석 가중치" v={fixed(ind.w_critic, 4)} />
-          <Cell k="데이터 집계 반경" v={meters(ind.radius_m)} />
-          <Cell k="영향 방향성" v={cost ? "부정적 요인 (감점)" : "긍정적 요인 (가점)"} />
-        </div>
 
+        {excluded && (
+          <div className="mb-4 flex flex-col gap-2 rounded-xl bg-gray-50 p-3 border border-gray-100 text-[11px] leading-relaxed">
+            <p className="text-gray-600">
+              값이 거의 없어(희소 임계 {sparseThreshold !== undefined ? percent(sparseThreshold, 2) : "5.00%"} 미만) 점수 산정에서 제외된 지표입니다. <strong className="text-gray-800">데이터가 적다는 뜻이며, 중요하지 않다는 의미는 아닙니다.</strong>
+            </p>
+          </div>
+        )}
         {(ind.direction_conflict || ind.radius_rationale || ind.seed_rationale) && (
           <div className="flex flex-col gap-2 rounded-xl bg-gray-50 p-3 border border-gray-100 text-[11px] leading-relaxed">
             {ind.direction_conflict && (
@@ -379,17 +375,7 @@ function IndicatorDetailPanel({ ind, labels }: { ind: Indicator, labels: Map<str
   );
 }
 
-function Cell({ k, v, sub }: { k: string; v: string; sub?: string }) {
-  return (
-    <div className="flex flex-col justify-center rounded-lg border border-gray-100 bg-gray-50/50 px-3 py-2">
-      <dt className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{k}</dt>
-      <dd className="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 font-mono text-sm font-semibold text-gray-900">
-        {v}
-        {sub && <span className="text-[10px] font-medium text-gray-400">{sub}</span>}
-      </dd>
-    </div>
-  );
-}
+
 
 function Stat({ label, value, note }: { label: string; value: string; note?: string }) {
   const isWarn = note ? note.includes("🔴") : false;
@@ -454,42 +440,7 @@ function Chip({ ok, label, trusted }: { ok: boolean; label: string; trusted: boo
   );
 }
 
-function Method({ w }: { w: WeightSetDoc }) {
-  const sparse = w.notes.sparse_excluded_ids;
-  return (
-    <section className="mt-8">
-      <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-center gap-2 mb-4">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-500"><path d="M2 12h20"/><path d="M12 2v20"/></svg>
-          <h2 className="text-base font-bold text-gray-900">제외된 지표 (희소 임계 미달)</h2>
-        </div>
-        {sparse.length > 0 ? (
-          <>
-            <p className="text-sm leading-relaxed text-gray-600 mb-4">
-              값이 거의 없어(희소 임계 {percent(w.notes.sparse_threshold, 2)} 미만) 점수 산정에서 
-              제외된 지표들입니다. <strong className="text-gray-800">데이터가 적다는 뜻이며, 중요하지 않다는 의미는 아닙니다.</strong>
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {sparse.map((id) => (
-                <span
-                  key={id}
-                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 font-mono text-sm font-bold text-gray-600 shadow-sm"
-                >
-                  {id}
-                </span>
-              ))}
-            </div>
-          </>
-        ) : (
-          <div className="flex h-32 flex-col items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-300 mb-2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-            <p className="text-sm font-medium text-gray-400">제외된 지표가 없습니다.</p>
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
+
 
 function Line({ k, v }: { k: string; v: string }) {
   return (

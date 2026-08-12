@@ -60,7 +60,6 @@ export const SCREENS: readonly Screen[] = [
     entryPath: "/hearing/select",
     name: "갈등 예측",
     inNav: true,
-    draft: true,
   },
   { no: "6", path: "/report", name: "보고서", inNav: true, draft: true },
 ] as const;

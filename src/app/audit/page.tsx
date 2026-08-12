@@ -1,4 +1,4 @@
-"use client";
+"use client"; // force reload
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -45,15 +45,17 @@ export default function Screen2Page() {
   const router = useRouter();
   const state = useArtifact("reviewed", loadReviewed);
   const gate = openGate(run, GATE_AUDIT);
-  const [cachedGate, setCachedGate] = useState<RunGate | null>(() => {
-    if (typeof window !== "undefined" && run?.run_id) {
+  const [cachedGate, setCachedGate] = useState<RunGate | null>(null);
+
+  // run_id가 나중에 로드되더라도 localStorage에서 cachedGate를 복구하도록 수정
+  useEffect(() => {
+    if (typeof window !== "undefined" && run?.run_id && !cachedGate) {
       try {
         const item = window.localStorage.getItem(`omnisite_gate_${run.run_id}_audit`);
-        if (item) return JSON.parse(item);
+        if (item) setCachedGate(JSON.parse(item));
       } catch (e) {}
     }
-    return null;
-  });
+  }, [run?.run_id, cachedGate]);
 
   useEffect(() => {
     if (gate && run?.run_id) {
@@ -64,7 +66,20 @@ export default function Screen2Page() {
   
   const displayGate = gate ?? cachedGate;
   
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(() => {
+    if (typeof window !== "undefined" && run?.run_id) {
+      const saved = window.sessionStorage.getItem(`audit_step_${run.run_id}`);
+      if (saved) return parseInt(saved, 10);
+    }
+    return 1;
+  });
+
+  useEffect(() => {
+    if (run?.run_id && typeof window !== "undefined") {
+      window.sessionStorage.setItem(`audit_step_${run.run_id}`, step.toString());
+    }
+  }, [step, run?.run_id]);
+
   const [isSubmittingGate, setIsSubmittingGate] = useState(false);
   const gateSubmitRef = useRef<(() => Promise<boolean | void>) | null>(null);
   const [isGateReady, setIsGateReady] = useState(false);
@@ -83,6 +98,7 @@ export default function Screen2Page() {
         const result = await gateSubmitRef.current();
         if (result !== false) {
           setIsWaitingForSync(true);
+          setStep(3); // Go to explicit processing step
         }
       } catch(e) {
         console.error(e);
@@ -107,10 +123,9 @@ export default function Screen2Page() {
       // 완전히 러닝(queued/running)이 끝났고, 동시에 audit gate가 아닐 때(다음 게이트로 넘어갔거나 완료됐을 때)만 통과시킴.
       if (!isRunning && (!run.gate || run.gate.id !== "audit")) {
         setIsWaitingForSync(false);
-        setStep(3);
       }
     }
-  }, [run?.status, run?.gate?.id, isWaitingForSync]);
+  }, [run?.status, run?.gate?.id, isWaitingForSync, step]);
 
   return (
     <PageBody>
@@ -129,12 +144,14 @@ export default function Screen2Page() {
               <div className="h-px flex-1 bg-gray-200" />
               <StepIcon current={step} stepNum={2} label="확인 요청" />
               <div className="h-px flex-1 bg-gray-200" />
-              <StepIcon current={step} stepNum={3} label="배제 사유 상세" />
+              <StepIcon current={step} stepNum={3} label="데이터 처리 중" />
               <div className="h-px flex-1 bg-gray-200" />
-              <StepIcon current={step} stepNum={4} label="데이터셋 감리" />
+              <StepIcon current={step} stepNum={4} label="배제 사유 상세" />
+              <div className="h-px flex-1 bg-gray-200" />
+              <StepIcon current={step} stepNum={5} label="데이터셋 감리" />
             </div>
             <div className="shrink-0 text-[11px] font-bold text-gray-500 uppercase tracking-widest px-4 py-1.5 bg-gray-50 rounded-full border border-gray-200">
-              Step {step} of 4
+              Step {step} of 5
             </div>
           </div>
 
@@ -151,41 +168,62 @@ export default function Screen2Page() {
                         <span className="text-sm text-gray-500 ml-2">AI가 확정짓지 못한 예외 사항들을 직접 검토하고 확정해주세요.</span>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold border border-orange-200">
-                          검토 대기 {gateProgress.total > 0 ? gateProgress.total - gateProgress.confirmed : (gate?.questions.length ?? 0)}건
-                        </span>
-                        <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200">
-                          확정 완료 {gateProgress.confirmed}건
-                        </span>
+                        {!gate ? (
+                          <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
+                            제출 완료
+                          </span>
+                        ) : (
+                          <>
+                            <span className="px-3 py-1.5 bg-orange-100 text-orange-700 rounded-full text-xs font-bold border border-orange-200">
+                              검토 대기 {gateProgress.total > 0 ? gateProgress.total - gateProgress.confirmed : (displayGate?.questions.length ?? 0)}건
+                            </span>
+                            <span className="px-3 py-1.5 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200">
+                              확정 완료 {gateProgress.confirmed}건
+                            </span>
+                          </>
+                        )}
                       </div>
                     </div>
                     
-                    {isWaitingForSync ? (
-                      <div className="flex flex-col items-center justify-center py-24 gap-5 bg-blue-50/50 rounded-2xl border border-blue-100 mt-4 animate-in fade-in zoom-in-95 duration-300">
-                        <svg className="animate-spin text-blue-600" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
-                        <div className="text-center">
-                          <h3 className="text-[18px] font-bold text-gray-900">데이터 동기화 중</h3>
-                          <p className="text-[14px] text-gray-500 mt-1.5">우측의 실시간 모니터링을 통해 진행 상황을 확인하실 수 있습니다...</p>
-                        </div>
-                      </div>
-                    ) : displayGate ? (
-                      <div className="flex flex-col gap-4">
-                        {!gate && <NoGateNotice run={run ?? null} />}
+                    <div className="flex flex-col gap-4">
+                      {displayGate && (
                         <AuditGate 
                           gate={displayGate} 
                           runId={run!.run_id} 
                           submitRef={gateSubmitRef}
                           onReadyChange={setIsGateReady}
                           onProgressChange={handleProgressChange}
+                          readOnly={!gate || run?.status !== "awaiting_hitl"}
                         />
-                      </div>
-                    ) : (
-                      <NoGateNotice run={run ?? null} />
-                    )}
+                      )}
+                    </div>
                   </div>
                 )}
                 {step === 3 && (
-                  <div className="flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-300 h-full max-h-full">
+                  <div className="flex flex-col items-center justify-center py-32 gap-6 bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-300">
+                    {run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit" ? (
+                      <>
+                        <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
+                        <div className="text-center">
+                          <h3 className="text-[20px] font-bold text-blue-900 mb-2">AI가 다음 분석을 위해 열심히 데이터를 처리하고 있습니다...</h3>
+                          <p className="text-[15px] text-gray-500">우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다.</p>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        </div>
+                        <div className="text-center">
+                          <h3 className="text-[20px] font-bold text-green-700 mb-2">데이터 처리가 모두 완료되었습니다!</h3>
+                          <p className="text-[15px] text-gray-500">아래 <strong>[다음 단계 확인]</strong> 버튼을 눌러 상세 사유를 확인해 주세요.</p>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+                {step === 4 && (
+                  <div className="flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-300">
                     <div className="flex items-center justify-between shrink-0">
                       <div className="flex items-center gap-3">
                         <div className="p-2.5 bg-indigo-50 text-indigo-600 rounded-xl">
@@ -199,12 +237,12 @@ export default function Screen2Page() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex-1 overflow-y-auto pr-2 pb-0">
+                    <div className="flex-1">
                       <ExclusionContent />
                     </div>
                   </div>
                 )}
-                {step === 4 && (
+                {step === 5 && (
                   <div className="animate-in fade-in zoom-in-95 duration-300">
                     {!gate && <NoGateCTA run={run ?? null} />}
                     <Body doc={doc} hideTarget hideFlags={false} />
@@ -227,7 +265,7 @@ export default function Screen2Page() {
               이전 단계
             </div>
           </button>
-          {step === 4 ? (
+          {step === 5 ? (
             <button 
                onClick={() => {
                  if (run?.run_id) {
@@ -245,11 +283,12 @@ export default function Screen2Page() {
           ) : (
             <button 
                onClick={handleNext}
-               disabled={(step === 2 && displayGate && !isGateReady) || isSubmittingGate || isWaitingForSync}
+               disabled={(step === 2 && displayGate && gate && (!isGateReady || run?.status !== "awaiting_hitl")) || isSubmittingGate || (step === 3 && (run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit"))}
                className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-200 disabled:bg-gray-300 disabled:shadow-none"
             >
               <div className="flex items-center gap-2 text-sm">
-                {isSubmittingGate ? "제출 중..." : "다음 단계 확인 >"}
+                {step === 3 && (run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit") ? "데이터 처리 중..." : "다음 단계 확인"}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </button>
           )}
@@ -261,7 +300,7 @@ export default function Screen2Page() {
 
 function Body({ doc, hideFlags, hideTarget }: { doc: ReviewedDoc, hideFlags?: boolean, hideTarget?: boolean }) {
   const fi = doc.facility_inference;
-  const [openTooltipId, setOpenTooltipId] = useState<string | null>(null);
+  const [openCategory, setOpenCategory] = useState<string | null>("positive_factor");
   
   return (
     <div className="flex flex-col gap-10">
@@ -315,72 +354,71 @@ function Body({ doc, hideFlags, hideTarget }: { doc: ReviewedDoc, hideFlags?: bo
             </div>
           </div>
           
-          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
-            <div className="flex flex-wrap gap-3">
-              {doc.results.map((r, i) => {
-                const num = String(i + 1).padStart(2, "0");
-                const isOpen = openTooltipId === r.dataset_id;
-                const displayName = DATASET_NAME_MOCK[r.dataset_id] || r.dataset_id;
-                
-                return (
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-8 flex flex-col gap-4">
+            {(() => {
+              const categories = [
+                { id: 'positive_factor', label: '가점 요인', bg: 'bg-blue-50', border: 'border-blue-200', text: 'text-blue-900', icon: 'bg-blue-400', ring: 'ring-blue-100' },
+                { id: 'negative_factor', label: '감점 요인', bg: 'bg-orange-50', border: 'border-orange-200', text: 'text-orange-900', icon: 'bg-orange-400', ring: 'ring-orange-100' },
+                { id: 'hard_exclusion', label: '설치 금지(배제)', bg: 'bg-red-50', border: 'border-red-200', text: 'text-red-900', icon: 'bg-red-400', ring: 'ring-red-100' },
+                { id: 'reference_only', label: '참조만', bg: 'bg-gray-50', border: 'border-gray-200', text: 'text-gray-900', icon: 'bg-gray-400', ring: 'ring-gray-100' },
+              ];
+
+              const categorizedResults = categories.map(cat => ({
+                ...cat,
+                items: doc.results.filter(r => r.roles.some(role => role.role === cat.id)).map(r => ({
+                  dataset: r,
+                  role: r.roles.find(role => role.role === cat.id)!
+                }))
+              })).filter(cat => cat.items.length > 0);
+
+              return categorizedResults.map(cat => (
+                <div key={cat.id} className="flex flex-col">
                   <button
-                    key={r.dataset_id}
-                    onClick={() => setOpenTooltipId(isOpen ? null : r.dataset_id)}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all text-left ${
-                      isOpen 
-                        ? "border-blue-400 ring-2 ring-blue-100 bg-blue-50" 
-                        : "border-gray-200 bg-white hover:border-gray-300 shadow-sm"
+                    onClick={() => setOpenCategory(openCategory === cat.id ? null : cat.id)}
+                    className={`w-full flex items-center justify-between p-4 rounded-xl border transition-colors outline-none focus:ring-2 ${
+                      openCategory === cat.id 
+                        ? `${cat.bg} ${cat.border} ${cat.ring}` 
+                        : `bg-white border-gray-200 hover:bg-gray-50`
                     }`}
                   >
-                    <span className={`font-mono font-bold px-2 py-0.5 rounded-full text-[11px] shrink-0 transition-colors ${isOpen ? "bg-blue-500 text-white" : "bg-gray-100 text-gray-500"}`}>{num}</span>
-                    <span className="font-medium text-[13px] text-gray-800">
-                      {displayName}
-                    </span>
-                    
-                    {r.roles.length > 0 && (
-                      <>
-                        <span className="text-gray-300 px-1">|</span>
-                        <div className="flex gap-2">
-                          {r.roles.map((role, idx) => {
-                            const excl = role.role === "hard_exclusion";
-                            return (
-                              <span key={idx} className={`text-[12px] font-medium ${excl ? "text-red-500" : "text-gray-500"}`}>
-                                {ROLE_LABEL[role.role] ?? role.role}
-                                {excl && role.배제반경_m != null && <span className="opacity-70 font-mono ml-1">({meters(role.배제반경_m)})</span>}
-                                {!excl && typeof role.weight === "number" && <span className="opacity-70 font-mono ml-1">(W:{role.weight})</span>}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                  </button>
-                );
-              })}
-            </div>
-
-            {openTooltipId && (
-              <div className="mt-6 p-5 bg-blue-50/50 border border-blue-100 rounded-xl animate-in fade-in slide-in-from-top-2">
-                {(() => {
-                  const selected = doc.results.find(r => r.dataset_id === openTooltipId);
-                  if (!selected) return null;
-                  const displayName = DATASET_NAME_MOCK[selected.dataset_id] || selected.dataset_id;
-                  return (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                         <div className="p-1.5 bg-blue-100 text-blue-600 rounded-lg">
-                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-                         </div>
-                         <h4 className="text-[14px] font-bold text-blue-900">{displayName}</h4>
-                      </div>
-                      <p className="text-[13.5px] text-gray-700 leading-relaxed pl-8">
-                        {selected.summary}
-                      </p>
+                    <div className="flex items-center gap-3">
+                      <h3 className={`font-bold text-[15px] ${openCategory === cat.id ? cat.text : 'text-gray-800'}`}>
+                        {cat.label}
+                      </h3>
+                      <span className="text-xs font-medium text-gray-500 bg-white px-2 py-0.5 rounded-full border border-gray-200 shadow-sm">
+                        {cat.items.length}개
+                      </span>
                     </div>
-                  );
-                })()}
-              </div>
-            )}
+                    <svg className={`w-5 h-5 text-gray-400 transition-transform ${openCategory === cat.id ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="m6 9 6 6 6-6"/>
+                    </svg>
+                  </button>
+                  
+                  {openCategory === cat.id && (
+                    <div className="p-4 mt-2 bg-gray-50/50 border border-gray-100 rounded-xl flex flex-col gap-3 animate-in fade-in slide-in-from-top-2">
+                      {cat.items.map((item, idx) => {
+                        const excl = item.role.role === "hard_exclusion";
+                        return (
+                          <div key={item.dataset.dataset_id + idx} className="flex items-start gap-3 p-4 bg-white rounded-lg border border-gray-100 shadow-sm">
+                            <div className={`mt-1.5 shrink-0 w-1.5 h-1.5 rounded-full ${cat.icon}`} />
+                            <div className="flex-1">
+                              <p className="text-[13.5px] text-gray-800 leading-relaxed">
+                                {item.dataset.summary.replace(/^이 데이터는\s*/, "")}
+                              </p>
+                            </div>
+                            <div className="shrink-0 text-[12px] font-mono text-gray-500 bg-gray-50 px-2.5 py-1.5 rounded border border-gray-100">
+                              {excl && item.role.배제반경_m != null ? `반경 ${meters(item.role.배제반경_m)}` : null}
+                              {!excl && typeof item.role.weight === "number" ? `w: ${item.role.weight}` : null}
+                              {(excl && item.role.배제반경_m == null) || (!excl && typeof item.role.weight !== "number") ? '해당사항 없음' : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ));
+            })()}
           </div>
         </section>
       )}

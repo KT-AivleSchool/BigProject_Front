@@ -1,4 +1,5 @@
 "use client";
+// Trigger HMR
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -52,6 +53,10 @@ export default function Screen1Page() {
   const [mode, setMode] = useState<string>(MODE_HITL);
   const [inputError, setInputError] = useState<string | null>(null);
 
+  const [activeStep, setActiveStep] = useState(1);
+  const [step1Error, setStep1Error] = useState<string | null>(null);
+  const [step2Error, setStep2Error] = useState<string | null>(null);
+
   const domainRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
     const el = domainRef.current;
@@ -64,11 +69,15 @@ export default function Screen1Page() {
 
   const topnParsed = parseTopn(topnText);
 
-  async function onRun() {
+  function handleStep1Confirm() {
     const fromDom = domainRef.current?.value ?? "";
     const value = (dataSource === "preset" ? domain : fromDom || domain).trim();
+    if (!dataSource) {
+      setStep1Error("데이터 출처를 먼저 선택해주세요.");
+      return;
+    }
     if (!value) {
-      setInputError(
+      setStep1Error(
         dataSource === "preset"
           ? "프리셋 도메인을 하나 고르세요."
           : "분석 도메인이 비어 있습니다. 분석 대상을 입력해주세요. (예: 흡연)",
@@ -76,25 +85,30 @@ export default function Screen1Page() {
       if (dataSource !== "preset") domainRef.current?.focus();
       return;
     }
-    if (isFull && !intent.trim()) {
-      // 서버도 400 으로 막는다(`_validate_full_params`). 여기서 먼저 잡는 이유는
-      // 사유를 입력칸 옆에 붙이기 위해서다 — 규칙을 프런트가 새로 만든 게 아니다.
-      setInputError(
-        "full 모드는 사용자 의도가 필수입니다. STEP0.5 가 이 문장에서 시설·지역을 확정합니다.",
-      );
-      return;
-    }
-    if (topnParsed === "invalid") {
-      // 🔴 `isFull` 로 감싸지 않는다. 감싸면 TS 가 아래에서 `topnParsed` 를 좁히지
-      //    못해 `"invalid"` 가 그대로 본문에 흘러든다. 애초에 잘못 친 숫자는
-      //    모드와 무관하게 잘못 친 숫자다.
-      setInputError(`입지 선정 개수는 1~${TOPN_MAX} 사이의 정수여야 합니다.`);
-      return;
-    }
-    setInputError(null);
     if (dataSource !== "preset" && fromDom.trim() && fromDom !== typedDomain) {
       setTypedDomain(fromDom);
     }
+    setStep1Error(null);
+    setActiveStep(2);
+  }
+
+  function handleStep2Confirm() {
+    if (isFull && !intent.trim()) {
+      setStep2Error("full 모드는 사용자 의도가 필수입니다. STEP0.5 가 이 문장에서 시설·지역을 확정합니다.");
+      return;
+    }
+    if (topnParsed === "invalid") {
+      setStep2Error(`입지 선정 개수는 1~${TOPN_MAX} 사이의 정수여야 합니다.`);
+      return;
+    }
+    setStep2Error(null);
+    setActiveStep(3);
+  }
+
+  async function onRun() {
+    const fromDom = domainRef.current?.value ?? "";
+    const value = (dataSource === "preset" ? domain : fromDom || domain).trim();
+    setInputError(null);
 
     const id = await start(
       value,
@@ -102,8 +116,8 @@ export default function Screen1Page() {
       isFull
         ? {
             user_input: intent.trim(),
-            // 빈 칸이면 아예 안 보낸다 — 서버 기본값(20)이 유일한 기준이 되게.
-            ...(topnParsed === "empty" ? {} : { topn: topnParsed }),
+            // 빈 칸이거나 유효하지 않으면 아예 안 보낸다(기본값 20 사용). "invalid"는 이미 Step 2에서 막힌다.
+            ...(topnParsed === "empty" || topnParsed === "invalid" ? {} : { topn: topnParsed as number }),
           }
         : undefined,
     );
@@ -117,15 +131,37 @@ export default function Screen1Page() {
         lead="분석할 지역과 시설을 정의하고, 필요한 데이터를 업로드하여 AI 최적화 파이프라인을 시작합니다."
       />
 
-      <div className="flex-1 overflow-y-auto overflow-x-hidden min-h-0 pr-2 mt-4">
-        <div className="max-w-5xl mx-auto flex flex-col gap-8 pb-12">
-          {/* ── Step 1 · 데이터 출처 ─────────────────────────────────── */}
-          <Section
-            no={1}
-            title="데이터 및 문서 업로드"
-            desc="분석에 필요한 공간 데이터·법규 문서를 올리거나, DB 에 이미 있는 도메인을 고릅니다."
-          >
-            <div className="p-8">
+      <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 mt-6 overflow-hidden min-h-0">
+        
+        {/* 전체 컨텐츠 스크롤 영역 */}
+        <div className="flex-1 overflow-y-auto p-8">
+          {/* Stepper */}
+          <div className="flex items-center justify-between mb-10 pb-6 border-b border-gray-100">
+            <div className="flex items-center gap-4 flex-1 pr-8">
+              <StepIcon current={activeStep} stepNum={1} label="데이터 및 문서 업로드" />
+              <div className="h-px flex-1 bg-gray-200" />
+              <StepIcon current={activeStep} stepNum={2} label="분석 기본 정보" />
+              <div className="h-px flex-1 bg-gray-200" />
+              <StepIcon current={activeStep} stepNum={3} label="AI 분석 모드 선택 및 실행" />
+            </div>
+            <div className="shrink-0 text-[11px] font-bold text-gray-500 uppercase tracking-widest px-4 py-1.5 bg-gray-50 rounded-full border border-gray-200">
+              Step {activeStep} of 3
+            </div>
+          </div>
+
+          {/* ── Step 1 ── */}
+          {activeStep === 1 && (
+            <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">데이터 및 문서 업로드</h2>
+
+                </div>
+              </div>
+
               {dataSource === null && <SourcePicker onPick={setDataSource} />}
 
               {dataSource === "upload" && (
@@ -144,8 +180,7 @@ export default function Screen1Page() {
                     />
                     <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
                       업로드 API 7개가 전부 <code className="font-mono">domain</code> 을 요구합니다.
-                      먼저 정해야 아래 상자가 열립니다 — 기본값을 두면 다른 지자체 파일이
-                      엉뚱한 폴더로 조용히 들어갑니다.
+                      먼저 정해야 아래 상자가 열립니다 — 기본값을 두면 다른 지자체 파일이 엉뚱한 폴더로 조용히 들어갑니다.
                     </p>
                   </div>
                   <p className="mb-4 text-sm text-gray-500">
@@ -153,7 +188,7 @@ export default function Screen1Page() {
                     데이터는 <code className="font-mono text-xs">.../data/</code> 로 갑니다 —
                     파이프라인이 실제로 읽는 폴더입니다.
                   </p>
-                  <div className="-mx-8 -mb-8">
+                  <div className="-mx-2 -mb-2">
                     <UploadPanel domain={domain} facilityType={facility} />
                   </div>
                 </div>
@@ -165,95 +200,121 @@ export default function Screen1Page() {
                   <PresetPicker selected={presetDomain} onSelect={setPresetDomain} />
                 </div>
               )}
-            </div>
-          </Section>
 
-          {/* ── Step 2 · 분석 기본 정보 ──────────────────────────────── */}
-          <Section
-            no={2}
-            title="분석 기본 정보"
-            desc="어떤 지역의 어떤 시설을 분석할지, 후보를 몇 개 뽑을지 정합니다."
-          >
-            <div className="p-8 grid gap-6 sm:grid-cols-2">
-              <div className="sm:col-span-2 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
-                <span className="text-gray-500">분석 도메인 </span>
-                {domain ? (
-                  <b className="font-mono text-gray-900">{domain}</b>
-                ) : (
-                  <span className="text-gray-400">— Step 1 에서 먼저 정합니다</span>
-                )}
+              {step1Error && (
+                <div className="mt-2 p-4 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">
+                  {step1Error}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Step 2 ── */}
+          {activeStep === 2 && (
+            <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">분석 기본 정보</h2>
+                  <p className="text-[14px] text-gray-500">어떤 지역의 어떤 시설을 분석할지, 후보를 몇 개 뽑을지 정합니다.</p>
+                </div>
               </div>
 
-              <Field
-                label="시설 유형 (조례 업로드에 쓰입니다)"
-                placeholder="예) 흡연부스"
-                value={facility}
-                onChange={setFacility}
-                note="조례를 벡터 DB에 넣을 때 이 값으로 태깅합니다. 비워두면 서버가 STEP1 감리 확정본에서 읽고, 그것도 없으면 400을 돌려줍니다 — 프런트가 임의로 채우지 않습니다."
-              />
-              <Field
-                label="분석 지역 (선택)"
-                placeholder="예) 서울특별시 용산구"
-                value={region}
-                onChange={setRegion}
-                note={
-                  isFull
-                    ? "⚠ 이 칸은 서버로 안 갑니다. full 모드에서 지역을 정하는 것은 아래 「사용자 의도」 문장입니다 — STEP0.5 가 거기서 읽습니다."
-                    : "⚠ 실행 API 는 이 값을 받지 않습니다 (fixture·hitl 은 실행 조건이 픽스처에서 옵니다)."
-                }
-              />
+              <div className="grid gap-6 sm:grid-cols-2">
+                <div className="sm:col-span-2 rounded-lg bg-gray-50 border border-gray-200 px-4 py-3 text-sm">
+                  <span className="text-gray-500">분석 도메인 </span>
+                  {domain ? (
+                    <b className="font-mono text-gray-900">{domain}</b>
+                  ) : (
+                    <span className="text-gray-400">— Step 1 에서 먼저 정합니다</span>
+                  )}
+                </div>
 
-              <div className="sm:col-span-2">
                 <Field
-                  label={
-                    isFull ? "사용자 의도 (필수)" : "사용자 의도 (이 모드에서는 전송되지 않음)"
-                  }
-                  placeholder="예) 용산구 흡연부스 부지 선정"
-                  value={intent}
-                  onChange={setIntent}
-                  disabled={!isFull}
+                  label="시설 유형 (조례 업로드에 쓰입니다)"
+                  placeholder="예) 흡연부스"
+                  value={facility}
+                  onChange={setFacility}
+                  note="조례를 벡터 DB에 넣을 때 이 값으로 태깅합니다. 비워두면 서버가 STEP1 감리 확정본에서 읽고, 그것도 없으면 400을 돌려줍니다 — 프런트가 임의로 채우지 않습니다."
+                />
+                <Field
+                  label="분석 지역 (선택)"
+                  placeholder="예) 서울특별시 용산구"
+                  value={region}
+                  onChange={setRegion}
                   note={
                     isFull
-                      ? "STEP0.5 가 이 문장에서 시설·지역을 확정합니다. 200자까지, '--' 로 시작할 수 없습니다."
-                      : "fixture·hitl 에 이 값을 같이 보내면 서버가 400 을 돌려줍니다 — 그 두 모드의 실행 조건은 <도메인>_FIX/기준값.json 에서 옵니다."
+                      ? "⚠ 이 칸은 서버로 안 갑니다. full 모드에서 지역을 정하는 것은 아래 「사용자 의도」 문장입니다 — STEP0.5 가 거기서 읽습니다."
+                      : "⚠ 실행 API 는 이 값을 받지 않습니다 (fixture·hitl 은 실행 조건이 픽스처에서 옵니다)."
                   }
                 />
-              </div>
 
-              <div className="sm:col-span-2">
-                <Field
-                  label={
-                    isFull
-                      ? "입지 선정 개수 (Top-N)"
-                      : "입지 선정 개수 (이 모드에서는 전송되지 않음)"
-                  }
-                  placeholder={String(TOPN_DEFAULT)}
-                  value={topnText}
-                  onChange={setTopnText}
-                  disabled={!isFull}
-                  inputMode="numeric"
-                  note={
-                    isFull
-                      ? `STEP4 가 뽑을 후보 개수입니다 — 화면4 목록의 길이이자 화면5 가 고를 수 있는 후보의 수입니다. 비우면 서버 기본값 ${TOPN_DEFAULT} 이 쓰입니다. 범위 1~${TOPN_MAX}.`
-                      : `fixture·hitl 은 개수를 픽스처가 정합니다. 같이 보내면 400 입니다.`
-                  }
-                />
-                {isFull && topnParsed === "invalid" && (
-                  <p className="mt-1.5 text-xs font-medium text-red-600">
-                    정수 1~{TOPN_MAX} 만 됩니다. 지금 값은 서버가 400 으로 막습니다.
-                  </p>
+                <div className="sm:col-span-2">
+                  <Field
+                    label={
+                      isFull ? "사용자 의도 (필수)" : "사용자 의도 (이 모드에서는 전송되지 않음)"
+                    }
+                    placeholder="예) 용산구 흡연부스 부지 선정"
+                    value={intent}
+                    onChange={setIntent}
+                    disabled={!isFull}
+                    note={
+                      isFull
+                        ? "STEP0.5 가 이 문장에서 시설·지역을 확정합니다. 200자까지, '--' 로 시작할 수 없습니다."
+                        : "fixture·hitl 에 이 값을 같이 보내면 서버가 400 을 돌려줍니다 — 그 두 모드의 실행 조건은 <도메인>_FIX/기준값.json 에서 옵니다."
+                    }
+                  />
+                </div>
+
+                <div className="sm:col-span-2">
+                  <Field
+                    label={
+                      isFull
+                        ? "입지 선정 개수 (Top-N)"
+                        : "입지 선정 개수 (이 모드에서는 전송되지 않음)"
+                    }
+                    placeholder={String(TOPN_DEFAULT)}
+                    value={topnText}
+                    onChange={setTopnText}
+                    disabled={!isFull}
+                    inputMode="numeric"
+                    note={
+                      isFull
+                        ? `STEP4 가 뽑을 후보 개수입니다 — 화면4 목록의 길이이자 화면5 가 고를 수 있는 후보의 수입니다. 비우면 서버 기본값 ${TOPN_DEFAULT} 이 쓰입니다. 범위 1~${TOPN_MAX}.`
+                        : `fixture·hitl 은 개수를 픽스처가 정합니다. 같이 보내면 400 입니다.`
+                    }
+                  />
+                  {isFull && topnParsed === "invalid" && (
+                    <p className="mt-1.5 text-xs font-medium text-red-600">
+                      정수 1~{TOPN_MAX} 만 됩니다. 지금 값은 서버가 400 으로 막습니다.
+                    </p>
+                  )}
+                </div>
+
+                {step2Error && (
+                  <div className="sm:col-span-2 p-4 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800">
+                    {step2Error}
+                  </div>
                 )}
               </div>
             </div>
-          </Section>
+          )}
 
-          {/* ── Step 3 · 모드 · 실행 ─────────────────────────────────── */}
-          <Section
-            no={3}
-            title="AI 분석 모드 선택 및 실행"
-            desc="파이프라인을 실행할 방식을 선택합니다."
-          >
-            <div className="p-8">
+          {/* ── Step 3 ── */}
+          {activeStep === 3 && (
+            <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
+                  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                </div>
+                <div className="flex items-baseline gap-3">
+                  <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">AI 분석 모드 선택 및 실행</h2>
+                  <p className="text-[14px] text-gray-500">파이프라인을 실행할 방식을 선택합니다.</p>
+                </div>
+              </div>
+
               {dataSource === "upload" ? (
                 <FullModeNotice />
               ) : (
@@ -261,45 +322,65 @@ export default function Screen1Page() {
               )}
 
               {inputError && (
-                <div className="mt-6 p-4 rounded-xl border border-amber-300 bg-amber-50 text-sm text-amber-900">
+                <div className="mt-2 p-4 rounded-xl border border-amber-300 bg-amber-50 text-sm text-amber-900">
                   {inputError}
                 </div>
               )}
 
               {error && (
-                <div className="mt-6 p-4 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800 flex items-start gap-3">
+                <div className="mt-2 p-4 rounded-xl border border-red-200 bg-red-50 text-sm text-red-800 flex items-start gap-3">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
                   <div className="whitespace-pre-wrap break-all font-mono text-xs">{error}</div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
 
-              <div className="mt-8 pt-6 border-t border-gray-100 flex flex-col items-center justify-center">
-                <button
-                  type="button"
-                  onClick={onRun}
-                  disabled={starting || dataSource === null}
-                  className="w-full sm:w-auto min-w-[320px] px-8 py-4 rounded-xl font-bold text-white text-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-3"
-                >
-                  {starting ? (
-                    <>
-                      <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-                      파이프라인 가동 중...
-                    </>
-                  ) : (
-                    <>
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
-                      분석 시작하기
-                    </>
-                  )}
-                </button>
-                {dataSource === null && (
-                  <p className="mt-3 text-xs text-gray-500">
-                    Step 1 에서 데이터 출처를 먼저 고르세요 — 출처가 쓸 수 있는 모드를 정합니다.
-                  </p>
+        {/* 바닥 내비게이션 바 */}
+        <div className="flex items-center justify-between px-8 py-5 border-t border-gray-100 bg-white shrink-0">
+          <button 
+             onClick={() => setActiveStep(activeStep - 1)}
+             disabled={activeStep === 1 || starting}
+             className="px-6 py-2.5 rounded-xl font-bold text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-30 transition-colors"
+          >
+            <div className="flex items-center gap-2 text-sm">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+              이전 단계
+            </div>
+          </button>
+          
+          {activeStep === 3 ? (
+            <button 
+               onClick={onRun}
+               disabled={starting || dataSource === null}
+               className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-200 disabled:bg-gray-300 disabled:shadow-none"
+            >
+              <div className="flex items-center gap-2 text-sm">
+                {starting ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
+                    파이프라인 가동 중...
+                  </>
+                ) : (
+                  <>
+                    분석 시작하기
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+                  </>
                 )}
               </div>
-            </div>
-          </Section>
+            </button>
+          ) : (
+            <button 
+               onClick={activeStep === 1 ? handleStep1Confirm : handleStep2Confirm}
+               className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-md shadow-blue-200"
+            >
+              <div className="flex items-center gap-2 text-sm">
+                다음 단계 확인
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </div>
+            </button>
+          )}
         </div>
       </div>
     </PageBody>
@@ -322,30 +403,21 @@ function parseTopn(text: string): number | "empty" | "invalid" {
   return n;
 }
 
-function Section({
-  no,
-  title,
-  desc,
-  children,
-}: {
-  no: number;
-  title: string;
-  desc: string;
-  children: React.ReactNode;
-}) {
+function StepIcon({ current, stepNum, label }: { current: number; stepNum: number; label: string }) {
+  const isActive = current === stepNum;
+  const isPast = current > stepNum;
+  
   return (
-    <section className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-      <div className="px-8 py-5 border-b border-gray-100 bg-gray-50/50">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-full bg-blue-100 text-blue-700 font-bold text-sm">
-            {no}
-          </div>
-          <h2 className="text-lg font-bold text-gray-800">{title}</h2>
-        </div>
-        <p className="mt-1 ml-11 text-sm text-gray-500">{desc}</p>
+    <div className={`flex items-center gap-3 transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}>
+      <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[13px] font-bold shadow-sm ${
+        isActive ? 'bg-blue-600 text-white' : isPast ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
+      }`}>
+        {isPast ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg> : stepNum}
       </div>
-      {children}
-    </section>
+      <span className={`text-[14px] font-bold ${isActive ? 'text-blue-900' : 'text-gray-500'}`}>
+        {label}
+      </span>
+    </div>
   );
 }
 
@@ -375,13 +447,10 @@ function SourcePicker({ onPick }: { onPick: (s: DataSource) => void }) {
         </div>
         <h3 className="text-lg font-bold text-gray-800 mb-2">실제 데이터 업로드</h3>
         <p className="text-sm text-gray-500 text-center">
-          SHP·CSV 데이터와 조례 문서를 직접 올려
+          분석하고 싶은 새로운 지역의 공간 데이터와 규정 문서를
           <br />
-          STEP0(프로파일링)부터 돌립니다.
+          직접 등록하여 처음부터 꼼꼼하게 분석을 시작합니다.
         </p>
-        <span className="mt-3 font-mono text-[11px] text-gray-500 bg-black/5 px-2 py-0.5 rounded-md">
-          mode=full
-        </span>
       </button>
 
       <button
@@ -394,13 +463,10 @@ function SourcePicker({ onPick }: { onPick: (s: DataSource) => void }) {
         </div>
         <h3 className="text-lg font-bold text-gray-800 mb-2">프리셋 모드 (DB 데이터)</h3>
         <p className="text-sm text-gray-500 text-center">
-          서버에 이미 올라가 있는 도메인 중
+          시스템에 이미 잘 정제되어 저장된 지역 데이터를 골라
           <br />
-          하나를 골라 빠르게 돌립니다.
+          즉시 분석을 실행하고 결과를 빠르게 확인합니다.
         </p>
-        <span className="mt-3 font-mono text-[11px] text-gray-500 bg-black/5 px-2 py-0.5 rounded-md">
-          mode=fixture · hitl
-        </span>
       </button>
     </div>
   );
