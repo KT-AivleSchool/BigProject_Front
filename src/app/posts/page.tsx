@@ -147,20 +147,45 @@ function PostsPageContent() {
         {/* 상단 타이틀 영역 */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b pb-6 mb-6">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
-              <span>📋</span> 공공 안건 및 소통 게시판
-            </h1>
-            <p className="text-xs text-gray-500 mt-1">
-              입지 선정 및 스마트시티 안건 관련 자유로운 정보 공유 및 수렴 공간입니다.
-            </p>
+            {isMineFilter ? (
+              <>
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
+                  <span>👤</span> 내가 작성한 안건 관리
+                </h1>
+                <p className="text-xs text-gray-500 mt-1">
+                  본인이 등록한 구정 공공 안건을 모아보고 상세히 관리하는 마이페이지 모드입니다.
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold tracking-tight text-gray-900 flex items-center gap-2">
+                  <span>📋</span> 공공 안건 및 소통 게시판
+                </h1>
+                <p className="text-xs text-gray-500 mt-1">
+                  입지 선정 및 스마트시티 안건 관련 자유로운 정보 공유 및 수렴 공간입니다.
+                </p>
+              </>
+            )}
           </div>
-          <button
-            onClick={handleCreateClick}
-            className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2.5 text-xs font-bold text-white shadow-md hover:bg-primary/90 transition-all shrink-0 self-start md:self-auto"
-          >
-            <span>✏️</span> 새 안건 작성
-          </button>
+
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            {isMineFilter && (
+              <a
+                href="/posts"
+                className="flex items-center gap-1.5 rounded-xl border border-gray-300 bg-white px-3.5 py-2 text-xs font-bold text-gray-700 shadow-sm hover:bg-gray-100 transition-all"
+              >
+                <span>🌐</span> 전체 게시판 보기
+              </a>
+            )}
+            <button
+              onClick={handleCreateClick}
+              className="flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow-md hover:bg-primary/90 transition-all"
+            >
+              <span>✏️</span> 새 안건 작성
+            </button>
+          </div>
         </div>
+
 
         {/* 검색 폼 영역 */}
         <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm border border-gray-200">
