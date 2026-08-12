@@ -40,29 +40,41 @@ export async function fetchPosts(
   page: number = 1,
   limit: number = 10,
   sortBy: string = "created_at",
-  order: string = "desc"
+  order: string = "desc",
+  searchType: string = "title_content",
+  searchQuery: string = ""
 ): Promise<PostListResponse> {
   const headers = getAuthHeader();
-  const res = await fetch(
-    `${API_BASE}/posts?page=${page}&limit=${limit}&sort_by=${sortBy}&order=${order}`,
-    {
-      headers: {
-        ...headers,
-      },
-      cache: "no-store",
-    }
-  );
+  const params = new URLSearchParams({
+    page: page.toString(),
+    limit: limit.toString(),
+    sort_by: sortBy,
+    order: order,
+    search_type: searchType,
+  });
 
+  if (searchQuery && searchQuery.trim()) {
+    params.append("search_query", searchQuery.trim());
+  }
+
+  const res = await fetch(`${API_BASE}/posts?${params.toString()}`, {
+    headers: {
+      ...headers,
+    },
+    cache: "no-store",
+  });
 
   if (!res.ok) {
     if (res.status === 401) {
       throw new Error("UNAUTHORIZED");
     }
-    throw new Error("게시글 목록을 불러오는데 실패했습니다.");
+    const errData = await res.json().catch(() => ({}));
+    throw new Error(errData.detail || "게시글 목록을 불러오지 못했습니다.");
   }
 
   return res.json();
 }
+
 
 /**
  * 게시글 상세 조회

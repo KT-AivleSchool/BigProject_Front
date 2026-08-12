@@ -27,15 +27,26 @@ export default function PostsPage() {
   const [sortBy, setSortBy] = useState<string>("created_at");
   const [order, setOrder] = useState<"asc" | "desc">("desc");
 
+  // 검색 상태 (검색 유형: title_content, title, content, author)
+  const [searchType, setSearchType] = useState<string>("title_content");
+  const [searchInput, setSearchInput] = useState<string>("");
+  const [activeSearch, setActiveSearch] = useState<{ type: string; query: string }>({ type: "title_content", query: "" });
+
   // arca.live 스타일 특정 페이지 직접 이동 상태
   const [jumpModalOpen, setJumpModalOpen] = useState(false);
   const [jumpInput, setJumpInput] = useState("");
 
   useEffect(() => {
-    loadPosts(page, sortBy, order);
-  }, [page, sortBy, order]);
+    loadPosts(page, sortBy, order, activeSearch.type, activeSearch.query);
+  }, [page, sortBy, order, activeSearch]);
 
-  const loadPosts = async (currentPage: number, currentSortBy = sortBy, currentOrder = order) => {
+  const loadPosts = async (
+    currentPage: number,
+    currentSortBy = sortBy,
+    currentOrder = order,
+    sType = activeSearch.type,
+    sQuery = activeSearch.query
+  ) => {
     setLoading(true);
     setError(null);
 
@@ -47,7 +58,7 @@ export default function PostsPage() {
     }
 
     try {
-      const data = await fetchPosts(currentPage, limit, currentSortBy, currentOrder);
+      const data = await fetchPosts(currentPage, limit, currentSortBy, currentOrder, sType, sQuery);
       setPosts(data.posts);
       setTotal(data.total);
     } catch (err: any) {
@@ -60,6 +71,20 @@ export default function PostsPage() {
       setLoading(false);
     }
   };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setPage(1);
+    setActiveSearch({ type: searchType, query: searchInput });
+  };
+
+  const handleClearSearch = () => {
+    setSearchInput("");
+    setSearchType("title_content");
+    setPage(1);
+    setActiveSearch({ type: "title_content", query: "" });
+  };
+
 
   const handleSort = (column: string) => {
     if (sortBy === column) {
@@ -124,6 +149,89 @@ export default function PostsPage() {
             <span>✏️</span> 새 안건 작성
           </button>
         </div>
+
+        {/* 검색 폼 영역 */}
+        <div className="mb-6 rounded-2xl bg-white p-4 shadow-sm border border-gray-200">
+          <form onSubmit={handleSearchSubmit} className="flex flex-col sm:flex-row items-center gap-2">
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              <select
+                value={searchType}
+                onChange={(e) => setSearchType(e.target.value)}
+                className="rounded-xl border border-gray-300 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 focus:border-primary focus:bg-white focus:outline-none shrink-0 cursor-pointer"
+              >
+                <option value="title_content">제목 + 내용</option>
+                <option value="title">제목</option>
+                <option value="content">내용</option>
+                <option value="author">작성자</option>
+              </select>
+            </div>
+
+            <div className="relative flex-1 w-full">
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="안건 제목, 내용 또는 작성자 키워드를 입력하세요..."
+                className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs font-semibold text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all pr-8"
+              />
+              {searchInput && (
+                <button
+                  type="button"
+                  onClick={() => setSearchInput("")}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs font-bold"
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+              <button
+                type="submit"
+                className="flex-1 sm:flex-none flex items-center justify-center gap-1.5 rounded-xl bg-primary px-5 py-2 text-xs font-bold text-white shadow hover:bg-primary/90 transition-colors"
+              >
+                <span>🔍</span> 검색
+              </button>
+              {activeSearch.query && (
+                <button
+                  type="button"
+                  onClick={handleClearSearch}
+                  className="rounded-xl border border-gray-300 bg-gray-100 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-200 transition-colors"
+                >
+                  전체보기
+                </button>
+              )}
+            </div>
+          </form>
+
+          {/* 검색 상태 가이드 배지 */}
+          {activeSearch.query && (
+            <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2 text-gray-600 font-medium">
+                <span className="rounded-md bg-primary/10 px-2 py-0.5 font-bold text-primary">
+                  {activeSearch.type === "title"
+                    ? "제목"
+                    : activeSearch.type === "content"
+                    ? "내용"
+                    : activeSearch.type === "author"
+                    ? "작성자"
+                    : "제목 + 내용"}
+                </span>
+                <span>
+                  &apos;<strong className="text-gray-900">{activeSearch.query}</strong>&apos; 검색 결과: 총{" "}
+                  <strong className="text-primary font-bold">{total}</strong>건
+                </span>
+              </div>
+              <button
+                onClick={handleClearSearch}
+                className="text-gray-400 hover:text-gray-600 underline text-[11px]"
+              >
+                검색 조건 해제
+              </button>
+            </div>
+          )}
+        </div>
+
 
         {/* 미인증 상태 처리 */}
         {error === "UNAUTHORIZED" ? (
