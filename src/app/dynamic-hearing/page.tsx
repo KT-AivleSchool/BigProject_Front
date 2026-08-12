@@ -780,6 +780,11 @@ export default function DynamicHearingPage() {
         lead="이해관계자를 생성해 다자간 토론을 진행합니다."
       />
 
+      <div className="mt-4 flex items-center justify-between gap-4">
+        <span className="rounded-full border border-hairline bg-black/[0.03] px-3 py-1 text-[12px] font-semibold text-ink-secondary">
+          토론 방식 B — 다인(N명) 토론
+        </span>
+      </div>
       {/* 어느 점으로 토론하는지 먼저 밝힌다. 못 이었으면 여기서 멈춘다. */}
       <div className="mt-4">
         <SitePanel site={site} />
@@ -1001,8 +1006,6 @@ function SitePanel({ site }: { site: ReturnType<typeof useSelectedSite> }) {
       </div>
     );
   }
-
-  if (!selected) return null;
 
   return null;
 }

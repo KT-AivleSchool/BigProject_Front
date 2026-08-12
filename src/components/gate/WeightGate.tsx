@@ -11,7 +11,7 @@
  * 🔴 **슬라이더는 `-1 ~ +1` 을 그대로 보낸다.** 프런트가 `{seed_weight, direction}`
  *    으로 분해하지 않는다. 분해하면 (1) `normalize_matrix` 의 cost 반전과 이중으로
  *    걸려 조용히 뒤집히고 (2) `direction_source` 가 산출물에서 사라진다.
- *    분해는 `apply_weight_hitl` 이 경계에서 한다.
+ *    분해는 `apply_weight_hitl` 이 경계에서 경계한다.
  *
  * 🔴 **0 은 "그 지표 제외"** 다. 그리고 전 지표 절대값 합이 0 이면 서버가 400 으로
  *    막는다 — 안 막으면 전 후보 점수가 0 이 된다(백엔드가 겪은 사고).
@@ -24,7 +24,7 @@
  * (흰 판·큰 글씨), **오른쪽 = 감리·제안 근거**(옅은 판·작은 글씨).
  * 세로 길이도 카드당 절반이 된다.
  */
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { GateFrame, QuestionCard, Fact } from "./GateFrame";
 import { fixed, meters } from "@/lib/omnisite/format";
 import { isWeightQuestion } from "@/lib/omnisite/gate";
@@ -45,15 +45,12 @@ export function WeightGate({
   gate,
   runId,
   labels,
+  submitRef,
 }: {
   gate: RunGate;
   runId: string;
-  /**
-   * 지표 이름 짓기용. **없으면 id 로 떨어진다** — 지어내지 않는다.
-   * 게이트B 시점에는 `reviewed`(STEP1)·`clean_report`(STEP2)가 이미 있으므로
-   * 실제로는 거의 항상 채워진다(실측 r_20260805_013).
-   */
   labels: Map<string, DatasetLabel>;
+  submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
 }) {
   const { answerWeight } = useRun();
 
@@ -154,6 +151,13 @@ export function WeightGate({
     }
   }
 
+
+  useEffect(() => {
+    if (submitRef) {
+      submitRef.current = onSubmit;
+    }
+  }, [submitRef, radius, slider, acked, onSubmit]);
+
   return (
     <GateFrame
       gate={gate}
@@ -161,57 +165,31 @@ export function WeightGate({
       submitting={submitting}
       error={error}
       onSubmit={() => void onSubmit()}
-      submitLabel="이 값으로 계속 진행"
-      lead={
-        <div className="flex flex-col gap-1">
-          <p className="text-sm font-bold text-gray-900">AI가 추천하는 집계 반경 및 가중치 제안값입니다.</p>
-          <p className="text-[13px] text-gray-600">제안값을 검토하시고, 필요에 따라 슬라이더를 조정하여 최종 확정해 주세요.</p>
-        </div>
-      }
+      submitLabel="가중치 확정 및 계산하기"
+      hideTitle={true}
     >
-      {/* ── 슬라이더 읽는 법 ───────────────────────────────
-          카드마다 되풀이하면 여섯 번 읽어야 한다. 규칙은 전 지표 공통이므로
-          맨 위에 한 번만 둔다. */}
-      <div className="rounded-xl border border-gray-100 bg-gray-50/80 p-5 shadow-sm">
-        <h4 className="text-[11px] font-bold text-gray-500 uppercase tracking-wider mb-3">가중치 슬라이더 조작 안내</h4>
-        <div className="grid gap-x-8 gap-y-3 text-[13px] sm:grid-cols-3">
-          <Legend tone="cost" head="−1 ~ 0 미만 (부정적 영향)">
-            해당 지표의 값이 클수록 최종 분석 점수가 <b>낮아지도록</b> 반영됩니다.
-          </Legend>
-          <Legend tone="zero" head="0 (지표 제외)">
-            해당 지표를 분석에서 <b>제외</b>합니다.
-          </Legend>
-          <Legend tone="benefit" head="0 초과 ~ +1 (긍정적 영향)">
-            해당 지표의 값이 클수록 최종 분석 점수가 <b>올라가도록</b> 반영됩니다.
-          </Legend>
-        </div>
-      </div>
 
       {/* ── 요약 띠 ──────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm text-[13px]">
-        <Metric label="지표" value={`${questions.length}개`} />
-        <Metric label="슬라이더 절대값 합" value={fixed(sum, 3)} />
-        <Metric
-          label="제안과 다르게 정한 지표"
-          value={`${changed.length}개`}
-          note={changed.length > 0 ? changed.map((q) => q.indicator_id).join(", ") : undefined}
-        />
-        {sum === 0 && (
-          <span className="rounded bg-red-50 px-2 py-1 text-red-700">
-            🔴 합이 0 이면 모든 후보 점수가 0 이 됩니다 — 서버가 400 으로 되돌립니다.
-          </span>
-        )}
-        {missingRadius.length > 0 && (
-          <span className="rounded bg-red-50 px-2 py-1 text-red-700">
-            🔴 집계 반경이 빈 지표 {missingRadius.length}개(
-            {missingRadius.map((q) => q.indicator_id).join(", ")}) — 서버가 400 으로 되돌립니다.
-          </span>
-        )}
-      </div>
+      {(sum === 0 || missingRadius.length > 0) && (
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-red-200 bg-red-50 px-5 py-4 shadow-sm text-[13px]">
+          {sum === 0 && (
+            <span className="text-red-700 font-bold">
+              🔴 합이 0 이면 모든 후보 점수가 0 이 됩니다 — 가중치를 조절해주세요.
+            </span>
+          )}
+          {missingRadius.length > 0 && (
+            <span className="text-red-700 font-bold">
+              🔴 집계 반경이 빈 지표 {missingRadius.length}개(
+              {missingRadius.map((q) => q.indicator_id).join(", ")}) — 집계 반경을 입력해주세요.
+            </span>
+          )}
+        </div>
+      )}
 
-      {questions.map((q) => (
+      {questions.map((q, index) => (
         <WeightCard
           key={q.indicator_id}
+          index={index + 1}
           q={q}
           name={indicatorLabel(q.indicator_id, q.components ?? {}, labels)}
           radius={radius[q.indicator_id] ?? ""}
@@ -260,6 +238,7 @@ function Legend({
 }
 
 function WeightCard({
+  index,
   q,
   name,
   radius,
@@ -269,6 +248,7 @@ function WeightCard({
   onSlider,
   onAck,
 }: {
+  index: number;
   q: GateWeightQuestion;
   name: string;
   radius: string;
@@ -281,133 +261,140 @@ function WeightCard({
 }) {
   const v = slider ?? 0;
   const cost = v < 0;
-  const radiusChanged =
-    q.radius_required &&
-    radius.trim() !== (q.radius_proposed === null ? "" : String(q.radius_proposed));
-  const sliderChanged = (slider ?? null) !== (q.slider_proposed ?? null);
+  const [showHelp, setShowHelp] = useState(false);
 
   return (
     <QuestionCard
-      id={q.indicator_id}
-      editable
+      id={String(index).padStart(2, "0")}
+      confirmed={!!acked}
       warn={!!q.conflict}
-      title={name}
-      /* 지표 종류는 이름이 아니라 **분류**다. 제목 자리에 두면 「point_sum」 이
-         시설 이름인 것처럼 읽힌다 — 오른쪽 끝에 배지로 뺀다. */
-      aside={
-        <span className="flex items-center gap-2">
-          {(radiusChanged || sliderChanged) && (
-            <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[11px] font-medium text-primary">
-              제안과 다름
-            </span>
-          )}
-          <span className="tnum rounded bg-black/[0.04] px-1.5 py-0.5 text-[11px] text-ink-secondary">
-            {q.indicator_kind}
-          </span>
-        </span>
-      }
-    >
-      {q.rationale && (
-        <p className="mt-1.5 text-[12px] leading-relaxed text-ink-secondary">{q.rationale}</p>
-      )}
-
-      {/* ── 정할 값 — 반경과 슬라이더를 **한 줄에** 나란히 ──────────── */}
-      <div className="mt-3 flex flex-wrap items-end gap-x-8 gap-y-4 rounded-xl border border-gray-100 bg-gray-50/50 p-5">
-        {/* [R] 집계 반경 */}
-        <div className="shrink-0">
-          <label className="block text-[12px] font-bold text-gray-700 mb-1.5" htmlFor={`r-${q.indicator_id}`}>
-            집계 반경
-          </label>
-          {q.radius_required ? (
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                <input
-                  id={`r-${q.indicator_id}`}
-                  type="number"
-                  min={1}
-                  max={5000}
-                  step={1}
-                  value={radius}
-                  onChange={(e) => onRadius(e.target.value)}
-                  className="w-24 rounded-lg border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-gray-400 pointer-events-none">m</span>
-              </div>
-              <span className="text-[11px] text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md">정수 1~5000</span>
-            </div>
-          ) : (
-            <p className="mt-1.5 max-w-[220px] text-[12px] leading-relaxed text-gray-500">
-              행정동 단위 지표라 <b>반경이 없습니다</b>.
-            </p>
-          )}
-        </div>
-
-        {/* [W] 가중치 슬라이더 */}
-        <div className="min-w-[320px] flex-1">
-          <div className="flex items-end justify-between gap-2 mb-2">
-            <span className="text-[12px] font-bold text-gray-700">가중치 (중요도)</span>
-            <span className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-md shadow-sm border border-gray-100">
-              <b
-                className={`font-mono text-[16px] leading-none tracking-tight ${
-                  v === 0 ? "text-gray-400" : cost ? "text-red-600" : "text-emerald-600"
-                }`}
-              >
-                {signed(v)}
-              </b>
-              <span className="text-[11px] font-medium text-gray-500">
-                {v === 0 ? "지표 제외됨" : dirWord(cost ? "cost" : "benefit")}
-              </span>
+      title={
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center flex-wrap gap-2">
+            <span className="leading-snug">
+              {name}
             </span>
           </div>
+        </div>
+      }
+    >
+      <button 
+        type="button"
+        onClick={() => setShowHelp(!showHelp)}
+        className="absolute top-3 right-3 text-gray-400 hover:text-blue-500 transition-colors bg-white rounded-full p-1 z-10"
+        title="AI 추천 및 분석 보기"
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      </button>
 
-          <SignedSlider id={`w-${q.indicator_id}`} v={v} onChange={onSlider} />
+      <div className="mt-3 sm:mt-0 flex flex-col gap-4 pr-8">
+        {showHelp && (
+          <div className="text-[11.5px] leading-snug bg-blue-50/50 px-4 py-3 rounded-xl border border-blue-100 flex flex-col gap-2.5 animate-in fade-in zoom-in-95">
+            <div className="flex flex-wrap gap-4 text-[12px]">
+              <span className="font-bold text-blue-700">
+                AI 추천 중요도: {typeof q.slider_proposed === "number" ? (q.slider_proposed > 0 ? `+${q.slider_proposed.toFixed(2)}` : q.slider_proposed.toFixed(2)) : "없음"}
+              </span>
+              {q.radius_required && (
+                <span className="font-bold text-blue-700">
+                  AI 추천 면적: {typeof q.radius_proposed === "number" ? `${q.radius_proposed}m` : "없음"}
+                </span>
+              )}
+            </div>
+            {(q.rationale || q.radius_rationale) && (
+              <div className="space-y-1">
+                {q.rationale && (
+                  <p>
+                    <b className="font-semibold text-blue-800 mr-1.5">분석:</b>
+                    <span className="text-gray-700">{polite(q.rationale)}</span>
+                  </p>
+                )}
+                {q.radius_rationale && (
+                  <p>
+                    <b className="font-semibold text-blue-800 mr-1.5">면적 근거:</b>
+                    <span className="text-gray-700">{polite(q.radius_rationale)}</span>
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
-          {slider === undefined && (
-            <p className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 border border-amber-200/50">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              제안값이 없어 임시로 0으로 표시됩니다. 슬라이더를 움직여 값을 확정해주세요.
-            </p>
+          <div className="flex flex-wrap items-end gap-x-6 gap-y-3 rounded-xl border border-gray-100 bg-gray-50/50 px-4 py-3">
+            {/* [R] 면적 */}
+            <div className="shrink-0">
+              <label className="block text-[12px] font-bold text-gray-700 mb-1.5" htmlFor={`r-${q.indicator_id}`}>
+                면적
+              </label>
+              {q.radius_required ? (
+                <div className="flex items-center gap-3">
+                  <div className="relative">
+                    <input
+                      id={`r-${q.indicator_id}`}
+                      type="number"
+                      min={1}
+                      max={5000}
+                      step={1}
+                      value={radius}
+                      disabled={acked}
+                      onChange={(e) => onRadius(e.target.value)}
+                      className={`w-24 rounded-lg border-gray-300 px-3 py-2 text-sm font-medium text-gray-900 shadow-sm transition-colors focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 ${acked ? "bg-gray-100 opacity-60 cursor-not-allowed" : "bg-white"}`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-gray-400 pointer-events-none">m</span>
+                  </div>
+                  <span className="text-[11px] text-gray-500 font-medium bg-gray-100 px-2 py-1 rounded-md">정수 1~5000</span>
+                </div>
+              ) : (
+                <p className="mt-1.5 max-w-[220px] text-[12px] leading-relaxed text-gray-500">
+                  행정동 단위 지표라 <b>반경이 없습니다</b>.
+                </p>
+              )}
+            </div>
+
+            {/* [W] 가중치 슬라이더 */}
+            <div className="min-w-[320px] flex-1">
+              <div className="flex items-end justify-between gap-2 mb-2">
+                <span className="text-[12px] font-bold text-gray-700">중요도</span>
+                <span className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-md shadow-sm border border-gray-100">
+                  <b
+                    className={`font-mono text-[16px] leading-none tracking-tight ${
+                      v === 0 ? "text-gray-400" : cost ? "text-red-600" : "text-emerald-600"
+                    }`}
+                  >
+                    {signed(v)}
+                  </b>
+                  <span className="text-[11px] font-medium text-gray-500">
+                    {v === 0 ? "지표 제외됨" : dirWord(cost ? "cost" : "benefit")}
+                  </span>
+                </span>
+              </div>
+
+              <SignedSlider id={`w-${q.indicator_id}`} v={v} disabled={acked} onChange={onSlider} />
+
+              {slider === undefined && (
+                <p className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-[11px] font-medium text-amber-800 border border-amber-200/50">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+                  제안값이 없어 임시로 0으로 표시됩니다. 슬라이더를 움직여 값을 확정해주세요.
+                </p>
+              )}
+            </div>
+          </div>
+
+          {q.conflict && (
+            <div className="mt-3 rounded border border-amber-400 bg-amber-100 px-3 py-2 text-[12px] text-amber-900">
+              <p className="leading-relaxed">
+                ⚠ <b>방향 판정이 갈렸습니다.</b> {q.conflict.geo_dataset} 은{" "}
+                <b>{q.conflict.geo_direction}</b>, {q.conflict.val_dataset} 은{" "}
+                <b>{q.conflict.val_direction}</b> 로 판정됐습니다. 엔진은 크기는 평균을 쓰고
+                방향은 val 쪽만 쓰므로, 그대로 두면 geo 쪽 판정이 조용히 사라집니다.
+                어느 쪽이 옳은지는 도메인마다 달라 규칙으로 정하지 않습니다.
+              </p>
+              <label className="mt-2 flex items-center gap-1.5 font-medium">
+                <input type="checkbox" checked={acked} onChange={(e) => onAck(e.target.checked)} />
+                슬라이더 부호로 방향을 확정했습니다
+              </label>
+            </div>
           )}
         </div>
-      </div>
-
-      {/* ── 감리·제안 (읽기) — 한 줄 ──────────────────────── */}
-      <div className="mt-4 flex flex-wrap items-stretch gap-3">
-        <Fact k="데이터 건수" v={q.data_note || "—"} />
-        <Fact k="감리 설정" v={dirWord(q.direction)} sub={`seed ${fixed(q.seed_weight, 3)}`} />
-        <Fact 
-          k="AI 제안값" 
-          v={
-            (q.radius_required ? `${meters(q.radius_proposed)} · ` : "") +
-            (typeof q.slider_proposed === "number" ? signed(q.slider_proposed, 2) : "—")
-          }
-          sub={q.radius_source ?? undefined} 
-        />
-      </div>
-      {q.radius_rationale && (
-        <div className="mt-3 rounded-lg bg-blue-50/50 p-3 border border-blue-100/50">
-          <p className="text-[12px] leading-relaxed text-blue-800/80">
-            <b className="font-semibold text-blue-900 mr-1.5">반경 산정 근거</b>
-            {q.radius_rationale}
-          </p>
-        </div>
-      )}
-
-      {q.conflict && (
-        <div className="mt-3 rounded border border-amber-400 bg-amber-100 px-3 py-2 text-[12px] text-amber-900">
-          <p className="leading-relaxed">
-            ⚠ <b>방향 판정이 갈렸습니다.</b> {q.conflict.geo_dataset} 은{" "}
-            <b>{q.conflict.geo_direction}</b>, {q.conflict.val_dataset} 은{" "}
-            <b>{q.conflict.val_direction}</b> 로 판정됐습니다. 엔진은 크기는 평균을 쓰고
-            방향은 val 쪽만 쓰므로, 그대로 두면 geo 쪽 판정이 조용히 사라집니다.
-            어느 쪽이 옳은지는 도메인마다 달라 규칙으로 정하지 않습니다.
-          </p>
-          <label className="mt-2 flex items-center gap-1.5 font-medium">
-            <input type="checkbox" checked={acked} onChange={(e) => onAck(e.target.checked)} />
-            슬라이더 부호로 방향을 확정했습니다
-          </label>
-        </div>
-      )}
     </QuestionCard>
   );
 }
@@ -426,10 +413,12 @@ function WeightCard({
 function SignedSlider({
   id,
   v,
+  disabled,
   onChange,
 }: {
   id: string;
   v: number;
+  disabled?: boolean;
   onChange: (v: number) => void;
 }) {
   const T = 16; // 썸 지름(px)
@@ -480,3 +469,18 @@ function SignedSlider({
   );
 }
 
+function polite(text?: string | null): string {
+  if (!text) return "";
+  return text
+    .replace(/이다(\.|\s|$)/g, "입니다$1")
+    .replace(/하다(\.|\s|$)/g, "합니다$1")
+    .replace(/된다(\.|\s|$)/g, "됩니다$1")
+    .replace(/한다(\.|\s|$)/g, "합니다$1")
+    .replace(/있다(\.|\s|$)/g, "있습니다$1")
+    .replace(/없다(\.|\s|$)/g, "없습니다$1")
+    .replace(/않다(\.|\s|$)/g, "않습니다$1")
+    .replace(/많다(\.|\s|$)/g, "많습니다$1")
+    .replace(/적다(\.|\s|$)/g, "적습니다$1")
+    .replace(/크다(\.|\s|$)/g, "큽니다$1")
+    .replace(/작다(\.|\s|$)/g, "작습니다$1");
+}
