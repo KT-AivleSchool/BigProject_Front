@@ -23,6 +23,11 @@ export default function PostsPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
+  // arca.live 스타일 특정 페이지 직접 이동 상태
+  const [jumpModalOpen, setJumpModalOpen] = useState(false);
+  const [jumpInput, setJumpInput] = useState("");
+
+
   useEffect(() => {
     loadPosts(page);
   }, [page]);
@@ -174,31 +179,159 @@ export default function PostsPage() {
               </table>
             </div>
 
-            {/* 페이징 컨트롤 */}
-            {totalPages > 1 && (
-              <div className="flex items-center justify-center gap-2 pt-4">
+            {/* arca.live 스타일 페이지네이션 컨트롤 */}
+            {totalPages > 0 && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 pb-2 border-t border-gray-200/80">
+                {/* 왼쪽: 전체 정보 */}
+                <div className="text-xs text-gray-500 font-medium">
+                  총 <span className="font-bold text-gray-900">{total}</span>개의 안건 (페이지{" "}
+                  <span className="font-bold text-primary">{page}</span> / {totalPages})
+                </div>
+
+                {/* 중앙: 10개 단위 arca.live 스타일 번호 목록 */}
+                <div className="flex items-center gap-1 overflow-x-auto py-1">
+                  {/* 맨 처음 페이지 (<<) */}
+                  <button
+                    disabled={page === 1}
+                    onClick={() => setPage(1)}
+                    title="첫 페이지로 이동"
+                    className="h-8 w-8 rounded-lg border bg-white text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-white transition-colors flex items-center justify-center shrink-0"
+                  >
+                    «
+                  </button>
+
+                  {/* 이전 10페이지 블록 (보이는 첫 페이지 - 10) */}
+                  <button
+                    disabled={Math.floor((page - 1) / 10) === 0}
+                    onClick={() => setPage(Math.max(1, (Math.floor((page - 1) / 10) - 1) * 10 + 1))}
+                    title="이전 10페이지"
+                    className="h-8 w-8 rounded-lg border bg-white text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-white transition-colors flex items-center justify-center shrink-0"
+                  >
+                    ‹
+                  </button>
+
+                  {/* n*10+1 ~ (n+1)*10 페이지 버튼 목록 */}
+                  {Array.from({ length: Math.min(10, totalPages - Math.floor((page - 1) / 10) * 10) }, (_, i) => {
+                    const pageNum = Math.floor((page - 1) / 10) * 10 + 1 + i;
+                    const isActive = pageNum === page;
+                    return (
+                      <button
+                        key={pageNum}
+                        onClick={() => setPage(pageNum)}
+                        className={`h-8 min-w-[32px] px-2 rounded-lg text-xs font-bold transition-all shrink-0 ${
+                          isActive
+                            ? "bg-primary text-white shadow-sm scale-105"
+                            : "border bg-white text-gray-700 hover:bg-gray-100"
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  {/* 다음 10페이지 블록 */}
+                  <button
+                    disabled={(Math.floor((page - 1) / 10) + 1) * 10 >= totalPages}
+                    onClick={() =>
+                      setPage(Math.min(totalPages, (Math.floor((page - 1) / 10) + 1) * 10 + 1))
+                    }
+                    title="다음 10페이지"
+                    className="h-8 w-8 rounded-lg border bg-white text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-white transition-colors flex items-center justify-center shrink-0"
+                  >
+                    ›
+                  </button>
+
+                  {/* 마지막 페이지 (>>) */}
+                  <button
+                    disabled={page >= totalPages}
+                    onClick={() => setPage(totalPages)}
+                    title="마지막 페이지로 이동"
+                    className="h-8 w-8 rounded-lg border bg-white text-xs font-bold text-gray-600 hover:bg-gray-100 disabled:opacity-30 disabled:hover:bg-white transition-colors flex items-center justify-center shrink-0"
+                  >
+                    »
+                  </button>
+                </div>
+
+                {/* 오른쪽: 페이지 이동 버튼 (직접 번호 입력 이동) */}
                 <button
-                  disabled={page === 1}
-                  onClick={() => setPage((p) => Math.max(p - 1, 1))}
-                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
+                  onClick={() => setJumpModalOpen(true)}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-100 hover:border-gray-400 transition-all shrink-0"
                 >
-                  이전
-                </button>
-                <span className="text-xs font-semibold text-gray-600 px-2">
-                  {page} / {totalPages}
-                </span>
-                <button
-                  disabled={page >= totalPages}
-                  onClick={() => setPage((p) => Math.min(p + 1, totalPages))}
-                  className="rounded-lg border bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-40 transition-colors"
-                >
-                  다음
+                  <span>🎯</span> 페이지 이동
                 </button>
               </div>
             )}
           </div>
         )}
       </div>
+
+      {/* 페이지 직접 이동 모달 (Jump to Page) */}
+      {jumpModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="w-full max-w-xs rounded-2xl bg-white p-6 shadow-xl border border-gray-200 space-y-4">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-1.5">
+                <span>🎯</span> 특정 페이지로 이동
+              </h3>
+              <button
+                onClick={() => setJumpModalOpen(false)}
+                className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                let num = parseInt(jumpInput, 10);
+                if (isNaN(num) || num < 1) num = 1;
+                if (num > totalPages) num = totalPages;
+                setPage(num);
+                setJumpModalOpen(false);
+                setJumpInput("");
+              }}
+              className="space-y-4"
+            >
+              <div>
+                <label className="block text-xs font-semibold text-gray-600 mb-1.5">
+                  이동할 페이지 번호 (1 ~ {totalPages})
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={totalPages}
+                  value={jumpInput}
+                  onChange={(e) => setJumpInput(e.target.value)}
+                  placeholder={`예: ${Math.min(page + 3, totalPages)}`}
+                  className="w-full rounded-xl border border-gray-300 px-3.5 py-2 text-sm font-semibold focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  autoFocus
+                />
+                <p className="text-[11px] text-gray-400 mt-1">
+                  * 최대 페이지({totalPages})를 초과하는 값 입력 시 {totalPages}페이지로 자동 이동합니다.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setJumpModalOpen(false)}
+                  className="rounded-xl border bg-white px-3.5 py-2 text-xs font-bold text-gray-600 hover:bg-gray-100 transition-colors"
+                >
+                  취소
+                </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-primary px-4 py-2 text-xs font-bold text-white shadow hover:bg-primary/90 transition-colors"
+                >
+                  이동하기
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
 
       {/* 작성 모달 */}
       <PostCreateModal
