@@ -427,6 +427,53 @@ export function GridMap({
     draw();
   }, [draw]);
 
+  // ── 선택 시 줌 애니메이션 (FlyTo) ────────────────────────────
+  useEffect(() => {
+    if (selected === null || !view) return;
+    const target = topn.find((r) => r.순위 === selected);
+    if (!target) return;
+
+    const startLon = view.lon;
+    const startLat = view.lat;
+    const startZ = view.z;
+    const targetLon = target.경도;
+    const targetLat = target.위도;
+    const targetZ = Math.max(16, startZ);
+
+    if (
+      Math.abs(startLon - targetLon) < 0.0001 &&
+      Math.abs(startLat - targetLat) < 0.0001 &&
+      Math.abs(startZ - targetZ) < 0.1
+    ) {
+      return;
+    }
+
+    const duration = 500;
+    const startTime = performance.now();
+    let frameId: number;
+
+    function animate(time: number) {
+      const elapsed = time - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      // easeOutCubic
+      const ease = 1 - Math.pow(1 - progress, 3);
+
+      setUserView({
+        lon: startLon + (targetLon - startLon) * ease,
+        lat: startLat + (targetLat - startLat) * ease,
+        z: startZ + (targetZ - startZ) * ease,
+      });
+
+      if (progress < 1) {
+        frameId = requestAnimationFrame(animate);
+      }
+    }
+    frameId = requestAnimationFrame(animate);
+
+    return () => cancelAnimationFrame(frameId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected, topn]);
+
   // ── 조작 ─────────────────────────────────────────────────────
   function hitMarker(cx: number, cy: number): TopNCsvRow | null {
     if (!view) return null;

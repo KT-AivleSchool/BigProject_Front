@@ -142,7 +142,7 @@ export default function Screen4Page() {
                       
                       {/* Floating Detail Popup */}
                       {sel && (
-                        <div className="absolute top-4 right-4 z-10 w-96 max-h-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-white/95 backdrop-blur shadow-2xl border border-gray-200 p-4">
+                        <div className="absolute top-4 left-4 z-10 w-96 max-h-[calc(100%-2rem)] overflow-y-auto rounded-xl bg-white/95 backdrop-blur shadow-2xl border border-gray-200 p-4">
                           <Detail
                             row={sel}
                             prev={rows.find((r) => r.순위 === sel.순위 - 1) ?? null}
@@ -182,7 +182,7 @@ export default function Screen4Page() {
                           onClick={() => setShowInfo(!showInfo)}
                           className={`flex items-center justify-center w-6 h-6 rounded-full transition-colors ${showInfo ? "bg-gray-300 text-gray-700" : "bg-gray-200 text-gray-500 hover:bg-gray-300"}`}
                         >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
                         </button>
                       </div>
 
@@ -231,9 +231,6 @@ function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) 
         <div className="text-center">
           <div className="text-[12px] text-ink-secondary mb-1">상위 {nTop}곳 설치 시 커버율</div>
           <div className="tnum text-[32px] font-black text-blue-600 leading-none">{percent(atTop, 1)}</div>
-        </div>
-        <div className="w-full h-[60px]">
-          <CoverageChart cumulative={cov.cumulative} knee={cov.knee} nTop={nTop} />
         </div>
       </div>
 
@@ -315,15 +312,39 @@ function TopList({
   selected: number | null;
   onSelect: (rank: number) => void;
 }) {
+  const [showRankInfo, setShowRankInfo] = useState(false);
   const sorted = [...rows].sort((a, b) => a.순위 - b.순위);
   /* 탭 안이라 카드 테두리를 두르지 않는다 — 탭 머리가 이미 경계다. 겹치면
      상자 안의 상자가 되어 어디까지가 한 덩어리인지 흐려진다. */
   return (
-    <div>
-      <p className="text-[11px] leading-relaxed text-ink-secondary">
-        최종 순위는 <b>실질적인 수요 해결 기여도</b>에 따라 결정됩니다. (단순 점수가 높아도 주변에 다른 우수 후보지가 있어 상권이 겹치면 순위가 밀릴 수 있습니다.)
-      </p>
-      <ul className="mt-2 flex flex-col gap-1">
+    <div className="relative">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-[13px] font-bold text-gray-800">최적 입지 추천 순위</h3>
+        <button
+          type="button"
+          onMouseEnter={() => setShowRankInfo(true)}
+          onMouseLeave={() => setShowRankInfo(false)}
+          className="text-gray-400 hover:text-gray-600 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 16v-5"/><path d="M12 8h.01"/></svg>
+        </button>
+      </div>
+      
+      {showRankInfo && (
+        <div className="absolute right-0 top-6 z-20 w-64 p-3 rounded-lg bg-gray-800 text-white text-[11px] leading-relaxed shadow-lg animate-in fade-in zoom-in-95">
+          최종 순위는 <b>실질적인 수요 해결 기여도</b>에 따라 결정됩니다. (단순 점수가 높아도 주변에 다른 우수 후보지가 있어 상권이 겹치면 순위가 밀릴 수 있습니다.)
+        </div>
+      )}
+
+      {/* 헤더 행 */}
+      <div className="flex w-full items-center gap-2 px-2 pb-1 text-[11px] font-semibold text-ink-secondary border-b border-gray-200/50">
+        <span className="w-6 shrink-0 text-center">순위</span>
+        <span className="flex-1">지번 주소</span>
+        <span className="w-16 shrink-0 text-right">점수</span>
+        <span className="w-16 shrink-0 text-right">누적커버율</span>
+      </div>
+
+      <ul className="mt-1 flex flex-col gap-1">
         {sorted.map((r) => {
           const on = r.순위 === selected;
           return (
@@ -340,8 +361,8 @@ function TopList({
                   {r.순위}
                 </span>
                 <span className="flex-1 truncate text-[12px]">{r.JIBUN}</span>
-                <span className="tnum text-[11px] text-ink-secondary">{fixed(r.점수, 3)}</span>
-                <span className="tnum w-12 shrink-0 text-right text-[11px] text-ink-secondary">
+                <span className="tnum w-16 shrink-0 text-right text-[11px] text-ink-secondary">{`${fixed(r.점수 * 100, 1)}/100`}</span>
+                <span className="tnum w-16 shrink-0 text-right text-[11px] text-ink-secondary">
                   {percent(r.누적커버율, 1)}
                 </span>
               </button>
@@ -443,43 +464,31 @@ function Detail({
       </div>
 
       <dl className="mt-3 flex flex-col gap-1 text-[12px]">
-        <Row k="단순 평가 점수" v={fixed(row.점수, 4)} />
-        <Row k="수요 해결 기여도" v={`${fixed(row.커버기여, 4)}`} />
+        <Row k="입지 평가 점수" v={`${fixed(row.점수 * 100, 1)} / 100`} />
+        <Row k="수요 해결 기여 점수" v={`${fixed(row.커버기여, 1)}`} />
         <Row
-          k="실질 커버율 상승폭"
-          v={`+${fixed(deltaCover * 100, 2)}%p${prev ? "" : " (0 에서)"}`}
+          k="추가 수요 커버"
+          v={`+${fixed(deltaCover * 100, 2)}%p`}
         />
-        <Row k="현재까지 누적 커버율" v={percent(row.누적커버율, 2)} />
-        <Row k="토지 지목" v={row.지목} />
-        <Row k="부지 면적" v={areaM2(row.면적)} />
-        <Row k="내접폭 (실제 설치 가능 폭)" v={`${fixed(row.내접폭, 2)} m`} />
+        <Row k="누적 수요 커버율" v={percent(row.누적커버율, 2)} />
+        <Row k="토지 유형" v={row.지목 === "대" ? "대지" : row.지목} />
+        <Row k="부지 면적" v={`${int(row.면적)}㎡`} />
+        <Row k="실제 설치 가능 폭" v={`${fixed(row.내접폭, 1)}m`} />
         <Row
-          k="타 시설과의 최소 이격 기준"
-          v={minSep === null ? "—" : `${fixed(minSep, 0)} m`}
+          k="시설 간 최소 설치 간격"
+          v={minSep === null ? "—" : `${fixed(minSep, 0)}m`}
         />
         <Row
-          k="인접한 타 추천 후보지"
-          v={near === null ? "주변에 후보지 없음" : `${fixed(near.m, 0)} m 거리에 ${near.rank}순위 있음`}
+          k="가장 가까운 다른 추천 후보"
+          v={near === null ? "주변에 후보지 없음" : `${fixed(near.m, 0)}m · 추천 ${near.rank}순위`}
         />
-        <Row k="국유지 필지" v={`${int(row.국유_건수)}건 · 지분 ${percent(row.국유_지분율, 1)}`} />
-        <Row k="지번 일치" v={row.국유_지번일치 ? "예" : "아니오"} />
-        <Row k="대표점 유래" v={row.from_rep ? "필지 대표점" : "격자점"} />
-        <Row k="PNU" v={row.PNU} mono />
-        <Row k="좌표" v={`${row.위도.toFixed(6)}, ${row.경도.toFixed(6)}`} mono />
+        <Row k="국가 소유 지분" v={row.국유_지분율 === 0 ? "없음" : percent(row.국유_지분율, 1)} />
+        <Row k="국유재산 지번 일치" v={row.국유_지번일치 ? "일치" : "일치하지 않음"} />
+        <Row k="후보 위치 생성 방식" v={row.from_rep ? "필지 대표점" : "격자 기반"} />
+        <Row k="필지 고유번호(PNU)" v={row.PNU} mono />
+        <Row k="위치 좌표" v={`${row.위도.toFixed(6)}, ${row.경도.toFixed(6)}`} mono />
       </dl>
 
-      <p className="mt-3 text-[11px] leading-relaxed text-ink-secondary">
-        내접폭은 이 필지 안에 시설이 실제로 들어가는지를 보는 값입니다. 면적이 넓어도
-        길쭉하면 못 놓습니다.
-        <br />
-        「커버 기여」는 비율이 아니라 <b>수요값 절대량</b>입니다(산출물 그대로). 총
-        수요값이 산출물에 없어 백분율로 바꾸지 않았습니다 — 대신 커버율이 실제로 얼마나
-        올랐는지는 「커버율 증가」로 보십시오.
-        <br />
-        「가장 가까운 후보」는 산출물에 없는 값이라 <b>Top-N 좌표로 이 화면에서
-        계산</b>한 것입니다(하버사인). 기준은 <code>report.facility_params</code> 의
-        값이고, 실제 이격이 기준보다 큰지 확인하는 용도입니다.
-      </p>
     </div>
   );
 }
