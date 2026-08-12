@@ -17,101 +17,98 @@ export function GateFrame({
   gate,
   runId,
   lead,
+  hideTitle,
   children,
   onSubmit,
   submitting,
   error,
   submitLabel,
+  confirmedCount,
 }: {
   gate: RunGate;
   runId: string;
-  lead: React.ReactNode;
+  lead?: React.ReactNode;
+  hideTitle?: boolean;
   children: React.ReactNode;
   onSubmit: () => void;
   submitting: boolean;
   /** 서버가 준 사유(`detail`) 또는 화면이 막은 사유. 문구를 지어내지 않는다. */
   error: string | null;
   submitLabel: string;
+  confirmedCount?: number;
 }) {
+  const hasHeader = !hideTitle || !!lead;
+
   return (
-    <section className="mt-6 rounded-2xl border border-blue-200 bg-gradient-to-br from-blue-50 to-white p-6 shadow-sm overflow-hidden relative">
-      <div className="absolute top-0 right-0 p-4 opacity-5 pointer-events-none">
-        <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-      </div>
+    <>
+      {hasHeader ? (
+        <section className="mt-6 rounded-2xl border border-blue-200 bg-white shadow-sm overflow-hidden relative">
+          <div className="bg-blue-50/30 px-4 py-3 border-b border-blue-100">
+            {!hideTitle && (
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h2 className="text-lg font-bold text-blue-900 flex items-center gap-2">
+                  {gate.label}
+                </h2>
+              </div>
+            )}
+            {lead && (
+              <div className="text-[13.5px] leading-relaxed text-blue-700">
+                {lead}
+              </div>
+            )}
+          </div>
 
-      <div className="flex items-center gap-3 mb-5 bg-amber-50 border border-amber-200 text-amber-900 px-4 py-3 rounded-xl shadow-sm relative z-10 animate-in fade-in slide-in-from-top-2">
-        <span className="relative flex h-3 w-3 shrink-0">
-          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-          <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500"></span>
-        </span>
-        <div className="text-sm leading-relaxed">
-          <strong className="text-amber-700 mr-1.5">[HITL 작동 중]</strong> 
-          AI가 전문가(사용자)님의 승인 및 개입을 기다리며 분석을 일시 중단했습니다. 확인을 완료해야 다음 단계가 진행됩니다.
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4 relative z-10">
-        <h2 className="text-lg font-bold text-blue-900 flex items-center gap-2">
-          {gate.label}
-        </h2>
-        <span className="text-xs font-semibold text-blue-800 bg-blue-100/50 px-3 py-1.5 rounded-full border border-blue-200/50 shadow-sm">
-          검토 대기: <span className="text-blue-900 font-bold">{gate.questions.length}건</span>
-        </span>
-      </div>
-
-      <div className="text-[13px] leading-relaxed text-blue-800 mb-6 bg-white p-4 rounded-xl border border-blue-100 shadow-sm relative z-10">
-        {lead}
-      </div>
-
-      <div className="flex flex-col gap-5 relative z-10">{children}</div>
-
-      {error && (
-        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-800 flex items-start gap-3 shadow-sm relative z-10">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="mt-0.5 shrink-0"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          <pre className="whitespace-pre-wrap break-all font-mono">{error}</pre>
+          <div className="flex flex-col gap-2 p-3 sm:p-4 bg-white relative z-10">
+            {children}
+          </div>
+        </section>
+      ) : (
+        <div className="flex flex-col gap-2 mt-4 relative z-10">
+          {children}
         </div>
       )}
 
-      <div className="sticky bottom-6 mt-10 flex flex-wrap items-center justify-between gap-4 border-2 border-blue-200 bg-white/95 backdrop-blur-md p-5 rounded-2xl shadow-[0_8px_30px_rgb(0,0,0,0.12)] z-50">
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-blue-100 text-blue-600 animate-pulse">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-          </div>
-          <span className="text-[13px] leading-relaxed text-blue-900 max-w-lg font-medium">
-            항목들을 꼼꼼히 확인하셨나요? 우측 버튼을 눌러 <strong>{gate.label}</strong>을(를) 승인하고 다음 분석을 계속 진행합니다.
-          </span>
+      {error && (
+        <div className="mt-5 mx-4 mb-4 rounded-xl border border-red-200 bg-red-50 p-4 text-[13px] text-red-800 flex items-start gap-3 shadow-sm relative z-10">
+          <svg
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="mt-0.5 shrink-0"
+          >
+            <circle cx="12" cy="12" r="10" />
+            <line x1="12" y1="8" x2="12" y2="12" />
+            <line x1="12" y1="16" x2="12.01" y2="16" />
+          </svg>
+          <pre className="whitespace-pre-wrap break-all font-mono">{error}</pre>
         </div>
-        <button
-          type="button"
-          onClick={onSubmit}
-          disabled={submitting}
-          className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-blue-600 px-8 py-3.5 text-sm font-bold text-white shadow-md transition-all hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1 focus:outline-none focus:ring-4 focus:ring-blue-500/30 disabled:opacity-50 disabled:pointer-events-none"
-        >
-          {submitting ? (
-            <>
-              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-              제출 및 승인 중...
-            </>
-          ) : (
-            <>
-              {submitLabel}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </>
-          )}
-        </button>
-      </div>
-    </section>
+      )}
+    </>
   );
 }
 
-export function LockedBadge() {
+export function WarningBadge({ text, title }: { text: string; title?: string }) {
   return (
     <span
-      className="inline-flex items-center gap-1 rounded-md bg-gray-100 px-2 py-1 text-[11px] font-semibold text-gray-500 border border-gray-200"
-      title="법령 및 조례를 통해 AI가 명확한 근거를 찾아 확정한 항목입니다. (읽기 전용)"
+      className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1 text-[12px] font-medium text-amber-700 border border-amber-200"
+      title={title}
     >
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-      자동 확정됨
+      <svg
+        width="12"
+        height="12"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2.5"
+      >
+        <path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z" />
+        <path d="M12 9v4" />
+        <path d="M12 17h.01" />
+      </svg>
+      {text}
     </span>
   );
 }
@@ -119,46 +116,129 @@ export function LockedBadge() {
 export function QuestionCard({
   id,
   title,
-  editable,
   warn,
+  confirmed,
+  onConfirm,
+  onReject,
+  isEditing,
   aside,
   children,
+  confirmLabel,
+  rejectLabel,
+  onClick,
+  readOnly,
 }: {
   id: string;
   title: React.ReactNode;
-  editable: boolean;
   warn?: boolean;
+  confirmed?: boolean;
+  readOnly?: boolean;
+  onConfirm?: () => void;
+  onReject?: () => void;
+  isEditing?: boolean;
   aside?: React.ReactNode;
-  children: React.ReactNode;
+  children?: React.ReactNode;
+  confirmLabel?: string;
+  rejectLabel?: string;
+  onClick?: () => void;
 }) {
+  const isReadOnly = readOnly;
   return (
-    <article
-      className={`rounded-xl border bg-white p-5 shadow-sm transition-colors ${
-        warn ? "border-amber-300" : editable ? "border-blue-200 hover:border-blue-300" : "border-gray-200 opacity-90"
+    <div
+      onClick={onClick}
+      className={`relative flex flex-col sm:flex-row gap-2 sm:gap-3 rounded-xl border p-3 transition-all ${
+        onClick ? "cursor-pointer hover:border-blue-400 hover:shadow-md" : ""
+      } ${
+        confirmed
+          ? "border-blue-200 bg-blue-50/30"
+          : warn
+            ? "border-amber-200 bg-amber-50/10 shadow-sm"
+            : "border-gray-200 bg-white shadow-sm hover:border-gray-300"
       }`}
     >
-      <header className="flex flex-wrap items-center justify-between gap-3 mb-3 border-b border-gray-50 pb-3">
-        <div className="flex items-center gap-3">
-          <span className={`inline-flex h-6 min-w-6 items-center justify-center rounded-md font-mono text-[11px] font-bold ${editable ? 'bg-blue-100 text-blue-800' : 'bg-gray-100 text-gray-600'}`}>
-            {id}
-          </span>
-          <h3 className={`text-sm font-bold ${editable ? 'text-gray-900' : 'text-gray-600'}`}>{title}</h3>
-          {!editable && <LockedBadge />}
+      <div className="flex shrink-0 items-start gap-3 sm:w-64">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-[11px] font-bold text-gray-500 font-mono">
+          {id}
+        </span>
+        <h3 className="mt-0.5 text-[14px] font-bold text-gray-900 leading-snug break-all">
+          {title}
+        </h3>
+        {aside}
+      </div>
+      <div className="flex-1 min-w-0 flex flex-col justify-center">{children}</div>
+      {(onConfirm || onReject) && (
+        <div className="mt-2 sm:mt-0 shrink-0 self-end sm:self-center flex gap-1.5">
+          {(!isReadOnly && onConfirm) ? (
+            isEditing ? (
+              <button
+                onClick={(e) => { e.stopPropagation(); onConfirm(); }}
+                className="px-4 py-1.5 text-[13px] font-bold rounded-lg transition-colors bg-blue-600 text-white hover:bg-blue-700 shadow-sm"
+              >
+                {confirmLabel || "적용"}
+              </button>
+            ) : (
+              <div
+                className={`px-3 py-1.5 text-[13px] font-bold rounded-lg border flex items-center gap-1.5 ${
+                  confirmed
+                    ? "bg-blue-50 text-blue-700 border-blue-200"
+                    : "bg-gray-50 text-gray-500 border-gray-200"
+                }`}
+              >
+                {confirmed ? (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                    승인 완료
+                  </>
+                ) : (
+                  "승인 필요"
+                )}
+              </div>
+            )
+          ) : isReadOnly && confirmed ? (
+            <div className="px-3 py-1.5 text-[13px] font-bold rounded-lg border flex items-center gap-1.5 bg-blue-50 text-blue-700 border-blue-200">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              승인 완료
+            </div>
+          ) : null}
+          {!isReadOnly && onReject && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onReject(); }}
+              className={`px-3 py-1.5 text-[13px] font-semibold rounded-lg transition-colors shadow-sm border ${
+                isEditing
+                  ? "bg-rose-50 text-rose-600 border-rose-200 hover:bg-rose-100"
+                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
+              }`}
+            >
+              {rejectLabel || (isEditing ? "취소" : "수정")}
+            </button>
+          )}
         </div>
-        {aside && <div className="text-sm">{aside}</div>}
-      </header>
-      <div className="space-y-3">{children}</div>
-    </article>
+      )}
+    </div>
   );
 }
 
-export function Fact({ k, v, sub }: { k: string; v: React.ReactNode; sub?: string }) {
+export function Fact({
+  k,
+  v,
+  sub,
+}: {
+  k: string;
+  v: React.ReactNode;
+  sub?: string;
+}) {
   return (
     <div className="flex flex-col gap-1 min-w-[120px] bg-gray-50 p-2.5 rounded-lg border border-gray-100">
-      <dt className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">{k}</dt>
+      <dt className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">
+        {k}
+      </dt>
       <dd className="text-sm font-medium text-gray-900">
         {v}
-        {sub && <span className="block text-[11px] font-normal text-gray-400 mt-0.5">{sub}</span>}
+        {sub && (
+          <span className="block text-[11px] font-normal text-gray-400 mt-0.5">
+            {sub}
+          </span>
+        )}
       </dd>
     </div>
   );
