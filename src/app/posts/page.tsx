@@ -23,16 +23,19 @@ export default function PostsPage() {
   const [detailModalOpen, setDetailModalOpen] = useState(false);
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
+  // 컬럼 정렬 상태 (기본: created_at desc)
+  const [sortBy, setSortBy] = useState<string>("created_at");
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
+
   // arca.live 스타일 특정 페이지 직접 이동 상태
   const [jumpModalOpen, setJumpModalOpen] = useState(false);
   const [jumpInput, setJumpInput] = useState("");
 
-
   useEffect(() => {
-    loadPosts(page);
-  }, [page]);
+    loadPosts(page, sortBy, order);
+  }, [page, sortBy, order]);
 
-  const loadPosts = async (currentPage: number) => {
+  const loadPosts = async (currentPage: number, currentSortBy = sortBy, currentOrder = order) => {
     setLoading(true);
     setError(null);
 
@@ -44,7 +47,7 @@ export default function PostsPage() {
     }
 
     try {
-      const data = await fetchPosts(currentPage, limit);
+      const data = await fetchPosts(currentPage, limit, currentSortBy, currentOrder);
       setPosts(data.posts);
       setTotal(data.total);
     } catch (err: any) {
@@ -57,6 +60,33 @@ export default function PostsPage() {
       setLoading(false);
     }
   };
+
+  const handleSort = (column: string) => {
+    if (sortBy === column) {
+      setOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(column);
+      setOrder("asc");
+    }
+    setPage(1); // 정렬 변경 시 1페이지로 이동
+  };
+
+  const renderSortButton = (colKey: string, label: string) => {
+    const isSelected = sortBy === colKey;
+    return (
+      <button
+        onClick={() => handleSort(colKey)}
+        className="inline-flex items-center gap-1 hover:text-primary transition-colors focus:outline-none group select-none"
+        title={`${label} 기준 ${isSelected && order === "asc" ? "내림차순" : "오름차순"} 정렬`}
+      >
+        <span>{label}</span>
+        <span className={`text-[10px] ${isSelected ? "text-primary font-bold" : "text-gray-400 group-hover:text-gray-600"}`}>
+          {isSelected ? (order === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
+    );
+  };
+
 
   const handleCreateClick = () => {
     const user = getAuthUser();
@@ -124,14 +154,23 @@ export default function PostsPage() {
             <div className="overflow-hidden rounded-2xl bg-white shadow-sm border border-gray-200">
               <table className="w-full text-left text-xs border-collapse">
                 <thead>
-                  <tr className="bg-gray-100/70 border-b border-gray-200 text-gray-600 font-bold">
-                    <th className="py-3.5 px-4 w-16 text-center">번호</th>
-                    <th className="py-3.5 px-4">제목</th>
-                    <th className="py-3.5 px-4 w-32">작성자</th>
-                    <th className="py-3.5 px-4 w-36 text-center">작성일시</th>
+                  <tr className="bg-gray-100/70 border-b border-gray-200 text-gray-600 font-bold select-none">
+                    <th className="py-3.5 px-4 w-20 text-center">
+                      {renderSortButton("id", "번호")}
+                    </th>
+                    <th className="py-3.5 px-4">
+                      {renderSortButton("title", "제목")}
+                    </th>
+                    <th className="py-3.5 px-4 w-36">
+                      {renderSortButton("author_name", "작성자")}
+                    </th>
+                    <th className="py-3.5 px-4 w-36 text-center">
+                      {renderSortButton("created_at", "작성일시")}
+                    </th>
                     <th className="py-3.5 px-4 w-24 text-center">상세보기</th>
                   </tr>
                 </thead>
+
                 <tbody className="divide-y divide-gray-100">
                   {posts.length === 0 ? (
                     <tr>

@@ -36,14 +36,23 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000/api/v
 /**
  * 게시글 목록 조회
  */
-export async function fetchPosts(page: number = 1, limit: number = 10): Promise<PostListResponse> {
+export async function fetchPosts(
+  page: number = 1,
+  limit: number = 10,
+  sortBy: string = "created_at",
+  order: string = "desc"
+): Promise<PostListResponse> {
   const headers = getAuthHeader();
-  const res = await fetch(`${API_BASE}/posts?page=${page}&limit=${limit}`, {
-    headers: {
-      ...headers,
-    },
-    cache: "no-store",
-  });
+  const res = await fetch(
+    `${API_BASE}/posts?page=${page}&limit=${limit}&sort_by=${sortBy}&order=${order}`,
+    {
+      headers: {
+        ...headers,
+      },
+      cache: "no-store",
+    }
+  );
+
 
   if (!res.ok) {
     if (res.status === 401) {
