@@ -21,7 +21,8 @@ import { isHearingDoneFor } from "@/lib/omnisite/hearingResult";
 import { useHearingDone } from "@/lib/omnisite/hearings";
 import type { ArtifactName, RunDoc } from "@/lib/omnisite/types";
 import { AuthModal } from "./AuthModal";
-import { getAuthUser, setAuthUser, setAuthToken, UserResponse } from "@/lib/omnisite/auth";
+import { SessionBadge } from "./SessionBadge";
+import { getAuthUser, clearAuth, UserResponse } from "@/lib/omnisite/auth";
 
 export function Header() {
   const pathname = usePathname();
@@ -80,8 +81,10 @@ export function Header() {
   }, [run?.run_id, current]);
 
   const handleLogout = () => {
-    setAuthToken(null);
-    setAuthUser(null);
+    // 🔴 access·refresh·user 를 **같이** 지운다(`clearAuth`). 예전엔 access 와 user 만
+    //    지웠는데, refresh 키가 생긴 뒤로는 그러면 죽은 재발급 토큰이 남아 다음
+    //    로그인 세션과 섞인다.
+    clearAuth();
     setUser(null);
   };
 
@@ -192,6 +195,7 @@ export function Header() {
                   <Link href="/mypage" className="text-gray-800 hover:text-primary transition-colors font-semibold">
                     {maskName(user.username)}님
                   </Link>
+                  <SessionBadge />
                   <span className="text-gray-300">|</span>
                   <Link href="/mypage" className="hover:text-primary transition-colors">마이페이지</Link>
                   <span className="text-gray-300">|</span>
