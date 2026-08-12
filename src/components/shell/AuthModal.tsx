@@ -116,8 +116,12 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
           is_active: true
         };
         setAuthUser(authUser);
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new Event("omnisite-auth-change"));
+        }
         onSuccess(authUser);
         onClose();
+
       }
     } catch (err) {
       if (err instanceof ApiError) {

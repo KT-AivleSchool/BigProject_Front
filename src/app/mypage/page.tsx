@@ -7,6 +7,10 @@ import { useRun } from "@/lib/omnisite/RunProvider";
 import Link from "next/link";
 import { datetime } from "@/lib/omnisite/format";
 import { ApiError, NetworkError, apiErrorCode } from "@/lib/omnisite/client";
+import { fetchPosts, PostListItem } from "@/lib/omnisite/posts";
+import { PostDetailModal } from "@/components/board/PostDetailModal";
+
+
 
 /**
  * 실패 문구. 화면 5(`hearings.ts`)와 같은 모양이다 —
@@ -89,14 +93,20 @@ export default function MyPage() {
         </div>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-shadow hover:shadow-md">
+      {/* 파이프라인 분석 내역 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-shadow hover:shadow-md">
         <div className="py-10 px-10 min-h-[400px] flex flex-col items-center justify-start">
           <RunList />
         </div>
       </div>
+
+      {/* 내가 작성한 안건 카드 (최근 5개 요약 + 우상단 모두보기 버튼) */}
+      <MyPostList />
     </div>
   );
 }
+
+
 
 /**
  * 🔴 `RunList` **밖**에 둔다. 안에 두면 렌더마다 새 컴포넌트 타입이 만들어져
@@ -277,3 +287,95 @@ function RunCard({ run, onClick }: { run: import('@/lib/omnisite/pipeline').RunM
     </div>
   );
 }
+
+/**
+ * 마이페이지 내 작성 게시글 카드 UI (최근 5개 요약 + 우상단 모두보기 버튼)
+ */
+function MyPostList() {
+  const [posts, setPosts] = useState<PostListItem[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [selectedPostId, setSelectedPostId] = useState<number | null>(null);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+
+  const loadMyPosts = () => {
+    setLoading(true);
+    fetchPosts(1, 5, "created_at", "desc", "title_content", "", true)
+      .then((data) => {
+        setPosts(data.posts);
+        setTotal(data.total);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadMyPosts();
+  }, []);
+
+  return (
+    <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-shadow hover:shadow-md">
+      <div className="px-6 py-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-800 flex items-center gap-1.5">
+            <span>📋</span> 내가 작성한 안건
+          </h2>
+          <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">
+            {total}건
+          </span>
+        </div>
+        <Link
+          href="/posts?mine=true"
+          className="text-xs font-bold text-primary hover:underline flex items-center gap-1 transition-colors"
+        >
+          <span>내 작성글 모두 보기</span>
+          <span>→</span>
+        </Link>
+      </div>
+
+      <div className="p-6">
+        {loading ? (
+          <div className="py-8 text-center text-xs text-gray-400">내 작성글을 불러오는 중입니다...</div>
+        ) : posts.length === 0 ? (
+          <div className="py-8 text-center text-xs text-gray-400">
+            작성한 게시글이 없습니다. 게시판에서 첫 안건을 등록해 보세요!
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {posts.map((post) => (
+              <div
+                key={post.id}
+                onClick={() => {
+                  setSelectedPostId(post.id);
+                  setDetailModalOpen(true);
+                }}
+                className="flex items-center justify-between p-3.5 rounded-xl border border-gray-100 hover:border-primary/30 hover:bg-slate-50 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-2.5 min-w-0 pr-4">
+                  {post.has_file && <span className="text-xs shrink-0" title="첨부파일 있음">📎</span>}
+                  <span className="text-xs font-bold text-gray-800 group-hover:text-primary transition-colors truncate">
+                    {post.title}
+                  </span>
+                </div>
+                <div className="flex items-center gap-4 shrink-0 text-xs text-gray-400 font-medium">
+                  <span>{new Date(post.created_at).toLocaleDateString()}</span>
+                  <span className="rounded-md bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-gray-600 group-hover:bg-primary group-hover:text-white transition-colors">
+                    상세보기
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <PostDetailModal
+        postId={selectedPostId}
+        isOpen={detailModalOpen}
+        onClose={() => setDetailModalOpen(false)}
+        onDeleted={() => loadMyPosts()}
+      />
+    </div>
+  );
+}
+

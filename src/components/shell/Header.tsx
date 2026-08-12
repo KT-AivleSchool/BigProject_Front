@@ -47,16 +47,28 @@ export function Header() {
   const hearingDone = hearing.done;
 
   useEffect(() => {
-    setUser(getAuthUser());
-  }, []);
+    const syncUser = () => {
+      setUser(getAuthUser());
+    };
+    syncUser();
+
+    window.addEventListener("storage", syncUser);
+    window.addEventListener("omnisite-auth-change", syncUser);
+
+    return () => {
+      window.removeEventListener("storage", syncUser);
+      window.removeEventListener("omnisite-auth-change", syncUser);
+    };
+  }, [pathname]);
 
   const handleLogout = () => {
-    // 🔴 access·refresh·user 를 **같이** 지운다(`clearAuth`). 예전엔 access 와 user 만
-    //    지웠는데, refresh 키가 생긴 뒤로는 그러면 죽은 재발급 토큰이 남아 다음
-    //    로그인 세션과 섞인다.
     clearAuth();
     setUser(null);
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(new Event("omnisite-auth-change"));
+    }
   };
+
 
   return (
     <>
@@ -132,6 +144,10 @@ export function Header() {
           <div className="flex shrink-0 items-center gap-4 ml-4">
             {/* 유틸리티 링크 (가이드라인 준수) */}
             <div className="flex items-center gap-3 text-[12px] text-gray-600 font-medium">
+              <Link href="/posts" className="hover:text-primary transition-colors font-semibold flex items-center gap-1 text-primary/90 bg-primary/8 px-2 py-1 rounded">
+                <span>📋</span> 게시판
+              </Link>
+              <span className="text-gray-300">|</span>
               {user ? (
                 <>
                   <Link href="/mypage" className="text-gray-800 hover:text-primary transition-colors font-semibold">
@@ -151,6 +167,7 @@ export function Header() {
                 </>
               )}
             </div>
+
           </div>
         </div>
       </header>
