@@ -70,7 +70,7 @@ export function PageFooter({
 
 export function PageBody({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-5 pt-7 pb-2 h-full flex flex-col min-h-0">
+    <div className="mx-auto w-full max-w-[1200px] px-5 pt-7 pb-10 h-full flex flex-col min-h-0 overflow-y-auto">
       {children}
     </div>
   );
