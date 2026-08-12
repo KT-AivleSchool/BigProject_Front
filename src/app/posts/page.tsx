@@ -1,5 +1,8 @@
+"use client";
+
 import React, { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+
 import { AuthModal } from "@/components/shell/AuthModal";
 import { PostCreateModal } from "@/components/board/PostCreateModal";
 import { PostDetailModal } from "@/components/board/PostDetailModal";
