@@ -1,0 +1,199 @@
+"use client";
+
+import React, { useEffect, useState } from "react";
+import { fetchPostDetail, updatePost } from "@/lib/omnisite/posts";
+
+interface PostEditModalProps {
+  postId: number | null;
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+export function PostEditModal({ postId, isOpen, onClose, onSuccess }: PostEditModalProps) {
+  const [title, setTitle] = useState("");
+  const [content, setContent] = useState("");
+  const [existingFileName, setExistingFileName] = useState<string | null>(null);
+  const [removeFile, setRemoveFile] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen && postId) {
+      setInitialLoading(true);
+      setError(null);
+      setFile(null);
+      setRemoveFile(false);
+
+      fetchPostDetail(postId)
+        .then((data) => {
+          setTitle(data.title);
+          setContent(data.content);
+          setExistingFileName(data.original_filename || null);
+        })
+        .catch((err) => {
+          setError(err.message || "게시글 정보를 불러올 수 없습니다.");
+        })
+        .finally(() => {
+          setInitialLoading(false);
+        });
+    }
+  }, [isOpen, postId]);
+
+  if (!isOpen || !postId) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setError("게시글 제목을 입력해 주세요.");
+      return;
+    }
+    if (!content.trim()) {
+      setError("게시글 내용을 입력해 주세요.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      await updatePost(postId, title.trim(), content.trim(), file, removeFile);
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setError(err.message || "게시글 수정에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm transition-all animate-fade-in">
+      <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden border border-gray-100 transform transition-all">
+        {/* 모달 헤더 */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4 bg-slate-50/50">
+          <h2 className="text-base font-bold text-gray-900 flex items-center gap-2">
+            <span>✏️</span> 안건 수정하기
+          </h2>
+          <button
+            onClick={onClose}
+            className="rounded-lg p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* 모달 본문 */}
+        {initialLoading ? (
+          <div className="py-16 text-center text-xs text-gray-400">
+            게시글 데이터를 로드하고 있습니다...
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-6 space-y-4">
+            {error && (
+              <div className="rounded-xl bg-red-50 p-3 text-xs font-semibold text-red-600 border border-red-200">
+                ⚠️ {error}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                제목 <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="게시글 제목을 입력하세요 (최대 200자)"
+                maxLength={200}
+                className="w-full rounded-xl border border-gray-300 px-3.5 py-2 text-xs font-semibold text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-gray-700 mb-1">
+                내용 <span className="text-red-500">*</span>
+              </label>
+              <textarea
+                value={content}
+                onChange={(e) => setContent(e.target.value)}
+                placeholder="안건 또는 수정할 내용을 상세히 작성해 주세요."
+                rows={6}
+                className="w-full rounded-xl border border-gray-300 px-3.5 py-2 text-xs font-semibold text-gray-900 focus:border-primary focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all resize-none"
+                required
+              />
+            </div>
+
+            {/* 첨부파일 영역 */}
+            <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-3.5 space-y-2">
+              <label className="block text-xs font-bold text-gray-700">
+                첨부파일 <span className="text-[11px] font-normal text-gray-500">(1개 제한, 최대 20MB)</span>
+              </label>
+
+              {existingFileName && !removeFile && (
+                <div className="flex items-center justify-between rounded-lg bg-white p-2 border border-gray-200 text-xs">
+                  <span className="truncate font-medium text-gray-700 flex items-center gap-1">
+                    <span>📎</span> {existingFileName}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setRemoveFile(true)}
+                    className="text-[11px] font-bold text-red-500 hover:underline shrink-0 ml-2"
+                  >
+                    삭제하기
+                  </button>
+                </div>
+              )}
+
+              {removeFile && (
+                <div className="flex items-center justify-between text-xs text-red-600 font-semibold bg-red-50 p-2 rounded-lg border border-red-100">
+                  <span>기존 파일이 삭제 예정입니다.</span>
+                  <button
+                    type="button"
+                    onClick={() => setRemoveFile(false)}
+                    className="text-[11px] text-gray-600 underline font-normal"
+                  >
+                    취소
+                  </button>
+                </div>
+              )}
+
+              <input
+                type="file"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setFile(e.target.files[0]);
+                    setRemoveFile(false);
+                  }
+                }}
+                className="block w-full text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer"
+              />
+            </div>
+
+            {/* 모달 푸터 버튼 */}
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-gray-100">
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={loading}
+                className="rounded-xl border border-gray-300 bg-white px-4 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 transition-colors"
+              >
+                취소
+              </button>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-xl bg-primary px-5 py-2 text-xs font-bold text-white shadow hover:bg-primary/90 transition-colors disabled:opacity-50"
+              >
+                {loading ? "수정 저장 중..." : "수정 완료"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
