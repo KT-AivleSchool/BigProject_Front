@@ -93,17 +93,19 @@ export default function MyPage() {
         </div>
       </div>
 
-      {/* 내가 작성한 안건 카드 (최근 5개 요약 + 우상단 모두보기 버튼) */}
-      <MyPostList />
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden transition-shadow hover:shadow-md">
+      {/* 파이프라인 분석 내역 */}
+      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-8 transition-shadow hover:shadow-md">
         <div className="py-10 px-10 min-h-[400px] flex flex-col items-center justify-start">
           <RunList />
         </div>
       </div>
+
+      {/* 내가 작성한 안건 카드 (최근 5개 요약 + 우상단 모두보기 버튼) */}
+      <MyPostList />
     </div>
   );
 }
+
 
 
 /**
