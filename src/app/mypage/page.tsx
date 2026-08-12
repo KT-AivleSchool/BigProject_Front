@@ -53,6 +53,7 @@ export default function MyPage() {
     if (!u) {
       router.push("/");
     } else {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setUser(u);
     }
   }, [router]);
@@ -150,6 +151,7 @@ function RunList() {
   };
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchData();
   }, []);
 

@@ -82,9 +82,13 @@ export default function Screen5Page() {
       const savedFinished = sessionStorage.getItem("sim_finished");
       const savedParcel = sessionStorage.getItem("sim_parcel");
 
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedMessages) setMessages(JSON.parse(savedMessages));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedMetrics) setMetrics(JSON.parse(savedMetrics));
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedStarted === "true") setIsStarted(true);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (savedFinished === "true") setIsFinished(true);
       if (savedParcel) setUsedParcelId(Number(savedParcel));
     } catch (e) {

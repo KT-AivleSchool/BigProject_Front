@@ -156,7 +156,7 @@ export function WeightGate({
     if (submitRef) {
       submitRef.current = onSubmit;
     }
-  }, [submitRef, radius, slider, acked]);
+  }, [submitRef, radius, slider, acked, onSubmit]);
 
   return (
     <GateFrame

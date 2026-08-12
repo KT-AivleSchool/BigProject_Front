@@ -86,6 +86,7 @@ export default function HearingSelectPage() {
   //    초깃값을 그쪽에서 정하면 하이드레이션이 어긋난다.
   useEffect(() => {
     const currentPick = readSitePick();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setPick(currentPick);
     
     const resA = readHearingA();
@@ -110,6 +111,7 @@ export default function HearingSelectPage() {
       return;
     }
 
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setDone({ A: resA !== null, B: resB !== null });
   }, [router]);
 

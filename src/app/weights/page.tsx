@@ -73,6 +73,7 @@ export default function Screen3Page() {
 
   useEffect(() => {
     if (gate && run?.run_id) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCachedGate(gate);
       window.localStorage.setItem(`omnisite_gate_${run.run_id}_weight`, JSON.stringify(gate));
     }
@@ -107,17 +108,21 @@ export default function Screen3Page() {
     if (isWaitingForSync && run) {
       const isRunning = run.status === "queued" || run.status === "running";
       if (run.status === "failed") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsWaitingForSync(false);
         return;
       }
       if (!isRunning && (!run.gate || run.gate.id !== "weight")) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setIsWaitingForSync(false);
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCurrentStep(3);
       } else if (isRunning && currentStep !== 2) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setCurrentStep(2);
       }
     }
-  }, [run?.status, run?.gate?.id, isWaitingForSync, currentStep]);
+  }, [run, run?.status, run?.gate?.id, isWaitingForSync, currentStep]);
 
   const handleNext = async () => {
     if (currentStep === 1) {

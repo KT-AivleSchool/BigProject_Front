@@ -19,9 +19,10 @@ export function ProgressSidebar() {
   // Auto-open sidebar when a run exists and is not succeeded/failed
   useEffect(() => {
     if (run && (run.status === "running" || run.status === "awaiting_hitl" || run.status === "queued")) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setIsOpen(true);
     }
-  }, [run?.status]);
+  }, [run, run?.status]);
 
   if (!isOpen) {
     return (

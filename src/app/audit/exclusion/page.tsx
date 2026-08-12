@@ -112,7 +112,7 @@ function ContractNote() {
       <div>
         <h3 className="text-sm font-bold text-blue-900 mb-1">배제 면적 측정 기준 안내</h3>
         <p className="text-xs text-blue-800/80 leading-relaxed">
-          배제 면적은 <b>실제 측정된 합집합(Union) 면적</b>을 사용합니다. 계약서에는 "산출물에 없다"고 기재되어 있으나, 응답 데이터에 포함된 실측값을 우선하여 표기합니다.
+          배제 면적은 <b>실제 측정된 합집합(Union) 면적</b>을 사용합니다. 계약서에는 &quot;산출물에 없다&quot;고 기재되어 있으나, 응답 데이터에 포함된 실측값을 우선하여 표기합니다.
         </p>
       </div>
     </div>
@@ -205,7 +205,7 @@ function VerdictNote({ layers, state }: { layers: Layer[]; state: ArtifactState<
       <div className="p-6">
         <p className="text-sm text-gray-600 leading-relaxed mb-6">
           백엔드는 점 데이터가 실제 면(Polygon)을 가지는지를 <b>지목 배수</b>를 통해 재판정합니다. 
-          따라서 AI의 '감리 제안'과 데이터에 기반한 '최종 판정'이 다를 수 있으며, 최종 판정이 적용됩니다.
+          따라서 AI의 &apos;감리 제안&apos;과 데이터에 기반한 &apos;최종 판정&apos;이 다를 수 있으며, 최종 판정이 적용됩니다.
         </p>
 
         {withVerdict.length === 0 ? (
@@ -263,7 +263,7 @@ function Rationale({ layers }: { layers: Layer[] }) {
                     <span className="text-[13px] font-bold text-gray-800">{l.name}</span>
                   </div>
                   <p className="text-[13px] text-gray-600 leading-relaxed font-serif">
-                    "{l.role.rationale}"
+                    &quot;{l.role.rationale}&quot;
                   </p>
                 </div>
               </div>
