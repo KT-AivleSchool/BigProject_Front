@@ -19,17 +19,29 @@
 import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
-import { GridMap } from "@/components/map/GridMap";
+import { GridMap, polygonsOf } from "@/components/map/GridMap";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { writeSitePick } from "@/lib/omnisite/sitePick";
-import { loadReport, loadScoreGrid, loadTopN } from "@/lib/omnisite/pipeline";
+import { loadExclusion, loadReport, loadScoreGrid, loadTopN } from "@/lib/omnisite/pipeline";
 import { areaM2, fixed, int, percent } from "@/lib/omnisite/format";
 import { SCREENS } from "@/lib/omnisite/screens";
-import type { ReportDoc, ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
+import type { ExclusionDoc, ReportDoc, ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
 
 const SCREEN = SCREENS.find((s) => s.no === "4")!;
+
+/**
+ * 지도가 **실제로 면으로 그린** 배제 레이어 수. 도구줄·범례가 이 값으로 말을 고른다.
+ *
+ * 🔴 파일에 feature 가 5개 있다고 5개가 그려지는 게 아니다 — `GridMap` 이 면이 아닌
+ *    geometry 는 안 그린다. 여기서 따로 세면 「실제 형상」이라고 적어놓고 격자가
+ *    그려지는 상태가 만들어진다. 그래서 **그리는 쪽 판정 함수를 그대로 부른다.**
+ */
+function drawableLayers(doc: ExclusionDoc | null): number {
+  if (!doc) return 0;
+  return doc.features.reduce((n, f) => n + (polygonsOf(f.geometry) ? 1 : 0), 0);
+}
 
 export default function Screen4Page() {
   const router = useRouter();
@@ -37,6 +49,11 @@ export default function Screen4Page() {
   const grid = useArtifact<ScoreGridDoc>("score_grid", loadScoreGrid);
   const topn = useArtifact<TopNCsvRow[]>("topN", loadTopN);
   const report = useArtifact<ReportDoc>("report", loadReport);
+  /**
+   * 배제 구역의 **실제 형상**. 없으면 `null` 이고 지도는 격자 사각형으로 떨어진다 —
+   * 그 사실을 범례가 말한다(아래 `Legend`). 조용히 바뀌지 않는다.
+   */
+  const exclusion = useArtifact<ExclusionDoc>("exclusion", loadExclusion);
 
   const [selected, setSelected] = useState<number | null>(null);
   /**
@@ -118,6 +135,7 @@ export default function Screen4Page() {
               <>
                 <Toolbar
                   grid={g}
+                  exclusion={exclusion.data}
                   showGrid={showGrid}
                   setShowGrid={setShowGrid}
                   showExcluded={showExcluded}
@@ -146,6 +164,7 @@ export default function Screen4Page() {
                       <GridMap
                         grid={g}
                         topn={rows}
+                        exclusion={exclusion.data}
                         selected={selected}
                         onSelect={select}
                         showExcluded={showExcluded}
@@ -194,7 +213,7 @@ export default function Screen4Page() {
                     )}
                   </div>
 
-                  <Legend grid={g} />
+                  <Legend grid={g} exclusion={exclusion.data} />
                 </section>
 
                 {/* 🔴 다음 단계로 가려면 **후보지를 하나 골라야 한다.** 화면 5 는
@@ -253,6 +272,7 @@ export default function Screen4Page() {
 
 function Toolbar({
   grid,
+  exclusion,
   showGrid,
   setShowGrid,
   showExcluded,
@@ -263,6 +283,7 @@ function Toolbar({
   setPanel,
 }: {
   grid: ScoreGridDoc;
+  exclusion: ExclusionDoc | null;
   showGrid: boolean;
   setShowGrid: (v: boolean) => void;
   showExcluded: boolean;
@@ -273,10 +294,21 @@ function Toolbar({
   setPanel: (v: boolean) => void;
 }) {
   const excluded = grid.cells.reduce((n, c) => n + (c[3] === 1 ? 1 : 0), 0);
+  const layers = drawableLayers(exclusion);
   return (
     <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 rounded-xl border border-hairline bg-white px-4 py-3 text-[12px] shrink-0">
       <Toggle on={showGrid} set={setShowGrid} label={`분석 격자망 (${int(grid.count)}칸)`} />
-      <Toggle on={showExcluded} set={setShowExcluded} label={`설치 불가 지역 (${int(excluded)}칸)`} />
+      <Toggle
+        on={showExcluded}
+        set={setShowExcluded}
+        /* 🔴 「칸」이라고 적으면 안 되는 경우가 생겼다 — 실제 형상을 그릴 땐 칸이
+           아니라 **구역**이다. 세는 단위를 그리는 것과 맞춘다. */
+        label={
+          layers > 0
+            ? `설치 불가 지역 (${layers}개 구역)`
+            : `설치 불가 지역 (${int(excluded)}칸 · 격자 근사)`
+        }
+      />
       <Toggle on={basemap} set={setBasemap} label="배경 지도" />
       <span className="ml-auto flex items-center gap-3 text-ink-secondary">
         <span>휠 확대 · 끌어서 이동 · 마커 클릭</span>
@@ -599,7 +631,8 @@ function Row({ k, v, mono }: { k: string; v: string; mono?: boolean }) {
   );
 }
 
-function Legend({ grid }: { grid: ScoreGridDoc }) {
+function Legend({ grid, exclusion }: { grid: ScoreGridDoc; exclusion: ExclusionDoc | null }) {
+  const layers = drawableLayers(exclusion);
   return (
     /* 액자의 **아래 테두리**다. 위쪽 도구줄과 짝을 이룬다 — 지도를 설명하는 글이
        지도에서 떨어져 문서 흐름에 흩어지면 무엇에 대한 범례인지 흐려진다. */
@@ -610,7 +643,11 @@ function Legend({ grid }: { grid: ScoreGridDoc }) {
       </span>
       <span className="flex items-center gap-1.5 font-medium">
         <span className="h-3 w-3 rounded shadow-sm" style={{ background: "rgba(190,60,60,0.30)" }} />
-        설치 불가 지역 (배제)
+        {/* 🔴 빨간 면이 **무엇인지**를 적는다. 산출물 형상일 때와 격자로 대신 그릴 때는
+            같은 그림이 아니다 — 뭉뚱그리면 격자 계단을 실제 경계로 읽는다. */}
+        {layers > 0
+          ? `설치 불가 지역 (배제 ${layers}종 · 실제 형상)`
+          : "설치 불가 지역 (배제 · 격자 근사)"}
       </span>
       <span className="flex items-center gap-1.5 font-medium">
         <span className="grid h-4 w-4 place-items-center rounded-full border-2 border-primary bg-white text-[9px] font-bold text-primary shadow-sm">
@@ -619,7 +656,7 @@ function Legend({ grid }: { grid: ScoreGridDoc }) {
         최종 추천 후보지
       </span>
       <span className="ml-auto text-gray-400 text-[11px]">
-        지도 상의 사각형은 분석의 기준이 되는 {grid.spacing_m}m 단위 격자 구역을 나타냅니다.
+        배경 색면은 {grid.spacing_m}m 격자 점수를 이어 그린 히트맵입니다 — 한 지점의 색은 주변 격자가 섞인 값입니다.
       </span>
     </div>
   );

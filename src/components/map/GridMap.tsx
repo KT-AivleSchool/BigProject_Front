@@ -15,13 +15,20 @@
  * 🔴 격자는 산출물에 **중심점만** 있다(`cells[i] = [경도, 위도, 점수, 배제여부]`).
  *    사각형은 `spacing_m` 으로 **여기서** 만든다. 산출물에 없는 폴리곤을
  *    있는 것처럼 취급하지 않는다.
+ *    같은 이유로 점수층의 블러는 **보이기용**이지 해상도가 아니다 — 자세한 것은
+ *    `draw()` 2번 주석. 블러 밖에 있는 것(배제 셀·Top-N 마커)이 정확한 값이다.
  *
  * 🔴 좌표계는 저장 규약대로 EPSG:4326 이다(`score_grid.crs` 로 확인한다).
  *    다른 값이 오면 그리지 않고 그 사실을 화면에 띄운다 — 좌표계 추측은
  *    이 프로젝트에서 실제로 사고가 났던 지점이다(공간조인 0건 → 지표 전부 0).
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
+import type {
+  ExclusionDoc,
+  GeoPolygon,
+  ScoreGridDoc,
+  TopNCsvRow,
+} from "@/lib/omnisite/types";
 
 const TILE_SIZE = 256;
 const MIN_ZOOM = 11;
@@ -59,6 +66,41 @@ function scoreColor(t: number): string {
   const g = Math.round(237 + (117 - 237) * c);
   const b = Math.round(242 + (222 - 242) * c);
   return `rgb(${r},${g},${b})`;
+}
+
+/**
+ * 면만 받는다. 점·선·null 이면 `null` — **면으로 지어내지 않는다.**
+ *
+ * 실측(`r_20260812_007`)은 5개 전부 `MultiPolygon` 이었지만, 관측 5건으로
+ * 타입을 좁히면 다음 도메인에서 다른 게 왔을 때 `coordinates` 를 폴리곤으로
+ * 읽어 **좌표가 뒤죽박죽인 도형**이 그려진다 — 예외가 안 나고 모양만 틀린다.
+ *
+ * 🔴 `export` 인 이유는 **범례가 같은 판정을 써야 하기 때문**이다. 「실제 형상」이라고
+ *    적을지 「격자 근사」라고 적을지는 여기서 몇 장이 면으로 인정됐는가로 갈린다 —
+ *    설명하는 쪽이 따로 세면 그리는 것과 적히는 것이 조용히 갈린다.
+ */
+export function polygonsOf(
+  g: { type: string; coordinates: unknown } | null,
+): GeoPolygon[] | null {
+  if (!g) return null;
+  if (g.type === "MultiPolygon") return g.coordinates as GeoPolygon[];
+  if (g.type === "Polygon") return [g.coordinates as GeoPolygon];
+  return null;
+}
+
+/** `cv` 와 같은 크기의 오프스크린을 확보한다. 매 프레임 새로 만들지 않는다. */
+function offscreenLike(
+  ref: { current: HTMLCanvasElement | null },
+  cv: HTMLCanvasElement,
+): HTMLCanvasElement {
+  let off = ref.current;
+  if (!off) {
+    off = document.createElement("canvas");
+    ref.current = off;
+  }
+  if (off.width !== cv.width) off.width = cv.width;
+  if (off.height !== cv.height) off.height = cv.height;
+  return off;
 }
 
 interface View {
@@ -99,6 +141,12 @@ function fitView(grid: ScoreGridDoc, size: { w: number; h: number }): View | nul
 export interface GridMapProps {
   grid: ScoreGridDoc;
   topn: TopNCsvRow[];
+  /**
+   * 배제 구역의 **실제 형상**(`exclusion.geojson`). 있으면 이걸 그리고,
+   * `null` 이면 격자 사각형으로 떨어진다(아래 4번). 🔴 `null` 은 조용한 실패가
+   * 아니다 — 부른 쪽이 범례에 「격자 근사」라고 적는다.
+   */
+  exclusion: ExclusionDoc | null;
   /** 선택된 순위(1-based). null 이면 선택 없음. */
   selected: number | null;
   onSelect: (rank: number | null) => void;
@@ -112,6 +160,7 @@ export interface GridMapProps {
 export function GridMap({
   grid,
   topn,
+  exclusion,
   selected,
   onSelect,
   showExcluded,
@@ -122,6 +171,10 @@ export function GridMap({
   const boxRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const tiles = useRef(new Map<string, HTMLImageElement>());
+  /** 점수층 전용 오프스크린. 여기 그린 뒤 **한 번만** 블러해서 합성한다(아래 2번). */
+  const heatRef = useRef<HTMLCanvasElement | null>(null);
+  /** 배제층 전용 오프스크린. 겹침이 진해지지 않게 하는 장치다(아래 3번). */
+  const exclRef = useRef<HTMLCanvasElement | null>(null);
   const drag = useRef<{ x: number; y: number; cx: number; cy: number } | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [hover, setHover] = useState<{ x: number; y: number; text: string } | null>(null);
@@ -158,7 +211,13 @@ export function GridMap({
 
   const draw = useCallback(() => {
     const cv = canvasRef.current;
-    if (!cv || !view || size.w === 0) return;
+    // 🔴 `size.h` 도 본다. 좁은 폭에서 지도 칸이 **0 높이로 접히는** 순간이
+    //    실제로 있고(415px 뷰포트 실측: 컨테이너 350×0), 그때 캔버스는
+    //    350×0 이 된다. 예전엔 아무것도 안 그려져 조용히 넘어갔지만, 아래
+    //    2번이 그 크기로 오프스크린을 만들면 `drawImage` 가 **빈 원본**을
+    //    받는다 — 크로뮴에서 렌더러가 통째로 죽었다(빈 화면도 아니고
+    //    "This page couldn't load"). 폭만 보던 검사가 원인이었다.
+    if (!cv || !view || size.w === 0 || size.h === 0) return;
     const dpr = window.devicePixelRatio || 1;
     if (cv.width !== size.w * dpr || cv.height !== size.h * dpr) {
       cv.width = size.w * dpr;
@@ -209,28 +268,139 @@ export function GridMap({
     }
 
     // 2) 점수 격자. 사각형 한 변 = spacing_m / (m per px).
+    //
+    // 예전엔 이 사각형을 그대로 칠해서 50m 블록이 눈에 그대로 보였다. 지금은
+    // 같은 사각형을 **오프스크린에 그린 뒤 한 번만 블러**해서 합성한다.
+    // 안 고른 방법과 이유 —
+    //  · 셀마다 방사형 그라디언트: 6,797개면 팬·줌에서 프레임이 죽는다.
+    //  · 격자 인덱스로 보간(저해상 캔버스 업스케일): 산출물에 `row`/`col`/`origin`
+    //    이 **없어서** 경위도로 역산해야 하는데, 역산이 틀려도 화면은 그럴듯해
+    //    보인다. 없는 것을 역산하지 않는다.
+    //
+    // 🔴 블러는 **값을 섞는다.** 화면의 색은 그 지점의 실측 점수가 아니라 주변
+    //    셀이 번진 결과다 — 그래서 이건 **배경 히트맵**이고 범례에 그렇게 적었다.
+    //    고르는 행위는 블러 밖의 Top-N 마커(4번)로만 한다.
+    //
+    // ⚠ `side` 는 아래 3번(배제 격자 대체안)도 쓰므로 블록 밖에 둔다.
+    const mpp = metersPerPixel(view.lat, z);
+    const side = Math.max(1.5, grid.spacing_m / mpp);
+
     if (showGrid) {
-      const mpp = metersPerPixel(view.lat, z);
-      const side = Math.max(1.5, grid.spacing_m / mpp);
       const span = Math.max(1e-9, grid.score_max - grid.score_min);
-      for (const c of grid.cells) {
-        const excluded = c[3] === 1;
-        if (excluded && !showExcluded) continue;
-        const x = px(c[0]) - side / 2;
-        const y = py(c[1]) - side / 2;
-        if (x < -side || y < -side || x > size.w || y > size.h) continue;
-        if (excluded) {
-          ctx.fillStyle = "rgba(190,60,60,0.30)";
-        } else {
-          ctx.fillStyle = scoreColor((c[2] - grid.score_min) / span);
-          ctx.globalAlpha = 0.72;
+      // 한 변의 절반. 이웃 셀까지만 번진다 — 더 키우면 지형이 통째로 뭉개진다.
+      const blur = Math.min(20, Math.max(1, side * 0.5));
+      // 🔴 화면 밖 셀도 블러 반경만큼은 그려야 한다. 안 그리면 팬 할 때
+      //    뷰포트 가장자리에 **직선 이음매**가 생긴다.
+      const pad = side + blur * 3;
+
+      const heat = offscreenLike(heatRef, cv);
+      const hx = heat.getContext("2d");
+      if (hx) {
+        hx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        hx.clearRect(0, 0, size.w, size.h);
+        for (const c of grid.cells) {
+          if (c[3] === 1) continue; // 배제는 블러에 안 넣는다 — 범주 플래그다
+          const x = px(c[0]) - side / 2;
+          const y = py(c[1]) - side / 2;
+          if (x < -pad || y < -pad || x > size.w + pad || y > size.h + pad) continue;
+          hx.fillStyle = scoreColor((c[2] - grid.score_min) / span);
+          hx.fillRect(x, y, side, side);
         }
-        ctx.fillRect(x, y, side, side);
+        // ⚠ `ctx.filter` 를 안 지원하는 브라우저에서는 대입이 무시될 뿐이라
+        //    **블러 없는 예전 모습**으로 떨어진다. 빈 화면이 되지는 않는다.
+        ctx.filter = `blur(${blur.toFixed(1)}px)`;
+        ctx.globalAlpha = 0.72;
+        ctx.drawImage(heat, 0, 0, size.w, size.h);
+        ctx.filter = "none";
         ctx.globalAlpha = 1;
+      }
+
+    }
+
+    // 3) 배제 구역. **산출물의 실제 형상을 그린다** — 격자 근사가 아니다.
+    //
+    // 점수층(2번)과 성격이 정반대다. 점수는 격자 중심점만 있어서 사각형을 여기서
+    // 만들 수밖에 없지만, 배제는 `exclusion.geojson` 에 **면 자체가 들어 있다**
+    // (실측 `r_20260812_007`: MultiPolygon 5장 · 링 491 · 점 6,253 · CRS84).
+    // 그러니 여기서 근사할 이유가 없다. 사각형 6,797개보다 오히려 싸다.
+    //
+    // 🔴 왜 오프스크린을 거치나 — **레이어 5장이 심하게 겹친다**(01 금연구역과
+    //    11 어린이보호구역이 둘 다 학교 필지로 번진다). 각 장을 alpha 0.32 로
+    //    바로 칠하면 겹친 데가 진해져 「더 많이 배제됨」으로 읽히는데,
+    //    **「반쯤 배제」도 「더 배제」도 없다.** 불투명하게 한 장에 모아 찍고
+    //    합성에서 한 번만 흐리게 하면 겹쳐도 색이 평평하다.
+    //
+    // 🔴 왜 `evenodd` 인가 — 폴리곤의 첫 링이 바깥이고 나머지가 구멍인데, 기본
+    //    nonzero 규칙은 **바깥과 구멍이 반대로 감겨 있을 때만** 구멍을 뚫는다.
+    //    GeoJSON 규격(RFC 7946)은 그렇게 하라고 하지만 만든 쪽이 지켰는지는
+    //    안 재봤다. 틀렸으면 구멍이 메워진 채 그려지는데 **조금 더 큰 덩어리로
+    //    보일 뿐이라 아무도 못 잡는다.** `evenodd` 는 감김 방향에 안 기댄다.
+    if (showExcluded) {
+      const polyLayers: GeoPolygon[][] = exclusion
+        ? exclusion.features
+            .map((f) => polygonsOf(f.geometry))
+            .filter((p): p is GeoPolygon[] => p !== null)
+        : [];
+
+      if (polyLayers.length > 0) {
+        const off = offscreenLike(exclRef, cv);
+        const ex = off.getContext("2d");
+        if (ex) {
+          ex.setTransform(dpr, 0, 0, dpr, 0, 0);
+          ex.clearRect(0, 0, size.w, size.h);
+          ex.fillStyle = "rgb(196,72,72)";
+          ex.strokeStyle = "rgb(150,40,40)";
+          ex.lineWidth = 1;
+          ex.lineJoin = "round";
+          for (const polys of polyLayers) {
+            for (const poly of polys) {
+              const outer = poly[0];
+              if (!outer || outer.length === 0) continue;
+              // 화면 밖 폴리곤은 건너뛴다. 바깥 링만 봐도 된다 — 구멍은 그 안이다.
+              let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+              for (const [lon, lat] of outer) {
+                const x = px(lon), y = py(lat);
+                if (x < x0) x0 = x;
+                if (x > x1) x1 = x;
+                if (y < y0) y0 = y;
+                if (y > y1) y1 = y;
+              }
+              if (x1 < 0 || y1 < 0 || x0 > size.w || y0 > size.h) continue;
+              ex.beginPath();
+              for (const ring of poly) {
+                let first = true;
+                for (const [lon, lat] of ring) {
+                  const x = px(lon), y = py(lat);
+                  if (first) {
+                    ex.moveTo(x, y);
+                    first = false;
+                  } else ex.lineTo(x, y);
+                }
+                ex.closePath();
+              }
+              ex.fill("evenodd");
+              ex.stroke();
+            }
+          }
+          ctx.globalAlpha = 0.32;
+          ctx.drawImage(off, 0, 0, size.w, size.h);
+          ctx.globalAlpha = 1;
+        }
+      } else {
+        // 4) 형상을 못 받았을 때만 예전 모습(격자 사각형). **조용히 떨어지지
+        //    않는다** — 부른 쪽이 범례에 「격자 근사」라고 적는다.
+        ctx.fillStyle = "rgba(190,60,60,0.30)";
+        for (const c of grid.cells) {
+          if (c[3] !== 1) continue;
+          const x = px(c[0]) - side / 2;
+          const y = py(c[1]) - side / 2;
+          if (x < -side || y < -side || x > size.w || y > size.h) continue;
+          ctx.fillRect(x, y, side, side);
+        }
       }
     }
 
-    // 3) Top-N 마커
+    // 5) Top-N 마커
     for (const r of topn) {
       const x = px(r.경도);
       const y = py(r.위도);
@@ -250,7 +420,7 @@ export function GridMap({
       ctx.textBaseline = "middle";
       ctx.fillText(String(r.순위), x, y + 0.5);
     }
-  }, [view, size, grid, topn, selected, showExcluded, showGrid, basemap, onTileError]);
+  }, [view, size, grid, topn, exclusion, selected, showExcluded, showGrid, basemap, onTileError]);
 
   useEffect(() => {
     drawRef.current = draw;

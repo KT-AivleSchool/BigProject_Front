@@ -676,10 +676,24 @@ export interface ExclusionProps {
   label: string;
 }
 
+/** 링 하나 = `[경도, 위도][]`. 폴리곤의 첫 링이 바깥, 나머지는 구멍이다. */
+export type GeoRing = [number, number][];
+export type GeoPolygon = GeoRing[];
+
 export interface ExclusionFeature {
   type: "Feature";
   properties: ExclusionProps;
-  /** 화면 2b 는 판정 표만 쓴다 — 좌표는 읽지 않으므로 형태를 단정하지 않는다. */
+  /**
+   * 🔴 **화면 4 가 이 좌표를 실제로 그린다**(2026-08-12). 예전 주석은 "화면 2b 는
+   *    판정 표만 쓴다 — 좌표는 읽지 않으므로 형태를 단정하지 않는다" 였고, 그때는
+   *    맞는 말이었다. 지금은 읽으므로 **실측한 모양**을 적는다:
+   *    `r_20260812_007` 실측 5 feature 전부 `MultiPolygon` · 링 491 · 점 6,253 ·
+   *    `crs` 는 `urn:ogc:def:crs:OGC:1.3:CRS84`(= EPSG:4326, 격자와 같아 변환 불필요).
+   *
+   *    그래도 타입은 **안 좁힌다.** 관측 5건은 보증이 아니고, 링 감김 방향도
+   *    안 재봤다. 그리는 쪽(`GridMap.polygonsOf`)이 런타임에 `type` 을 보고
+   *    면이 아니면 **안 그린다** — 점·선을 면으로 지어내지 않는다.
+   */
   geometry: { type: string; coordinates: unknown } | null;
 }
 
