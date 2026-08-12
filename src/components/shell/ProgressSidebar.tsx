@@ -1,19 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { gateScreen } from "@/lib/omnisite/gate";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { computeProgress, formatDuration, loadBaseline } from "@/lib/omnisite/progress";
 import { fetchRunLog } from "@/lib/omnisite/pipeline";
 import { datetime, int, percent } from "@/lib/omnisite/format";
-import { SCREENS } from "@/lib/omnisite/screens";
+import { SCREENS, screenOf } from "@/lib/omnisite/screens";
 import type { RunDoc, RunStep } from "@/lib/omnisite/types";
 
 export function ProgressSidebar() {
+  const pathname = usePathname();
+  const screen = screenOf(pathname);
+  
   const { run, restoring, runningElapsedSec, refresh } = useRun();
   const baseline = loadBaseline();
   const [isOpen, setIsOpen] = useState(false);
+
+  // Step 4 이후(4, 5, 6)부터는 모니터링 사이드바를 숨긴다.
+  const isHiddenScreen = screen && ["4", "5", "6"].includes(screen.no);
 
   // Auto-open sidebar when a run exists and is not succeeded/failed
   useEffect(() => {
@@ -21,6 +28,10 @@ export function ProgressSidebar() {
       setIsOpen(true);
     }
   }, [run?.status]);
+
+  if (isHiddenScreen) {
+    return null;
+  }
 
   if (!isOpen) {
     return (

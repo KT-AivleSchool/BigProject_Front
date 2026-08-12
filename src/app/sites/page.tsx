@@ -40,6 +40,7 @@ export default function Screen4Page() {
 
   const [selected, setSelected] = useState<number | null>(null);
   const [tileFailed, setTileFailed] = useState(false);
+  const [showInfo, setShowInfo] = useState(false);
 
   /**
    * 빈 지도를 눌러 선택을 지우면(`null`) 상세 팝업이 닫힙니다.
@@ -72,7 +73,7 @@ export default function Screen4Page() {
   }
 
   return (
-    <PageBody>
+    <PageBody fullWidth={true}>
       <PageHeader
         screen={SCREEN}
         lead="선택된 후보지들이 얼마나 많은 수요를 감당할 수 있는지(커버율)를 확인합니다. 최종 순위는 단순 점수가 아닌 실질적인 수요 해결 기여도를 기준으로 결정됩니다."
@@ -109,7 +110,7 @@ export default function Screen4Page() {
 
                   <div className="flex-1 min-h-0 grid md:grid-cols-5">
                     {/* Left: Map (4 columns) */}
-                    <div className="relative h-full min-h-0 md:col-span-4 border-r border-hairline">
+                    <div className="relative h-full min-h-0 md:col-span-4 border-r border-hairline overscroll-none touch-none">
                       <GridMap
                         grid={g}
                         topn={rows}
@@ -133,63 +134,56 @@ export default function Screen4Page() {
                           />
                         </div>
                       )}
+                      
+                      {/* Floating Action Button */}
+                      <div className="absolute bottom-6 right-6 z-10">
+                        <button
+                          type="button"
+                          disabled={!sel}
+                          onClick={() => sel && goHearing(sel)}
+                          className={`inline-flex items-center gap-2 rounded-xl px-8 py-4 text-[15px] font-bold shadow-xl transition-all ${
+                            sel
+                              ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
+                              : "cursor-not-allowed bg-white/90 text-gray-400 backdrop-blur border border-gray-200"
+                          }`}
+                        >
+                          {sel ? "이 위치로 갈등 예측 실행" : "후보지를 먼저 선택하세요"}
+                          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+                        </button>
+                      </div>
                     </div>
 
                     {/* Right: Sidebar (1 column) */}
-                    <aside className="flex h-full flex-col min-h-0 bg-gray-50/50 md:col-span-1">
-                      <div className="min-h-0 flex-1 overflow-y-auto p-4 flex flex-col gap-6">
+                    <aside className="flex h-full flex-col min-h-0 bg-gray-50/80 backdrop-blur-xl border-l border-gray-200 md:col-span-1 relative">
+                      <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white/50 shrink-0">
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-sm font-bold text-gray-800">최적 입지 분석 리포트</h2>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowInfo(!showInfo)}
+                          className={`flex items-center justify-center w-6 h-6 rounded-full transition-colors ${showInfo ? "bg-gray-300 text-gray-700" : "bg-gray-200 text-gray-500 hover:bg-gray-300"}`}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        </button>
+                      </div>
+
+                      {/* Info Panel Dropdown */}
+                      {showInfo && (
+                        <div className="absolute top-[60px] right-4 w-72 z-20 p-4 rounded-xl bg-white/95 backdrop-blur shadow-xl border border-gray-200 text-[11px] leading-relaxed text-ink-secondary flex flex-col gap-2 animate-in fade-in slide-in-from-top-2">
+                          <p><strong>내접폭</strong>은 이 필지 안에 시설이 실제로 들어가는지를 보는 값입니다. 면적이 넓어도 길쭉하면 못 놓습니다.</p>
+                          <p><strong>커버 기여</strong>는 비율이 아니라 수요값 절대량입니다(산출물 그대로). 커버율이 실제로 얼마나 올랐는지는 「실질 커버율 상승폭」으로 보십시오.</p>
+                          <p><strong>인접한 타 추천 후보지</strong>는 산출물에 없는 값이라 Top-N 좌표로 이 화면에서 계산한 것입니다. 실제 이격이 기준보다 큰지 확인하는 용도입니다.</p>
+                        </div>
+                      )}
+
+                      <div className="min-h-0 flex-1 overflow-y-auto p-4 flex flex-col gap-6 scrollbar-thin">
                         <Coverage report={report.data} nTop={rows.length} />
                         <TopList rows={rows} selected={selected} onSelect={select} />
                       </div>
                     </aside>
                   </div>
                 </section>
-
-                {/* 🔴 다음 단계로 가려면 **후보지를 하나 골라야 한다.** 화면 5 는
-                    고른 그 점으로 공청회를 연다 — 안 고르고 넘어가면 화면 5 가
-                    스스로 1순위를 집게 되고, 그건 추천을 결정으로 바꿔 읽는 것이다. */}
-                <div className="shrink-0 mt-4 mb-2">
-                  <div
-                    className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 p-5 shadow-sm ${
-                      sel ? "border-blue-200 bg-blue-50/60" : "border-gray-200 bg-gray-50/80"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
-                          sel ? "bg-blue-600 text-white" : "bg-gray-200 text-gray-500"
-                        }`}
-                      >
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-                      </div>
-                      <div className="flex flex-col">
-                        <span className="text-[14px] font-bold text-gray-800">
-                          {sel
-                            ? `${sel.순위}순위 · ${sel.JIBUN} 로 공청회를 엽니다`
-                            : "공청회를 열 위치를 선택하세요"}
-                        </span>
-                        <span className="text-[13px] text-gray-500">
-                          {sel
-                            ? "이 필지로 페르소나 토론을 시작합니다. 다른 곳을 원하면 지도나 목록에서 다시 고르세요."
-                            : "지도의 번호 마커나 오른쪽 후보 목록에서 한 곳을 누르면 다음 단계로 넘어갈 수 있습니다."}
-                        </span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      disabled={!sel}
-                      onClick={() => sel && goHearing(sel)}
-                      className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-8 py-3.5 text-sm font-bold shadow-sm transition-all ${
-                        sel
-                          ? "bg-blue-600 text-white hover:bg-blue-700 active:scale-95"
-                          : "cursor-not-allowed bg-gray-300 text-gray-500"
-                      }`}
-                    >
-                      {sel ? "이 위치로 갈등 예측 실행" : "후보지를 먼저 선택하세요"}
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-                    </button>
-                  </div>
-                </div>
               </>
             );
           }}
@@ -201,6 +195,8 @@ export default function Screen4Page() {
 
 
 function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) {
+  const [isOpen, setIsOpen] = useState(false);
+
   if (!report) return null;
   const cov = report.coverage;
   if (!cov) return null;
@@ -209,7 +205,7 @@ function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) 
   const reach = Object.entries(cov.reach).sort((a, b) => Number(a[0]) - Number(b[0]));
 
   return (
-    <section className="flex flex-col gap-6 shrink-0">
+    <section className="flex flex-col gap-4 shrink-0 border-b border-gray-200 pb-4">
       {/* Top: Big Number & Chart */}
       <div className="flex flex-col gap-3">
         <div className="text-center">
@@ -221,25 +217,38 @@ function Coverage({ report, nTop }: { report: ReportDoc | null; nTop: number }) 
         </div>
       </div>
 
+      <button 
+        type="button" 
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex items-center justify-between w-full text-[12px] font-semibold text-gray-600 bg-gray-100/50 hover:bg-gray-100 px-3 py-2 rounded-lg transition-colors"
+      >
+        <span>상세 통계 지표 보기</span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`transition-transform ${isOpen ? "rotate-180" : ""}`}>
+          <path d="m6 9 6 6 6-6"/>
+        </svg>
+      </button>
+
       {/* Bottom: Stats */}
-      <div className="flex flex-col">
-        <dl className="flex flex-col gap-y-2 text-[12px]">
-          {reach.map(([target, n]) => (
-            <div key={target} className="flex justify-between gap-3 border-b border-gray-200 pb-1">
-              <dt className="text-ink-secondary">전체 수요의 {percent(Number(target), 0)} 해결</dt>
-              <dd className="tnum font-bold text-gray-800">{int(n)}곳 필요</dd>
+      {isOpen && (
+        <div className="flex flex-col animate-in slide-in-from-top-2 fade-in duration-200">
+          <dl className="flex flex-col gap-y-2 text-[12px]">
+            {reach.map(([target, n]) => (
+              <div key={target} className="flex justify-between gap-3 border-b border-gray-200/50 pb-1">
+                <dt className="text-ink-secondary">전체 수요의 {percent(Number(target), 0)} 해결</dt>
+                <dd className="tnum font-bold text-gray-800">{int(n)}곳 필요</dd>
+              </div>
+            ))}
+            <div className="flex justify-between gap-3 border-b border-gray-200/50 pb-1 mt-2">
+              <dt className="text-ink-secondary" title="더 이상 후보지를 늘려도 커버율이 크게 오르지 않는 효율성 한계점입니다.">효율성 감소 시작점 (가성비 한계)</dt>
+              <dd className="tnum font-bold text-gray-800">{int(cov.knee)}곳</dd>
             </div>
-          ))}
-          <div className="flex justify-between gap-3 border-b border-gray-200 pb-1 mt-2">
-            <dt className="text-ink-secondary" title="더 이상 후보지를 늘려도 커버율이 크게 오르지 않는 효율성 한계점입니다.">효율성 감소 시작점 (가성비 한계)</dt>
-            <dd className="tnum font-bold text-gray-800">{int(cov.knee)}곳</dd>
-          </div>
-          <div className="flex justify-between gap-3 border-b border-gray-200 pb-1">
-            <dt className="text-ink-secondary" title={`물리적으로 도달 불가능한 수요점: ${int(cov.unreached_n)}개`}>최대 커버율 한계</dt>
-            <dd className="tnum font-bold text-gray-800">{percent(cov.ceiling, 2)}</dd>
-          </div>
-        </dl>
-      </div>
+            <div className="flex justify-between gap-3 border-b border-gray-200/50 pb-1">
+              <dt className="text-ink-secondary" title={`물리적으로 도달 불가능한 수요점: ${int(cov.unreached_n)}개`}>최대 커버율 한계</dt>
+              <dd className="tnum font-bold text-gray-800">{percent(cov.ceiling, 2)}</dd>
+            </div>
+          </dl>
+        </div>
+      )}
     </section>
   );
 }

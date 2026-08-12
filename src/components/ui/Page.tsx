@@ -68,9 +68,9 @@ export function PageFooter({
   );
 }
 
-export function PageBody({ children }: { children: React.ReactNode }) {
+export function PageBody({ children, fullWidth }: { children: React.ReactNode, fullWidth?: boolean }) {
   return (
-    <div className="mx-auto w-full max-w-[1200px] px-5 pt-7 pb-2 h-full flex flex-col min-h-0">
+    <div className={`mx-auto w-full px-5 pt-7 pb-2 h-full flex flex-col min-h-0 ${fullWidth ? '' : 'max-w-[1200px]'}`}>
       {children}
     </div>
   );
