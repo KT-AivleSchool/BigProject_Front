@@ -89,11 +89,16 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
     }
   }, [agreeTerms, agreePrivacy, agreeMarketing]);
 
-  // Live password validation
-  const isLengthValid = password.length >= 8;
-  const hasLetterAndNum = /[A-Za-z]/.test(password) && /[0-9]/.test(password);
-  const hasSpecialChar = /[!@#$%^&*]/.test(password);
-  const isPasswordValid = isLengthValid && hasLetterAndNum && hasSpecialChar;
+  // Live password validation (2종류 10자 이상 OR 3종류 8자 이상)
+  const hasLetter = /[A-Za-z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecial = /[!@#$%^&*]/.test(password);
+  const typeCount = (hasLetter ? 1 : 0) + (hasNumber ? 1 : 0) + (hasSpecial ? 1 : 0);
+
+  const isCombo2Valid = typeCount >= 2 && password.length >= 10;
+  const isCombo3Valid = typeCount >= 3 && password.length >= 8;
+  const isPasswordValid = isCombo2Valid || isCombo3Valid;
+
 
   if (!isOpen) return null;
 
@@ -405,15 +410,12 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
                     <p className="text-gray-500">
                       특수문자 힌트: <span className="font-mono text-primary font-bold">!@#$%^&*</span> 조합 가능
                     </p>
-                    <div className="flex gap-3 text-[11px]">
-                      <span className={isLengthValid ? "text-green-600 font-semibold" : "text-gray-400"}>
-                        {isLengthValid ? "✓" : "○"} 8자 이상
+                    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                      <span className={typeCount >= 2 ? "text-green-600 font-semibold" : "text-gray-400"}>
+                        {typeCount >= 2 ? "✓" : "○"} 2종류 이상 (10자 이상)
                       </span>
-                      <span className={hasLetterAndNum ? "text-green-600 font-semibold" : "text-gray-400"}>
-                        {hasLetterAndNum ? "✓" : "○"} 영문/숫자 포함
-                      </span>
-                      <span className={hasSpecialChar ? "text-green-600 font-semibold" : "text-gray-400"}>
-                        {hasSpecialChar ? "✓" : "○"} 특수문자 포함
+                      <span className={typeCount >= 3 ? "text-green-600 font-semibold" : "text-gray-400"}>
+                        {typeCount >= 3 ? "✓" : "○"} 3종류 조합 (8자 이상)
                       </span>
                     </div>
                   </div>
