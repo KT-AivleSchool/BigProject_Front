@@ -23,12 +23,62 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [username, setUsername] = useState("");
 
+  // Email availability state
+  const [emailStatus, setEmailStatus] = useState<{ checking: boolean; available: boolean | null; message: string } | null>(null);
+
   // Terms states
   const [agreeAll, setAgreeAll] = useState(false);
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [agreePrivacy, setAgreePrivacy] = useState(false);
   const [agreeMarketing, setAgreeMarketing] = useState(false);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
+
+  // Reset modal state when opened
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setRegisterStep(1);
+      setError(null);
+      setEmail("");
+      setPassword("");
+      setPasswordConfirm("");
+      setUsername("");
+      setEmailStatus(null);
+      setAgreeTerms(false);
+      setAgreePrivacy(false);
+      setAgreeMarketing(false);
+      setAgreeAll(false);
+    }
+  }, [isOpen, initialMode]);
+
+  // Debounced email availability check
+  useEffect(() => {
+    if (mode !== "register" || !email || !email.includes("@")) {
+      setEmailStatus(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setEmailStatus({ checking: true, available: null, message: "이메일 중복 확인 중..." });
+      try {
+        const res = await fetch(`/api/v1/auth/check-email?email=${encodeURIComponent(email)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setEmailStatus({
+            checking: false,
+            available: data.available,
+            message: data.available ? "✓ 사용 가능한 이메일입니다." : "❌ 이미 가입된 이메일입니다."
+          });
+        } else {
+          setEmailStatus(null);
+        }
+      } catch {
+        setEmailStatus(null);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [email, mode]);
 
   useEffect(() => {
     if (agreeTerms && agreePrivacy && agreeMarketing) {
@@ -39,7 +89,14 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
     }
   }, [agreeTerms, agreePrivacy, agreeMarketing]);
 
+  // Live password validation
+  const isLengthValid = password.length >= 8;
+  const hasLetterAndNum = /[A-Za-z]/.test(password) && /[0-9]/.test(password);
+  const hasSpecialChar = /[!@#$%^&*]/.test(password);
+  const isPasswordValid = isLengthValid && hasLetterAndNum && hasSpecialChar;
+
   if (!isOpen) return null;
+
 
   const handleAgreeAll = (e: React.ChangeEvent<HTMLInputElement>) => {
     const checked = e.target.checked;
@@ -297,13 +354,20 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
             {mode === "register" && registerStep === 2 && (
               <>
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700">이메일(아이디)</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">이메일(아이디)</label>
+                    {emailStatus && (
+                      <span className={`text-xs font-semibold ${emailStatus.checking ? "text-gray-500" : emailStatus.available ? "text-green-600" : "text-red-500"}`}>
+                        {emailStatus.message}
+                      </span>
+                    )}
+                  </div>
                   <input 
                     type="email" 
                     required 
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${emailStatus?.available === false ? "border-red-400 focus:border-red-500 focus:ring-red-500" : emailStatus?.available === true ? "border-green-400 focus:border-green-500 focus:ring-green-500" : "border-gray-300 focus:border-primary focus:ring-primary"}`}
                     placeholder="user@example.com"
                   />
                 </div>
@@ -321,29 +385,56 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-sm font-medium text-gray-700">비밀번호</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">비밀번호</label>
+                    {password && (
+                      <span className={`text-xs font-semibold ${isPasswordValid ? "text-green-600" : "text-amber-600"}`}>
+                        {isPasswordValid ? "✓ 사용 가능한 비밀번호입니다" : "조건 미충족"}
+                      </span>
+                    )}
+                  </div>
                   <input 
                     type="password" 
                     required 
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="새 비밀번호"
+                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${password && isPasswordValid ? "border-green-400 focus:border-green-500 focus:ring-green-500" : password ? "border-amber-400 focus:border-amber-500 focus:ring-amber-500" : "border-gray-300 focus:border-primary focus:ring-primary"}`}
+                    placeholder="새 비밀번호 입력"
                   />
-                  <p className="text-[11px] text-red-500/80 mt-1 leading-tight">
-                    영문, 숫자, 특수문자 중 2종류 이상을 조합하여 10~16자리 (3종류는 8~16자리)로 구성할 수 있습니다.
-                  </p>
+                  <div className="text-[11px] space-y-1 mt-1">
+                    <p className="text-gray-500">
+                      특수문자 힌트: <span className="font-mono text-primary font-bold">!@#$%^&*</span> 조합 가능
+                    </p>
+                    <div className="flex gap-3 text-[11px]">
+                      <span className={isLengthValid ? "text-green-600 font-semibold" : "text-gray-400"}>
+                        {isLengthValid ? "✓" : "○"} 8자 이상
+                      </span>
+                      <span className={hasLetterAndNum ? "text-green-600 font-semibold" : "text-gray-400"}>
+                        {hasLetterAndNum ? "✓" : "○"} 영문/숫자 포함
+                      </span>
+                      <span className={hasSpecialChar ? "text-green-600 font-semibold" : "text-gray-400"}>
+                        {hasSpecialChar ? "✓" : "○"} 특수문자 포함
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div className="space-y-1 pt-2">
-                  <label className="text-sm font-medium text-gray-700">비밀번호 확인</label>
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-gray-700">비밀번호 확인</label>
+                    {passwordConfirm && (
+                      <span className={`text-xs font-semibold ${password === passwordConfirm ? "text-green-600" : "text-red-500"}`}>
+                        {password === passwordConfirm ? "✓ 비밀번호 일치" : "❌ 비밀번호 불일치"}
+                      </span>
+                    )}
+                  </div>
                   <input 
                     type="password" 
                     required 
                     value={passwordConfirm}
                     onChange={(e) => setPasswordConfirm(e.target.value)}
-                    className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    placeholder="새 비밀번호 확인"
+                    className={`w-full rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 ${passwordConfirm && password === passwordConfirm ? "border-green-400 focus:border-green-500 focus:ring-green-500" : passwordConfirm ? "border-red-400 focus:border-red-500 focus:ring-red-500" : "border-gray-300 focus:border-primary focus:ring-primary"}`}
+                    placeholder="새 비밀번호 재입력"
                   />
                 </div>
               </>
