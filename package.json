@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@microsoft/fetch-event-source": "^2.0.1",
+    "@sentry/nextjs": "^10.70.0",
     "driver.js": "^1.7.0",
     "jspdf": "^4.2.1",
     "lightningcss": "^1.32.0",
