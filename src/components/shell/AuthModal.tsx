@@ -30,6 +30,96 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
   const [agreeMarketing, setAgreeMarketing] = useState(false);
   const [showPrivacyDetails, setShowPrivacyDetails] = useState(false);
 
+  // Chunk 1: 이메일 중복 체크 & 비밀번호 실시간 유효성 상태
+  const [emailStatus, setEmailStatus] = useState<{ checked: boolean; available: boolean; message: string }>({
+    checked: false,
+    available: false,
+    message: "",
+  });
+  const [isCheckingEmail, setIsCheckingEmail] = useState(false);
+  const [passwordValidation, setPasswordValidation] = useState<{ valid: boolean; message: string }>({
+    valid: false,
+    message: "",
+  });
+
+  // 요구사항 3: 모달 열림/닫힘 및 mode 변경 시 UI 탭 및 폼 상태 리셋
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setRegisterStep(1);
+      setError(null);
+      setEmail("");
+      setPassword("");
+      setPasswordConfirm("");
+      setUsername("");
+      setAgreeAll(false);
+      setAgreeTerms(false);
+      setAgreePrivacy(false);
+      setAgreeMarketing(false);
+      setEmailStatus({ checked: false, available: false, message: "" });
+      setPasswordValidation({ valid: false, message: "" });
+    }
+  }, [isOpen, initialMode]);
+
+  // 요구사항 1: 비밀번호 실시간 유효성 검증 함수
+  const validatePasswordInput = (pwd: string) => {
+    if (!pwd) return { valid: false, message: "" };
+    const hasMinLen = pwd.length >= 8;
+    const hasLetter = /[a-zA-Z]/.test(pwd);
+    const hasNumber = /[0-9]/.test(pwd);
+    const hasSpecial = /[!@#$%^&*]/.test(pwd);
+
+    if (hasMinLen && hasLetter && hasNumber && hasSpecial) {
+      return { valid: true, message: "✓ 사용 가능한 비밀번호입니다." };
+    }
+
+    const missing = [];
+    if (!hasMinLen) missing.push("8자 이상");
+    if (!hasLetter) missing.push("영문");
+    if (!hasNumber) missing.push("숫자");
+    if (!hasSpecial) missing.push("특수문자(!@#$%^&*)");
+
+    return { valid: false, message: `비밀번호 조건: ${missing.join(", ")} 포함 필요` };
+  };
+
+  useEffect(() => {
+    if (mode === "register") {
+      setPasswordValidation(validatePasswordInput(password));
+    }
+  }, [password, mode]);
+
+  // 요구사항 2: 이메일 실시간 중복 확인 (400ms 디바운스)
+  useEffect(() => {
+    if (mode !== "register" || registerStep !== 2 || !email || !email.includes("@")) {
+      setEmailStatus({ checked: false, available: false, message: "" });
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsCheckingEmail(true);
+      try {
+        const res = await fetch(`http://localhost:8000/api/v1/auth/check-email?email=${encodeURIComponent(email)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.available) {
+            setEmailStatus({ checked: true, available: true, message: "✓ 사용 가능한 행정 이메일입니다." });
+          } else {
+            setEmailStatus({ checked: true, available: false, message: "❌ 이미 등록된 행정 이메일입니다." });
+          }
+        } else {
+          setEmailStatus({ checked: false, available: false, message: "이메일 확인 중 오류가 발생했습니다." });
+        }
+      } catch (err) {
+        console.error("이메일 중복확인 통신 오류:", err);
+        setEmailStatus({ checked: false, available: false, message: "서버 연결에 실패했습니다." });
+      } finally {
+        setIsCheckingEmail(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [email, mode, registerStep]);
+
   useEffect(() => {
     if (agreeTerms && agreePrivacy && agreeMarketing) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -67,16 +157,25 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
       return;
     }
 
+    if (mode === "register" && registerStep === 2) {
+      if (!emailStatus.available) {
+        setError(emailStatus.message || "이메일 중복 확인을 완료해 주세요.");
+        return;
+      }
+      if (!passwordValidation.valid) {
+        setError("비밀번호 유효성 조건(8자 이상, 영문, 숫자, 특수문자 !@#$%^&* 포함)을 충족해야 합니다.");
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setError("비밀번호가 일치하지 않습니다.");
+        return;
+      }
+    }
+
     setLoading(true);
 
     try {
       if (mode === "register") {
-        if (password !== passwordConfirm) {
-          setError("비밀번호가 일치하지 않습니다.");
-          setLoading(false);
-          return;
-        }
-
         const payload: UserRegister = { email, password, username };
         await postJson<UserResponse>("/api/v1/auth/register", payload);
         
@@ -89,10 +188,6 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
         
         // Save token
         setAuthToken(tokenData.access_token);
-        // 🔴 재발급용 토큰은 **로그인 응답에 원래부터 있었는데 여기서 버려지고 있었다**
-        //    (백엔드 `auth.py:155`). 이게 없으면 상단 배지의 연장 버튼이 못 돈다.
-        //    스키마상 `str | None` 이라 없을 수도 있다 — 그때는 지우고, 배지가
-        //    「재발급용 토큰이 없다」고 말한다. 기본값을 지어내지 않는다.
         setRefreshToken(tokenData.refresh_token ?? null);
 
         let username = email.split("@")[0] ?? "user";
@@ -149,6 +244,8 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
     setAgreePrivacy(false);
     setAgreeMarketing(false);
     setAgreeAll(false);
+    setEmailStatus({ checked: false, available: false, message: "" });
+    setPasswordValidation({ valid: false, message: "" });
   };
 
   return (
@@ -306,6 +403,16 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="user@example.com"
                   />
+                  {/* 요구사항 2: 이메일 실시간 중복 체크 메세지 */}
+                  <div className="min-h-[18px] text-[11px]">
+                    {isCheckingEmail ? (
+                      <span className="text-blue-500 animate-pulse">이메일 중복 확인 중...</span>
+                    ) : (
+                      <span className={emailStatus.available ? "text-emerald-600 font-semibold" : "text-red-500 font-semibold"}>
+                        {emailStatus.message}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
@@ -330,9 +437,15 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="새 비밀번호"
                   />
-                  <p className="text-[11px] text-red-500/80 mt-1 leading-tight">
-                    영문, 숫자, 특수문자 중 2종류 이상을 조합하여 10~16자리 (3종류는 8~16자리)로 구성할 수 있습니다.
-                  </p>
+                  {/* 요구사항 1: 비밀번호 유효성 메시지 및 특수문자 힌트 */}
+                  <div className="flex flex-col gap-0.5 pt-0.5">
+                    <span className={passwordValidation.valid ? "text-emerald-600 font-semibold text-[11px]" : "text-amber-600 text-[11px]"}>
+                      {passwordValidation.message}
+                    </span>
+                    <p className="text-[11px] text-gray-500 leading-tight">
+                      * 8자 이상, 영문, 숫자, 특수문자(<code className="bg-gray-100 px-1 rounded text-gray-800">! @ # $ % ^ & *</code>) 조합 필수
+                    </p>
+                  </div>
                 </div>
 
                 <div className="space-y-1 pt-2">
@@ -345,6 +458,9 @@ export function AuthModal({ isOpen, onClose, onSuccess, initialMode = "login" }:
                     className="w-full rounded-md border border-gray-300 px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     placeholder="새 비밀번호 확인"
                   />
+                  {passwordConfirm && password !== passwordConfirm && (
+                    <span className="text-red-500 text-[11px]">❌ 비밀번호가 일치하지 않습니다.</span>
+                  )}
                 </div>
               </>
             )}
