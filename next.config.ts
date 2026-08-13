@@ -1,3 +1,4 @@
+import { withSentryConfig } from "@sentry/nextjs";
 import type { NextConfig } from "next";
 
 /**
@@ -201,4 +202,45 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withSentryConfig(nextConfig, {
+  // For all available options, see:
+  // https://github.com/getsentry/sentry-webpack-plugin#options
+
+  org: process.env.SENTRY_ORG || "YOUR_ORG_SLUG_HERE",
+  project: process.env.SENTRY_PROJECT || "YOUR_PROJECT_SLUG_HERE",
+
+  // Only print logs for uploading source maps in CI
+  silent: !process.env.CI,
+
+  // For all available options, see:
+  // https://docs.sentry.io/platforms/javascript/guides/nextjs/manual-setup/
+
+  // Upload a larger set of source maps for prettier stack traces (increases build time)
+  widenClientFileUpload: true,
+
+  // Automatically annotate React components to show their full name in breadcrumbs and session replay
+  reactComponentAnnotation: {
+    enabled: true,
+  },
+
+  // Route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
+  // This can increase your server load as well as your hosting bill.
+  // Note: Check that the configured route will not match with your Next.js middleware, otherwise reporting of client-
+  // side errors will fail.
+  tunnelRoute: "/monitoring",
+
+  // 🔴 `hideSourceMaps: true` 가 여기 있었는데 **타입 에러로 빌드가 죽는다**
+  //    (`TS2561 … does not exist in type 'SentryBuildOptions'`, next.config.ts:233).
+  //    `@sentry/nextjs` v8 부터 클라이언트 번들에서 소스맵을 숨기는 게 **기본값**이 되며
+  //    옵션 자체가 사라졌다 — 지운 것이지 끈 게 아니다. 동작은 그대로다.
+  //    ⚠ `main_deploy`(6dc02f6) 단독으로도 같은 에러가 난다. 병합이 만든 게 아니다.
+
+  // Automatically tree-shake Sentry logger statements to reduce bundle size
+  disableLogger: true,
+
+  // Enables automatic instrumentation of Vercel Cron Monitors. (Does not yet work with App Router route handlers.)
+  // See the following for more information:
+  // https://docs.sentry.io/product/crons/
+  // https://vercel.com/docs/cron-jobs
+  automaticVercelMonitors: true,
+});
