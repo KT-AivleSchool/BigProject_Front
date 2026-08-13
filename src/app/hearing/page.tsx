@@ -49,6 +49,9 @@ const EMPTY_METRICS: Metrics = {
 
 const SS_KEYS = ["sim_messages", "sim_metrics", "sim_started", "sim_finished", "sim_parcel", "sim_run_id", "sim_pnu"];
 
+/** 버퍼 마감 시한(ms). rAF 가 안 도는 숨은 탭에서 이쪽이 받아낸다. */
+const FLUSH_DEADLINE_MS = 120;
+
 export default function Screen5Page() {
   /**
    * 🔴 「토론할 위치」 배선은 **`useSelectedSite()` 한 곳**이다(2026-08-11 이관).
@@ -111,10 +114,23 @@ export default function Screen5Page() {
     //    안에서 같은 이유(하이드레이션)로 `useEffect` 에 담아 읽는다.
   }, []);
 
+  /**
+   * 🔴 패킷마다 쓰지 않는다. `sim_messages` 는 토론이 끝날 무렵 140KB 가 넘는데
+   *    (실측 146,701B · 1,586패킷), `JSON.stringify` + `sessionStorage.setItem`
+   *    은 **동기**라 초당 ~48회 부르면 메인 스레드가 그만큼 멈춘다. 화면에서는
+   *    "SSE 가 안 온다"로 보인다 — 서버는 실시간으로 흘려보내고 있다(같은 실측:
+   *    TTFB 1.87s · 종료 직전 1초에 몰린 바이트 1.5%). 최대 1초에 한 번만 쓰고,
+   *    마지막 변경은 타이머가 안 취소되므로 **완결본은 반드시 저장된다**.
+   */
+  const lastPersistRef = useRef(0);
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length === 0) return;
+    const due = Math.max(0, 1000 - (Date.now() - lastPersistRef.current));
+    const t = setTimeout(() => {
+      lastPersistRef.current = Date.now();
       sessionStorage.setItem("sim_messages", JSON.stringify(messages));
-    }
+    }, due);
+    return () => clearTimeout(t);
   }, [messages]);
   useEffect(() => {
     sessionStorage.setItem("sim_metrics", JSON.stringify(metrics));
@@ -128,6 +144,100 @@ export default function Screen5Page() {
   useEffect(() => {
     if (usedParcelId !== null) sessionStorage.setItem("sim_parcel", String(usedParcelId));
   }, [usedParcelId]);
+
+  /**
+   * 🔴 패킷 하나에 렌더 하나를 하지 않는다. 토론 한 번이 **1,586패킷 / 32초**
+   *    (실측)이고 그때마다 ⓐ 전체 대화 리렌더 ⓑ `scrollIntoView` 강제 레이아웃이
+   *    걸린다 — 브라우저가 프레임을 못 그려 **끝나고 한꺼번에 뜨는 것처럼** 보인다.
+   *    받은 조각은 버퍼에 쌓고 **프레임당 한 번** 합쳐 넣는다. 화면에 들어가는
+   *    내용은 한 글자도 안 바뀐다(합치는 규칙이 같다) — 바뀌는 건 횟수뿐이다.
+   *    ⚠ 버퍼는 ref 다. state 로 두면 그 자체가 리렌더를 부른다.
+   *
+   * 🔴 rAF **하나에만** 매달지 않는다. 탭이 숨겨지면(`document.hidden`)
+   *    브라우저가 rAF 를 **아예 안 돌린다** — 그러면 이 버퍼가 곧 버퍼링이 되어
+   *    돌아왔을 때 한꺼번에 쏟아진다(고치려던 증상과 똑같이 보인다).
+   *    마감 타이머를 같이 걸어 **둘 중 먼저 오는 쪽**이 비운다: 보이는 탭에서는
+   *    rAF(~16ms)가 항상 이기므로 동작이 안 바뀌고, 숨은 탭에서는 타이머가
+   *    받아낸다(숨은 탭은 최소 1초로 조여지지만 어차피 그리지 않는 구간이다).
+   */
+  const pendingRef = useRef<{ sender: string; text: string }[]>([]);
+  const rafRef = useRef<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const flushPending = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    if (timerRef.current !== null) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const batch = pendingRef.current;
+    if (batch.length === 0) return;
+    pendingRef.current = [];
+
+    setMessages((prev) => {
+      const next = [...prev];
+      for (const { sender, text } of batch) {
+        const last = next.length > 0 ? next[next.length - 1] : null;
+        const prevSender = last ? last.name || "" : "";
+
+        if (sender && sender !== prevSender) {
+          const isSystem = sender.toUpperCase().includes("SYSTEM") || sender === "시스템";
+          next.push({
+            id: `${Date.now()}-${Math.random()}`,
+            type: isSystem ? "system" : "user",
+            role: sender as ChatRole,
+            name: sender,
+            time: new Date().toLocaleTimeString("ko-KR", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            text,
+          });
+        } else if (last) {
+          // 같은 화자면 토큰 조각을 이어 붙인다 (패킷 1,400~1,600건 → 발화 14건)
+          next[next.length - 1] = { ...last, text: last.text + text };
+        }
+      }
+      return next;
+    });
+  }, []);
+
+  const queuePacket = useCallback(
+    (sender: string, text: string) => {
+      pendingRef.current.push({ sender, text });
+      if (rafRef.current === null) {
+        rafRef.current = requestAnimationFrame(() => {
+          rafRef.current = null;
+          flushPending();
+        });
+      }
+      if (timerRef.current === null) {
+        timerRef.current = setTimeout(() => {
+          timerRef.current = null;
+          flushPending();
+        }, FLUSH_DEADLINE_MS);
+      }
+    },
+    [flushPending],
+  );
+
+  /**
+   * 🔴 언마운트에서 rAF·타이머를 **직접** 푼다. SSE 이펙트의 정리는
+   *    `controller.abort()` 까지고, 그 시점에 예약된 콜백은 그대로 남는다 —
+   *    깨어나서 `setMessages` 를 부르면 사라진 컴포넌트를 갱신하는 셈이다.
+   *    두 손잡이를 만든 곳이 여기이므로 놓는 곳도 여기다.
+   */
+  useEffect(() => {
+    return () => {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+      rafRef.current = null;
+      timerRef.current = null;
+    };
+  }, []);
 
   const pushSystem = useCallback((text: string) => {
     setMessages((prev) => [
@@ -267,36 +377,18 @@ export default function Screen5Page() {
 
               if (!sender && !text) return;
 
-              setMessages((prev) => {
-                const next = [...prev];
-                const last = next.length > 0 ? next[next.length - 1] : null;
-                const prevSender = last ? last.name || "" : "";
-
-                if (sender && sender !== prevSender) {
-                  const isSystem =
-                    sender.toUpperCase().includes("SYSTEM") || sender === "시스템";
-                  next.push({
-                    id: `${Date.now()}-${Math.random()}`,
-                    type: isSystem ? "system" : "user",
-                    role: sender as ChatRole,
-                    name: sender,
-                    time: new Date().toLocaleTimeString("ko-KR", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }),
-                    text,
-                  });
-                } else if (last) {
-                  // 같은 화자면 토큰 조각을 이어 붙인다 (패킷 1,400~1,600건 → 발화 14건)
-                  next[next.length - 1] = { ...last, text: last.text + text };
-                }
-                return next;
-              });
+              queuePacket(sender, text);
+              // 끝났으면 버퍼에 남은 조각을 바로 넣는다 — 다음 프레임을 기다리면
+              // 마지막 문장이 화면에서 잘린 채로 남는다.
+              if (msg.is_finished) flushPending();
             } catch (e) {
               console.error("스트리밍 데이터 파싱 오류:", e, event.data);
             }
           },
           onclose() {
+            // 버퍼에 남은 조각을 흘리고 나서 끝낸다 — 안 그러면 마지막 프레임
+            // 분량이 화면에 영영 안 들어간다(서버는 보냈는데 안 보인다).
+            flushPending();
             // 정상 종료. 던져서 자동 재연결을 막는다.
             throw new Error("Stream closed normally");
           },
@@ -305,6 +397,7 @@ export default function Screen5Page() {
           },
         });
       } catch (err) {
+        flushPending();
         if (err instanceof Error && err.message === "Stream closed normally") {
           setIsFinished(true);
           return;
@@ -324,7 +417,7 @@ export default function Screen5Page() {
       if (timer) clearTimeout(timer);
       controller.abort();
     };
-  }, [isStarted, isFinished, selected]);
+  }, [isStarted, isFinished, selected, queuePacket, flushPending]);
 
   useEffect(() => {
     // 🔴 smooth 스크롤을 쓰면 SSE 토큰이 초당 수십 번씩 렌더링될 때 브라우저 렌더링 엔진이 마비되어
@@ -334,6 +427,7 @@ export default function Screen5Page() {
 
   function reset() {
     SS_KEYS.forEach((k) => sessionStorage.removeItem(k));
+    pendingRef.current = [];
     setIsStarted(false);
     setIsFinished(false);
     setMessages([]);

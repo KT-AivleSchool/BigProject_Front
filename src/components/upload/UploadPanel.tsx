@@ -53,6 +53,68 @@ function describe(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/**
+ * 실패 응답 안에 들어 있는 **파일별 처리 내역**을 꺼낸다.
+ *
+ * 🔴 실패했다고 아무 일도 안 일어난 게 아니다. `POST /upload/regulation` 은 파일을
+ *    **먼저 저장하고** 벡터 적재를 시도한다 — 조문이 하나도 없으면 422 인데 그때도
+ *    `law/` 에는 파일과 추출 `.txt` 가 남아 있다(계약: 응답 `detail.files[]`).
+ *    「업로드 실패」 한 줄만 띄우면 사람은 아무것도 안 남았다고 읽고 다시 올린다.
+ *    사유(예: 「조문(제N조)을 하나도 못 찾았습니다」)도 이 배열 안에만 있다.
+ *
+ * 모양이 다르면 **지어내지 않고** 빈 배열을 준다 — 그때는 `detail` 한 줄만 보인다.
+ */
+function partialLines(e: unknown): string[] {
+  if (!(e instanceof ApiError)) return [];
+  const d = (e.body as { detail?: unknown } | null)?.detail;
+  if (typeof d !== "object" || d === null) return [];
+  const { saved_to, files } = d as { saved_to?: unknown; files?: unknown };
+  const out: string[] = [];
+  if (typeof saved_to === "string") out.push(`저장 위치: ${saved_to} (파일은 남아 있습니다)`);
+  if (!Array.isArray(files)) return out;
+  for (const raw of files) {
+    const f = raw as {
+      filename?: unknown;
+      text_chars?: unknown;
+      articles?: unknown;
+      chunks?: unknown;
+      warnings?: unknown;
+    };
+    if (typeof f.filename !== "string") continue;
+    out.push(
+      `${f.filename} · 텍스트 ${Number(f.text_chars ?? 0)}자 · ` +
+        `조문 ${Number(f.articles ?? 0)}개 · 청크 ${Number(f.chunks ?? 0)}개`,
+    );
+    if (Array.isArray(f.warnings)) {
+      for (const w of f.warnings) out.push(`  ⚠ ${String(w)}`);
+    }
+  }
+  return out;
+}
+
+/**
+ * 「업로드 중」 뒤에 붙는 점을 `.` → `..` → `...` 로 돌린다.
+ *
+ * 🔴 **장식이 아니다.** 업로드는 한 번의 `fetch` 라 진행률을 낼 자리가 없고
+ *    (`XMLHttpRequest` 가 아니면 `upload.onprogress` 가 없다), 큰 파일에서는
+ *    수십 초 동안 화면이 완전히 정지한 것처럼 보인다 — 사람은 그걸 「멈췄다」로
+ *    읽고 새로고침한다. 점이 도는 것은 **아직 살아 있다**는 유일한 신호다.
+ *
+ * ⚠ 점 개수가 진행률을 뜻하지 않는다. 남은 시간을 아는 척하지 않는다(원칙 4).
+ */
+function useDots(active: boolean): string {
+  const [n, setN] = useState(1);
+  useEffect(() => {
+    if (!active) return;
+    // 🔴 여기서 `setN(1)` 로 초기화하지 않는다 — effect 안의 동기 setState 는
+    //    `react-hooks/set-state-in-effect` 에 걸린다(이 파일 :96 과 같은 이유).
+    //    시작 점 개수가 직전 값이어도 보이는 것은 똑같이 「돌고 있다」다.
+    const t = setInterval(() => setN((v) => (v % 3) + 1), 400);
+    return () => clearInterval(t);
+  }, [active]);
+  return ".".repeat(n);
+}
+
 function kb(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -80,8 +142,23 @@ export function UploadPanel({
   const [domainsError, setDomainsError] = useState<string | null>(null);
   const [createDomain, setCreateDomain] = useState(false);
   const [ingest, setIngest] = useState(true);
+  /**
+   * 조례 업로드용 시설 유형 — **이 패널이 직접 묻는다.**
+   *
+   * 🔴 부모(`facilityType` prop)의 「시설 유형」 칸은 화면1 **Step 2** 에 있는데 이
+   *    패널은 **Step 1** 에 있다. 그래서 조례를 올리는 시점에는 그 값이 **항상 빈
+   *    문자열**이고, 새 도메인은 STEP1 감리도 없어 서버가 되짚을 데가 없다 →
+   *    `POST /upload/regulations` 가 **무조건 400** 이었다(2026-08-13, '그늘막' 실측).
+   *    필요한 값을 **필요한 자리에서** 받는다.
+   *
+   * 🔴 기본값을 넣지 않는다. 도메인 이름이 곧 시설명이라고 가정하면('그늘막' →
+   *    "그늘막") 대개 맞아서 **틀렸을 때 안 걸린다** — 이 값은 토론 단계의 조례
+   *    검색 필터와 정확히 일치해야 하고, 어긋나면 다른 시설의 조례가 인용된다.
+   */
+  const [facilityInput, setFacilityInput] = useState("");
 
   const [busy, setBusy] = useState(false);
+  const dots = useDots(busy);
   const [notice, setNotice] = useState<Notice | null>(null);
 
   const fileRef = useRef<HTMLInputElement>(null);
@@ -90,6 +167,17 @@ export function UploadPanel({
   const trimmed = domain.trim();
   const known = domains?.some((d) => d.domain === trimmed) ?? false;
   const entry = domains?.find((d) => d.domain === trimmed) ?? null;
+
+  /** 이 패널이 받은 값이 먼저다. 부모 칸(Step 2)은 이미 채워져 있을 때만 거든다. */
+  const effectiveFacility = facilityInput.trim() || facilityType.trim();
+  /**
+   * 서버가 되짚을 데(STEP1 감리 확정본)도 없고 값도 안 왔으면 **400 이 확정**이다.
+   * 왕복하기 전에 막고 **이유를 적는다** — 그냥 비활성화만 하면 왜 못 누르는지 안 보인다.
+   *
+   * ⚠ `has_audit_reviewed` 를 못 얻었으면(`entry === null`: 목록 로딩 실패·새 도메인)
+   *   막는 쪽으로 친다. 서버가 되짚을 수 있는지 모르는 채로 보내면 400 을 받는다.
+   */
+  const facilityMissing = tab === "law" && !effectiveFacility && !entry?.has_audit_reviewed;
 
   // ── 도메인 목록 ─────────────────────────────────────────────
   /**
@@ -205,7 +293,7 @@ export function UploadPanel({
         const r: RegulationUploadResult = await uploadRegulations({
           domain: trimmed,
           files: picked,
-          facilityType: facilityType.trim() || undefined,
+          facilityType: effectiveFacility || undefined,
           createDomain,
           ingest,
         });
@@ -234,7 +322,15 @@ export function UploadPanel({
       resetPicked();
       await Promise.all([loadList(), loadDomains()]);
     } catch (e) {
-      setNotice({ kind: "error", title: "업로드 실패", lines: [describe(e)] });
+      const extra = partialLines(e);
+      setNotice({
+        kind: "error",
+        title: extra.length > 0 ? "업로드 실패 — 일부는 적용됐습니다" : "업로드 실패",
+        lines: [describe(e), ...extra],
+      });
+      // 🔴 실패해도 목록을 다시 읽는다. 저장은 됐는데 화면만 「0개」로 남으면
+      //    사람은 같은 파일을 또 올린다.
+      await Promise.all([loadList(), loadDomains()]);
     } finally {
       setBusy(false);
     }
@@ -316,17 +412,33 @@ export function UploadPanel({
             도메인 목록을 못 받았습니다: {domainsError}
           </p>
         ) : known ? (
-          <p className="text-gray-700">
-            <span className="font-semibold text-gray-900">{trimmed}</span> — 조례{" "}
-            {entry?.law_files ?? 0}개 · 데이터 {entry?.data_files ?? 0}개 ·{" "}
-            {entry?.has_audit_reviewed ? (
-              <span className="text-green-700">STEP1 감리 확정본 있음</span>
-            ) : (
-              <span className="text-amber-700">
-                STEP1 감리 확정본 없음 — 조례를 올리려면 &ldquo;시설 유형&rdquo;을 채워야 합니다
-              </span>
+          <div className="flex flex-col gap-2">
+            <p className="text-gray-700">
+              <span className="font-semibold text-gray-900">{trimmed}</span> — 조례{" "}
+              {entry?.law_files ?? 0}개 · 데이터 {entry?.data_files ?? 0}개 ·{" "}
+              {entry?.has_audit_reviewed ? (
+                <span className="text-green-700">STEP1 감리 확정본 있음</span>
+              ) : (
+                <span className="text-amber-700">
+                  STEP1 감리 확정본 없음 — 조례를 올리려면 &ldquo;시설 유형&rdquo;을 채워야 합니다
+                </span>
+              )}
+            </p>
+            {/*
+              🔴 **고르기 전에** 말한다. 이름을 맞춰서 들어오면 그 폴더의 배포 원본이
+                 아래 목록에 뜨는데, 그게 「내가 올린 것」으로 읽혀 실제로 지워졌다
+                 (2026-08-13 — `datasets/흡연/data`). 개수는 서버가 원장과 대조해 센
+                 값(`preexisting_files`)을 그대로 적는다.
+            */}
+            {(entry?.preexisting_files ?? 0) > 0 && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                이 도메인에는 <strong>배포 원본 {entry?.preexisting_files}개</strong>가 이미
+                있습니다 — 프리셋 모드가 읽는 파일입니다. 아래 목록에 같이 보이지만
+                <strong> 지울 수 없습니다.</strong> 내 데이터로만 분석하려면 다른 도메인
+                이름을 쓰세요.
+              </p>
             )}
-          </p>
+          </div>
         ) : (
           <div className="flex flex-col gap-2">
             <p className="text-amber-800">
@@ -406,25 +518,72 @@ export function UploadPanel({
               </li>
             ))}
           </ul>
+          {/* 합계를 미리 보여준다 — 왜 오래 걸리는지는 누른 뒤가 아니라 누르기 전에 알아야 한다. */}
+          {picked.length > 1 && (
+            <p className="mt-2 border-t border-blue-200 pt-2 text-right text-xs text-gray-500">
+              합계 {kb(picked.reduce((s, f) => s + f.size, 0))}
+            </p>
+          )}
           {tab === "law" && (
-            <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
-              <input
-                type="checkbox"
-                checked={ingest}
-                onChange={(e) => setIngest(e.target.checked)}
-              />
-              벡터 DB(<code className="font-mono text-xs">statutes_collection</code>)에 적재
-              <span className="text-gray-400">— 끄면 파일만 저장되고 토론이 못 찾습니다</span>
-            </label>
+            <>
+              {/* 🔴 조례는 **시설 종류로 태깅**되어 저장되고, 토론 단계의 조례 검색이 그
+                  태그로 거른다. 서버는 이 값을 추측하지 않는다(추측하면 다른 시설의
+                  조례가 인용되는데 예외가 안 난다) — 그래서 여기서 받는다. */}
+              <label className="mt-3 block text-sm text-gray-700">
+                <span className="font-medium">
+                  시설 유형
+                  {facilityMissing ? (
+                    <span className="ml-1 text-red-600">*</span>
+                  ) : (
+                    <span className="ml-1 text-gray-400">(선택)</span>
+                  )}
+                </span>
+                <input
+                  type="text"
+                  value={facilityInput}
+                  onChange={(e) => setFacilityInput(e.target.value)}
+                  placeholder={facilityType.trim() || "예) 흡연부스 · 재활용정거장 · 그늘막"}
+                  className={`mt-1 w-full rounded-lg border px-3 py-2 text-sm ${
+                    facilityMissing ? "border-red-300 bg-red-50" : "border-gray-300"
+                  }`}
+                />
+                <span className="mt-1 block text-xs text-gray-500">
+                  {entry?.has_audit_reviewed
+                    ? "비우면 STEP1 감리 확정본의 값을 씁니다."
+                    : "이 도메인은 STEP1 감리가 아직 없어 서버가 되짚을 데가 없습니다 — 직접 적어주세요."}
+                  {" 토론 단계의 조례 검색 필터와 "}
+                  <strong>정확히 같은 낱말</strong>이어야 합니다.
+                </span>
+              </label>
+              <label className="mt-3 flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={ingest}
+                  onChange={(e) => setIngest(e.target.checked)}
+                />
+                벡터 DB(<code className="font-mono text-xs">statutes_collection</code>)에 적재
+                <span className="text-gray-400">— 끄면 파일만 저장되고 토론이 못 찾습니다</span>
+              </label>
+            </>
           )}
           <div className="mt-4 flex gap-2">
             <button
               type="button"
               onClick={onUpload}
-              disabled={busy}
-              className="px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-50"
+              disabled={busy || facilityMissing}
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
             >
-              {busy ? "업로드 중..." : `${picked.length}개 업로드`}
+              {busy ? (
+                <>
+                  <span className="h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+                  업로드 중
+                  {/* 점이 늘었다 줄었다 해도 버튼 폭은 그대로여야 한다 — 폭이 흔들리면
+                      옆 버튼이 같이 움직여서 「뭔가 잘못됐다」로 읽힌다. */}
+                  <span className="inline-block w-4 text-left tabular-nums">{dots}</span>
+                </>
+              ) : (
+                `${picked.length}개 업로드`
+              )}
             </button>
             <button
               type="button"
@@ -435,6 +594,13 @@ export function UploadPanel({
               선택 해제
             </button>
           </div>
+          {/* 막힌 이유를 적는다 — 비활성 버튼만 두면 「고장」으로 읽힌다. */}
+          {facilityMissing && (
+            <p className="mt-2 text-xs text-red-700">
+              시설 유형을 적어야 올릴 수 있습니다. 지금 보내면 서버가 400 으로 거절합니다 —
+              태그 없이 저장하면 다른 시설의 조례가 토론에 인용됩니다.
+            </p>
+          )}
         </div>
       )}
 
@@ -527,6 +693,51 @@ export function UploadPanel({
   );
 }
 
+/**
+ * 삭제 버튼 한 칸.
+ *
+ * 🔴 **판정을 프런트가 다시 하지 않는다.** 서버가 준 `deletable` 만 본다 —
+ *    「업로드 원장에 있나」는 디스크(`datasets/<도메인>/.upload_ledger.json`)가
+ *    정본이고, 그 규칙을 화면이 흉내 내면 서버와 갈라진다. 값이 없는 옛 응답
+ *    (`undefined`)은 예전처럼 지울 수 있게 둔다 — 서버가 `force` 없이 409 로
+ *    막으므로 화면이 앞서 막을 필요가 없다.
+ *
+ * 🔴 **숨기지 않고 비활성화한다.** 버튼이 사라지면 「왜 못 지우나」가 화면에서
+ *    사라진다 — 이 파일이 실제로 지워져서 프리셋 모드가 죽었던 사고다(2026-08-13).
+ */
+function DeleteCell({
+  filename,
+  deletable,
+  busy,
+  onDelete,
+}: {
+  filename: string;
+  deletable: boolean | undefined;
+  busy: boolean;
+  onDelete: (f: string) => void;
+}) {
+  const blocked = deletable === false;
+  return (
+    <button
+      type="button"
+      onClick={() => onDelete(filename)}
+      disabled={busy || blocked}
+      title={
+        blocked
+          ? "이 폴더에 원래 있던 배포 원본입니다. 프리셋 모드가 읽으므로 여기서 지울 수 없습니다."
+          : undefined
+      }
+      className={
+        blocked
+          ? "shrink-0 rounded px-2 py-1 text-xs text-gray-300 cursor-not-allowed"
+          : "shrink-0 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
+      }
+    >
+      삭제
+    </button>
+  );
+}
+
 function DataTable({
   list,
   busy,
@@ -554,23 +765,25 @@ function DataTable({
             </span>
             <span className="flex-1 truncate font-mono text-xs text-gray-800">{f.filename}</span>
             <span className="shrink-0 text-xs text-gray-500">{kb(f.size)}</span>
-            <span className="w-20 shrink-0 text-right text-xs text-gray-400">
-              {f.source === "preexisting" ? "폴더에 있던 것" : "업로드"}
-            </span>
-            <button
-              type="button"
-              onClick={() => onDelete(f.filename)}
-              disabled={busy}
-              className="shrink-0 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
+            <span
+              className={`w-28 shrink-0 text-right text-xs ${
+                f.deletable === false ? "text-amber-700" : "text-gray-400"
+              }`}
             >
-              삭제
-            </button>
+              {f.deletable === false ? "배포 원본(프리셋용)" : "업로드"}
+            </span>
+            <DeleteCell filename={f.filename} deletable={f.deletable} busy={busy} onDelete={onDelete} />
           </li>
         ))}
       </ul>
       <p className="mt-2 text-xs text-gray-400">
         정본은 디스크입니다. Redis 는 조회용 색인이고 매 조회마다 디스크와 대조합니다.
         부속 파일(.dbf 등)은 dataset 번호가 없습니다(—).
+        <br />
+        <span className="text-amber-700">
+          &ldquo;배포 원본&rdquo;은 이 폴더에 원래 있던 파일입니다 — 프리셋 모드가 읽으므로
+          여기서 지울 수 없습니다.
+        </span>
       </p>
     </>
   );
@@ -603,14 +816,14 @@ function LawTable({
             <span className="w-20 shrink-0 text-right text-xs text-gray-500">
               청크 {f.chunks_in_vector_db}
             </span>
-            <button
-              type="button"
-              onClick={() => onDelete(f.filename)}
-              disabled={busy}
-              className="shrink-0 rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-40"
+            <span
+              className={`w-28 shrink-0 text-right text-xs ${
+                f.deletable === false ? "text-amber-700" : "text-gray-400"
+              }`}
             >
-              삭제
-            </button>
+              {f.deletable === false ? "배포 원본(프리셋용)" : "업로드"}
+            </span>
+            <DeleteCell filename={f.filename} deletable={f.deletable} busy={busy} onDelete={onDelete} />
           </li>
         ))}
       </ul>

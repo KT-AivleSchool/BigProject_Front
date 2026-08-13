@@ -49,6 +49,7 @@ import type {
   AuditAnswer,
   CleanReportDoc,
   ExclusionDoc,
+  FacilityInference,
   ReportDoc,
   ReviewedDoc,
   RunDoc,
@@ -88,7 +89,12 @@ export interface RunMeta {
  *      생긴 뒤에도 이 문장이 남아, **있는 값을 안 읽는 근거**가 됐다.
  *
  * 🔴 **`full` 에는 게이트가 있다.** `_PLAN[MODE_FULL]` 에 `gate:audit`·
- *    `gate:weight` 가 들어 있다 — 즉 업로드 경로에는 "자동 완주" 가 **없다.**
+ *    `gate:weight` 가 들어 있다.
+ *    ⚠ 예전엔 여기에 「즉 업로드 경로에는 자동 완주가 **없다**」고 적혀 있었다.
+ *      전제는 지금도 참이지만 결론은 틀렸다 — 게이트가 있다고 사람이 꼭 답해야
+ *      하는 것은 아니다. `auto_approve` 가 **그 자리에서 AI 제안값으로** 답한다
+ *      (게이트를 계획에서 빼는 것이 아니다). 아래 `MODE_FIXTURE` 와 헷갈리지 말 것:
+ *      fixture 는 **픽스처 재생**(`<도메인>_FIX/` 필요)이지 자동승인이 아니다.
  *
  * 🔴 목록을 프런트가 정하지 않는다 — 서버가 모르는 값을 보내면 400 이고 문구도
  *    서버가 준다. 여기 있는 세 상수는 **버튼 라벨을 붙이기 위한 것**이지 화이트
@@ -146,6 +152,7 @@ export async function createRun(
   domain: string,
   mode: string = MODE_FIXTURE,
   full?: FullParams,
+  autoApprove: boolean = false,
 ): Promise<string> {
   // full 이 아닌데 조건을 들고 있으면 **여기서 버린다.** 그대로 보내면 400 이고,
   // 사용자에겐 "의도를 적었는데 서버가 거부했다" 로 보인다 — 화면이 안 보낼 값을
@@ -155,6 +162,9 @@ export async function createRun(
     body.user_input = full.user_input;
     if (full.topn !== undefined) body.topn = full.topn;
   }
+  // 🔴 `true` 일 때만 싣는다. `fixture` 는 게이트가 없어 서버가 **400** 으로 막는데,
+  //    `false` 를 늘 실으면 그 400 이 「자동승인을 요청했다」로 읽힌다(원칙 4).
+  if (autoApprove) body.auto_approve = true;
   const { run_id } = await postJson<{ run_id: string }>(`${BASE}/runs`, body);
   return run_id;
 }
@@ -249,6 +259,17 @@ function requireUrl(run: RunDoc, name: ArtifactName): string {
 
 export const loadReviewed = (run: RunDoc) =>
   getJson<ReviewedDoc>(requireUrl(run, "reviewed"));
+
+/**
+ * 시설·지역만 담긴 STEP 0.5 산출물. `reviewed.facility_inference` 와 **같은 값**이고
+ * 다른 것은 시점뿐이다 — 이건 프로파일링 직후(~15초), 저건 감리 뒤(~240초).
+ *
+ * 🔴 `full` 에만 있다. fixture·hitl 은 STEP0-1 을 안 돌아 이 키가 `null` 이므로
+ *    호출부는 반드시 `reviewed.facility_inference` 로 되짚어야 한다. 안 되짚으면
+ *    프리셋 run 의 「선정 대상」이 통째로 빈다.
+ */
+export const loadFacility = (run: RunDoc) =>
+  getJson<FacilityInference>(requireUrl(run, "facility"));
 
 export const loadCleanReport = (run: RunDoc) =>
   getJson<CleanReportDoc>(requireUrl(run, "clean_report"));

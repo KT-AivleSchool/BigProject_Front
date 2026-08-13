@@ -6,7 +6,6 @@ import { useEffect, useRef, useState } from "react";
 import { PageBody, PageHeader } from "@/components/ui/Page";
 import { UploadPanel } from "@/components/upload/UploadPanel";
 import {
-  MODE_FIXTURE,
   MODE_FULL,
   MODE_HITL,
   TOPN_DEFAULT,
@@ -19,13 +18,19 @@ import { fetchDomains, type DomainItem } from "@/lib/omnisite/upload";
 const SCREEN = SCREENS[0]!;
 
 /**
- * 데이터 출처. 이 선택이 **쓸 수 있는 mode 를 정한다** — 둘은 독립이 아니다.
+ * 데이터 출처. 이 선택이 **mode 를 정한다** — 둘은 독립이 아니다.
  *
- *   upload → `full` 만.  `user_input` 필수 · `topn` 선택(기본 20)
- *   preset → `fixture` · `hitl`.  둘 다 `data_임시/<도메인>_FIX/` 를 요구하고,
- *            `user_input`·`topn` 을 같이 보내면 **400** 이다(계약 8-2).
+ *   upload → `full`.  `user_input` 필수 · `topn` 선택(기본 20)
+ *   preset → `hitl`.  `user_input`·`topn` 을 같이 보내면 **400** 이다(계약 8-2).
  *
- * 실측 근거: `app/services/pipeline_runner.py:803-818`.
+ * 🔴 **분석 모드(맞춤형/고속)는 여기와 다른 축이다.** 예전엔 「고속」을
+ *    `mode="fixture"` 로 보냈는데 그건 **픽스처 재생**(`datasets/<도메인>_FIX/`
+ *    가 있어야 한다)이지 자동승인이 아니다 — 픽스처가 없는 도메인은 400 이고,
+ *    있어도 그 실행은 **지금 올린 데이터를 안 본다.** 지금은 mode 를 그대로 두고
+ *    `auto_approve` 를 얹는다: 게이트는 서지만 그 자리를 AI 제안값으로 답한다
+ *    (`pipeline_runner._run_auto_gate`). 그래서 **업로드 갈래에도 고속이 있다.**
+ *
+ * 실측 근거: `app/services/pipeline_runner.py` `_PLAN`·`start_run`.
  */
 type DataSource = "upload" | "preset";
 
@@ -50,7 +55,9 @@ export default function Screen1Page() {
   //    막는 **다른 값**이다. 빈 칸은 "안 정했다"이고 그때만 기본값 20 이 쓰인다.
   const [topnText, setTopnText] = useState(String(TOPN_DEFAULT));
 
-  const [mode, setMode] = useState<string>(MODE_HITL);
+  // 「고속 자동 분석」. mode 와 **다른 축**이다 — 게이트를 빼는 게 아니라
+  // 그 자리를 AI 제안값으로 답한다. 그래서 두 갈래(upload/preset) 다 고를 수 있다.
+  const [autoApprove, setAutoApprove] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
 
   const [activeStep, setActiveStep] = useState(1);
@@ -63,8 +70,9 @@ export default function Screen1Page() {
     if (el && typedDomain === null && el.value.trim()) setTypedDomain(el.value);
   }, [typedDomain]);
 
-  // 업로드 갈래는 `full` 고정이다 — 그 경로에 자동 완주 모드가 **없다.**
-  const effectiveMode = dataSource === "upload" ? MODE_FULL : mode;
+  // 업로드는 `full`(STEP0 부터), 프리셋은 `hitl`(STEP2 부터). 「고속」은 mode 를
+  // 바꾸지 않고 `autoApprove` 로 얹는다.
+  const effectiveMode = dataSource === "upload" ? MODE_FULL : MODE_HITL;
   const isFull = effectiveMode === MODE_FULL;
 
   const topnParsed = parseTopn(topnText);
@@ -120,6 +128,7 @@ export default function Screen1Page() {
             ...(topnParsed === "empty" || topnParsed === "invalid" ? {} : { topn: topnParsed as number }),
           }
         : undefined,
+      autoApprove,
     );
     if (id) router.push("/audit");
   }
@@ -314,11 +323,7 @@ export default function Screen1Page() {
                 </div>
               </div>
 
-              {dataSource === "upload" ? (
-                <FullModeNotice />
-              ) : (
-                <PremiumModePicker mode={mode} onChange={setMode} />
-              )}
+              <PremiumModePicker autoApprove={autoApprove} onChange={setAutoApprove} />
 
               {inputError && (
                 <div className="mt-2 p-4 rounded-xl border border-amber-300 bg-amber-50 text-sm text-amber-900">
@@ -622,31 +627,6 @@ function PresetPicker({
   );
 }
 
-/** 업로드 갈래는 모드를 고를 게 없다. **그 사실 자체를 화면에 적는다.** */
-function FullModeNotice() {
-  return (
-    <div className="rounded-2xl border-2 border-blue-500 bg-blue-50/40 p-6 ring-4 ring-blue-500/10">
-      <h3 className="text-lg font-bold text-blue-900">
-        전체 파이프라인
-        <span className="ml-2 inline-flex items-center text-[10px] font-mono font-medium text-gray-500 bg-black/5 px-2 py-0.5 rounded-md align-middle">
-          mode=full
-        </span>
-      </h3>
-      <p className="mt-2 text-sm text-gray-600 leading-relaxed">
-        업로드한 도메인은 STEP0(프로파일링)부터 STEP4·DB 적재까지 10칸을 돕니다.
-      </p>
-      <ul className="mt-4 list-disc pl-5 text-[13px] text-gray-600 space-y-1">
-        <li>
-          <b>게이트 2개가 섭니다</b> — 화면2(감리 확인)·화면3(가중치)에서 답해야 이어집니다.
-          업로드 경로에는 <b>게이트 없는 자동 모드가 없습니다.</b>
-        </li>
-        <li>실행 조건(alpha·decay·scale·spacing)은 고정입니다. 사람이 정하는 건 사용자 의도와 Top-N 개수 둘뿐입니다.</li>
-        <li>게이트 대기를 뺀 실행 시간은 약 5분입니다(감리·상위법 검색이 그중 대부분).</li>
-      </ul>
-    </div>
-  );
-}
-
 function Field({
   label,
   placeholder,
@@ -685,10 +665,16 @@ function Field({
   );
 }
 
-function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: string) => void }) {
+function PremiumModePicker({
+  autoApprove,
+  onChange,
+}: {
+  autoApprove: boolean;
+  onChange: (v: boolean) => void;
+}) {
   const options = [
     {
-      value: MODE_HITL,
+      value: false,
       title: "맞춤형 대화 분석 모드",
       badge: "추천",
       badgeColor: "bg-blue-100 text-blue-700",
@@ -700,11 +686,11 @@ function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: str
       )
     },
     {
-      value: MODE_FIXTURE,
+      value: true,
       title: "고속 자동 분석 모드",
-      note: "AI가 자동으로 분석을 합니다.",
-      pros: ["중간개입없이 빠르고 편리하게 분석을 할 수 있습니다.", "이미 검증된 방식으로 분석합니다."],
-      cons: ["커스텀이 불가능합니다."],
+      note: "게이트에 서긴 하지만, 그 자리를 AI 제안값으로 자동 승인하고 지나갑니다.",
+      pros: ["중간개입없이 빠르고 편리하게 분석을 할 수 있습니다.", "무엇을 자동 승인했는지 산출물에 남습니다."],
+      cons: ["사람이 값을 확인하지 않습니다 — 결과에 「AI 제안값 자동승인」으로 표시됩니다."],
       icon: (
         <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m13 2-2 2.5-3-1v4.5l-3 1.5 2.5 2-1 3 4.5-1 1.5 3 2-2.5 3 1v-4.5l3-1.5-2.5-2 1-3-4.5 1-1.5-3z"></path></svg>
       )
@@ -714,10 +700,10 @@ function PremiumModePicker({ mode, onChange }: { mode: string; onChange: (v: str
   return (
     <div className="grid gap-4 sm:grid-cols-2">
       {options.map((o) => {
-        const isSelected = mode === o.value;
+        const isSelected = autoApprove === o.value;
         return (
           <div
-            key={o.value}
+            key={String(o.value)}
             onClick={() => onChange(o.value)}
             className={`cursor-pointer rounded-2xl border-2 p-6 transition-all duration-300 flex flex-col h-full ${
               isSelected

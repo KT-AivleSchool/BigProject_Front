@@ -6,14 +6,15 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { AuditGate } from "@/components/gate/AuditGate";
 import { ArtifactView } from "@/components/ui/ArtifactView";
 import { PageBody, PageHeader } from "@/components/ui/Page";
-import { GATE_AUDIT, openGate, gateScreen } from "@/lib/omnisite/gate";
-import { loadReviewed } from "@/lib/omnisite/pipeline";
+import { GATE_AUDIT, openGate } from "@/lib/omnisite/gate";
+import { loadFacility, loadReviewed } from "@/lib/omnisite/pipeline";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { ExclusionContent } from "@/app/audit/exclusion/page";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
+import { useAuditEta } from "@/lib/omnisite/useAuditEta";
 import { meters } from "@/lib/omnisite/format";
-import type { ReviewedDoc, ReviewedFlag, ReviewedResult, ReviewedRole, RunDoc, RunGate } from "@/lib/omnisite/types";
+import type { FacilityInference, ReviewedDoc, ReviewedRole, RunDoc, RunGate } from "@/lib/omnisite/types";
 
 const SCREEN = SCREENS.find((s) => s.no === "2")!;
 const SCREEN_2B = SCREENS.find((s) => s.no === "2b")!;
@@ -25,25 +26,16 @@ const ROLE_LABEL: Record<string, string> = {
   reference_only: "참조만",
 };
 
-// TODO: 백엔드에서 실제 파일명을 보내주기 전까지 UI 시연을 위해 사용하는 임시 매핑
-const DATASET_NAME_MOCK: Record<string, string> = {
-  "01": "B1_서울특별시_용산구_금연구역_20260131",
-  "02": "BUS_STATION_BOARDING_MONTH_202605",
-  "03": "CARD_SUBWAY_MONTH_202605",
-  "04": "LOCAL_PEOPLE_DONG_202605",
-  "05": "서울시 어린이집 정보(표준 데이터)",
-  "06": "서울시 역사마스터 정보",
-  "07": "서울시버스정류소위치정보(20260602)",
-  "08": "서울특별시 용산구_가로휴지통_20240630",
-  "09": "서울특별시_용산구_담배꽁초상습무단투기지역현황_20250806",
-  "10": "소상공인시장진흥공단_상가(상권)정보_서울_202603",
-  "11": "전국어린이보호구역표준데이터",
-};
-
 export default function Screen2Page() {
   const { run } = useRun();
   const router = useRouter();
   const state = useArtifact("reviewed", loadReviewed);
+  /**
+   * STEP1「선정 대상」전용 산출물. 감리(실측 238초)보다 **먼저** 나온다(실측 15초).
+   * 🔴 `full` 에만 있다 — fixture·hitl 은 STEP0-1 을 안 돌므로 아래에서 `reviewed`
+   *    로 되짚는다. 되짚기를 빼면 프리셋 run 의 선정 대상이 통째로 빈다.
+   */
+  const facility = useArtifact("facility", loadFacility);
   const gate = openGate(run, GATE_AUDIT);
   const [cachedGate, setCachedGate] = useState<RunGate | null>(null);
 
@@ -67,7 +59,27 @@ export default function Screen2Page() {
   }, [gate, run?.run_id]);
   
   const displayGate = gate ?? cachedGate;
-  
+
+  /**
+   * 「아직 도는 중이다」 판정. **한 곳에서만 한다** — 화면(STEP3 박스)과
+   * 바닥 버튼이 각자 계산하면 언젠가 한쪽만 고쳐진다.
+   *
+   * 두 갈래를 OR 로 묶는다:
+   *   ⓐ `state.data` 가 없다 = 감리 산출물(`reviewed.json`)이 아직 안 나왔다.
+   *      `full` 은 여기가 몇 분이다 — 이 갈래가 없으면 그 동안 화면이 빈 채로 있다.
+   *   ⓑ 게이트A 를 제출한 뒤 STEP2~3 이 도는 중(산출물은 이미 있다).
+   */
+  const auditPending = !state.data;
+  /**
+   * 선정 대상 값. 같은 값을 두 산출물이 다른 시점에 내므로 **빠른 쪽을 먼저** 본다.
+   * 둘 다 없으면 `null` 이고, 그때는 아래 `ArtifactView` 의 기존 분기가 무슨 말을
+   * 할지 정한다 — 여기서 대기 화면을 다시 만들지 않는다.
+   */
+  const facilityInference: FacilityInference | null =
+    facility.data ?? state.data?.facility_inference ?? null;
+  const isProcessing =
+    auditPending || run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit";
+
   const [step, setStep] = useState(() => {
     if (typeof window !== "undefined" && run?.run_id) {
       const saved = window.sessionStorage.getItem(`audit_step_${run.run_id}`);
@@ -81,6 +93,19 @@ export default function Screen2Page() {
       window.sessionStorage.setItem(`audit_step_${run.run_id}`, step.toString());
     }
   }, [step, run?.run_id]);
+
+  /**
+   * 「[다음 단계] 를 아직 못 누른다」 판정.
+   *
+   * 🔴 단계마다 **기다리는 대상이 다르다.**
+   *   STEP1「선정 대상」은 감리 결과를 한 글자도 안 쓴다 — 시설·지역이 나온
+   *   순간(실측 ~15초) 넘어갈 수 있다. 여기서 `auditPending` 을 보면 값이 다
+   *   나와 있는데도 몇 분을 막는다.
+   *   STEP2「규칙 확인」부터가 감리 산출물을 읽는 자리이고, 그 대기 화면은
+   *   아래 `ArtifactView` 의 `runningFallback`(= `Processing`)이 그린다 —
+   *   사람은 **기다림을 겪어야 하는 단계에서** 기다린다.
+   */
+  const nextBlockedByPending = step === 1 ? !facilityInference : auditPending;
 
   const [isSubmittingGate, setIsSubmittingGate] = useState(false);
   const gateSubmitRef = useRef<(() => Promise<boolean | void>) | null>(null);
@@ -158,7 +183,20 @@ export default function Screen2Page() {
             </div>
           </div>
 
-          <ArtifactView state={state} what="감리 결과">
+          {/*
+            🔴 STEP1 만 `ArtifactView` **밖**에 있다. 이 단계는 감리 결과를 한 글자도
+               안 쓰는데, 안에 두면 감리(실측 238초)가 끝날 때까지 시설·지역 한 줄
+               때문에 대기 화면이 떴다. 값이 없을 때의 판정은 여전히 안쪽 한 곳이다 —
+               `facilityInference` 가 null 이면 그대로 `ArtifactView` 로 떨어진다.
+          */}
+          {step === 1 && facilityInference ? (
+            <TargetSection fi={facilityInference} />
+          ) : (
+          <ArtifactView
+            state={state}
+            what="감리 결과"
+            runningFallback={<AuditProcessing run={run ?? null} />}
+          >
             {(doc) => (
               <>
                 {step === 1 && <Body doc={doc} hideFlags hideTarget={false} />}
@@ -172,8 +210,8 @@ export default function Screen2Page() {
                       </div>
                       <div className="flex items-center gap-2">
                         {!gate ? (
-                          <span className="px-3 py-1.5 bg-emerald-100 text-emerald-700 rounded-full text-xs font-bold border border-emerald-200">
-                            제출 완료
+                          <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${run?.auto_approve ? "bg-violet-100 text-violet-700 border-violet-200" : "bg-emerald-100 text-emerald-700 border-emerald-200"}`}>
+                            {run?.auto_approve ? "AI 자동 승인됨" : "제출 완료"}
                           </span>
                         ) : (
                           <>
@@ -188,42 +226,44 @@ export default function Screen2Page() {
                       </div>
                     </div>
                     
+                    {/*
+                      🔴 게이트가 없을 때 **빈 상자를 그리지 않는다.** 「고속 자동 분석」
+                         run 은 서버가 게이트를 세운 뒤 AI 제안값으로 대신 답하므로
+                         프런트에는 질문이 한 번도 안 온다 — 예전엔 이 자리가 통째로
+                         비어서 화면이 「감리 단계를 건너뛰었다」고 말하는 것처럼
+                         읽혔다(2026-08-13). 건너뛴 게 아니라 **누가 답했는지**가
+                         화면에 없었던 것이다.
+                    */}
                     <div className="flex flex-col gap-4">
-                      {displayGate && (
-                        <AuditGate 
-                          gate={displayGate} 
-                          runId={run!.run_id} 
+                      {displayGate ? (
+                        <AuditGate
+                          gate={displayGate}
+                          runId={run!.run_id}
                           submitRef={gateSubmitRef}
                           onReadyChange={setIsGateReady}
                           onProgressChange={handleProgressChange}
                           readOnly={!gate || run?.status !== "awaiting_hitl"}
                         />
+                      ) : (
+                        <GateAbsentNotice doc={doc} auto={!!run?.auto_approve} />
                       )}
                     </div>
                   </div>
                 )}
                 {step === 3 && (
-                  <div className="flex flex-col items-center justify-center py-32 gap-6 bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-300">
-                    {run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit" ? (
-                      <>
-                        <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
-                        <div className="text-center">
-                          <h3 className="text-[20px] font-bold text-blue-900 mb-2">AI가 다음 분석을 위해 열심히 데이터를 처리하고 있습니다...</h3>
-                          <p className="text-[15px] text-gray-500">우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다.</p>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600">
-                          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                        </div>
-                        <div className="text-center">
-                          <h3 className="text-[20px] font-bold text-green-700 mb-2">데이터 처리가 모두 완료되었습니다!</h3>
-                          <p className="text-[15px] text-gray-500">아래 <strong>[다음 단계]</strong> 버튼을 눌러 상세 사유를 확인해 주세요.</p>
-                        </div>
-                      </>
-                    )}
-                  </div>
+                  isProcessing ? (
+                    <Processing />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center py-32 gap-6 bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-300">
+                      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-green-600">
+                        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      </div>
+                      <div className="text-center">
+                        <h3 className="text-[20px] font-bold text-green-700 mb-2">데이터 처리가 모두 완료되었습니다!</h3>
+                        <p className="text-[15px] text-gray-500">아래 <strong>[다음 단계]</strong> 버튼을 눌러 상세 사유를 확인해 주세요.</p>
+                      </div>
+                    </div>
+                  )
                 )}
                 {step === 4 && (
                   <div className="flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-300">
@@ -244,13 +284,13 @@ export default function Screen2Page() {
                 )}
                 {step === 5 && (
                   <div className="animate-in fade-in zoom-in-95 duration-300">
-                    {!gate && <NoGateCTA run={run ?? null} />}
                     <Body doc={doc} hideTarget hideFlags={false} />
                   </div>
                 )}
               </>
             )}
           </ArtifactView>
+          )}
         </div>
 
         {/* 바닥 내비게이션 바 */}
@@ -281,13 +321,13 @@ export default function Screen2Page() {
               </div>
             </button>
           ) : (
-            <button 
+            <button
                onClick={handleNext}
-               disabled={(step === 2 && displayGate && gate && (!isGateReady || run?.status !== "awaiting_hitl")) || isSubmittingGate || (step === 3 && (run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit"))}
+               disabled={nextBlockedByPending || (step === 2 && displayGate && gate && (!isGateReady || run?.status !== "awaiting_hitl")) || isSubmittingGate || (step === 3 && isProcessing)}
                className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-200 disabled:bg-gray-300 disabled:shadow-none"
             >
               <div className="flex items-center gap-2 text-sm">
-                {step === 3 && (run?.status === "running" || run?.status === "queued" || run?.gate?.id === "audit") ? "데이터 처리 중..." : "다음 단계"}
+                {nextBlockedByPending || (step === 3 && isProcessing) ? "데이터 처리 중..." : "다음 단계"}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </button>
@@ -298,15 +338,181 @@ export default function Screen2Page() {
   );
 }
 
-function Body({ doc, hideFlags, hideTarget }: { doc: ReviewedDoc, hideFlags?: boolean, hideTarget?: boolean }) {
-  const fi = doc.facility_inference;
-  const [openCategory, setOpenCategory] = useState<string | null>(null);
-  
+/**
+ * 「데이터 처리 중」 대기 화면. **이 화면에 원래 있던 STEP3 화면 그대로다.**
+ *
+ * 두 자리에서 쓴다 — ⓐ STEP3(게이트A 제출 후 STEP2~3 이 도는 동안) ⓑ 감리 산출물
+ * (`reviewed.json`)이 아직 없는 동안. 같은 「기다리는 중」인데 화면이 둘이면 하나는
+ * 반드시 낡는다. 그래서 사본을 만들지 않고 **한 곳에서 그린다** — 다른 건 **문구뿐**
+ * 이라 문구만 주입받는다(스피너·여백을 각자 갖게 두면 둘이 갈린다).
+ */
+function Processing({ title, sub }: { title?: string; sub?: React.ReactNode }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-32 gap-6 bg-white rounded-2xl animate-in fade-in zoom-in-95 duration-300">
+      <div className="w-16 h-16 rounded-full border-4 border-blue-100 border-t-blue-600 animate-spin" />
+      <div className="text-center">
+        <h3 className="text-[20px] font-bold text-blue-900 mb-2">
+          {title ?? "AI가 다음 분석을 위해 열심히 데이터를 처리하고 있습니다..."}
+        </h3>
+        <div className="text-[15px] text-gray-500">
+          {sub ?? "우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다."}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 감리(STEP1) 를 기다리는 동안의 화면. STEP2「규칙 확인」이 읽는 산출물이
+ * `reviewed.json` 이고, `full` 은 여기가 실측 **56~239초**다.
+ *
+ * 🔴 STEP3 의 일반 대기(`Processing` 기본 문구)와 **다른 화면인 이유**는 기다리는
+ *    대상이 달라서다. 여기는 감리 한 건이라 길이를 추정할 근거(데이터셋 수·용량)가
+ *    있고, STEP3 는 그런 근거가 없다. 한 화면으로 합치면 근거 없는 쪽에도 숫자를
+ *    지어내게 된다.
+ *
+ * 🔴 예상시간은 **개략치**이고 근거를 같이 적는다 — 산출식과 실측 앵커는
+ *    `useAuditEta.ts` 에 있다. 숫자만 띄우면 약속으로 읽히고, 넘겼을 때 화면이
+ *    거짓말을 한다(원칙 4). 그래서 ⓐ「예상」이라고 쓰고 ⓑ 근거(데이터셋 수·용량)를
+ *    보이고 ⓒ **경과 시간**을 같이 센다 — 경과는 추정이 아니라 실측이라, 예상을
+ *    넘기면 넘겼다고 말할 수 있다.
+ */
+function AuditProcessing({ run }: { run: RunDoc | null }) {
+  const eta = useAuditEta(run?.domain);
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const startedMs = run?.started_at ? Date.parse(run.started_at) : NaN;
+  const elapsed = Number.isFinite(startedMs) ? Math.max(0, Math.round((now - startedMs) / 1000)) : null;
+  const over = eta.seconds !== null && elapsed !== null && elapsed > eta.seconds;
+
+  return (
+    <Processing
+      title="AI가 열심히 데이터를 확인하고 있습니다."
+      sub={
+        <div className="flex flex-col items-center gap-2">
+          <p>
+            {run?.mode === "full" ? "Full 모드는" : "이 단계는"} 보다 정확한 결과값을 위해 시간이 걸립니다
+            {eta.seconds !== null && (
+              <>
+                {" "}
+                <span className="font-bold text-blue-700">(예상시간 {eta.seconds}초)</span>
+              </>
+            )}
+          </p>
+          <p className="text-[13px] text-gray-400">
+            {eta.datasetCount !== null && eta.totalBytes !== null
+              ? `예상 근거: 데이터셋 ${eta.datasetCount}개 · ${(eta.totalBytes / 1e6).toFixed(1)} MB`
+              : `예상시간 산출 못 함${eta.reason ? ` — ${eta.reason}` : ""}`}
+            {elapsed !== null && ` · 경과 ${elapsed}초`}
+          </p>
+          {over && (
+            <p className="text-[13px] font-bold text-amber-600">
+              예상시간을 넘겼습니다 — 아직 도는 중입니다(우측 모니터링 창에서 확인).
+            </p>
+          )}
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * 게이트A 질문이 화면에 없을 때 **그 자리에 무엇이 있었는지**를 말한다.
+ *
+ * 두 갈래가 같은 「질문 없음」으로 보이지만 뜻이 다르다:
+ *   ⓐ `auto` — 「고속 자동 분석」. 서버가 게이트를 세운 뒤 **AI 제안값으로 대신
+ *      답했다.** 사람이 볼 기회가 없었던 것이지 감리를 건너뛴 게 아니다.
+ *   ⓑ 그 외 — 이미 사람이 답했거나(재방문), 물을 것이 없었다.
+ *
+ * 🔴 어느 쪽이든 **빈 화면으로 두지 않는다.** 자동 승인된 값은 배제 반경이라
+ *    후보지 전체를 좌우한다 — 「누가 정했는지」가 안 보이면 산출물이 거짓말을
+ *    하는 것과 같다(원칙 4).
+ */
+function GateAbsentNotice({ doc, auto }: { doc: ReviewedDoc; auto: boolean }) {
+  // 자동 승인의 흔적은 러너가 값마다 남긴 `source` 다(`llm_auto_approved`).
+  // run 단위 플래그(`auto_approve`)만 믿지 않고 **값에 적힌 출처**를 같이 본다 —
+  // 둘이 어긋나면 그건 알아야 할 사실이다.
+  const approved = doc.results.flatMap((r) =>
+    r.roles
+      .filter((ro) => ro.role === "hard_exclusion" && ro.source === "llm_auto_approved")
+      .map((ro) => ({ dataset_id: r.dataset_id, facility: ro.facility_type, radius: ro.배제반경_m })),
+  );
+
+  // 🔴 run 플래그가 없어도 값에 출처가 있으면 자동으로 친다. `auto_approve` 는
+  //    2026-08-13 에 생긴 키라 **그 전 run 의 `status.json` 에는 아예 없다** —
+  //    플래그만 보면 옛 자동 run 이 「물을 것이 없었다」로 둔갑한다.
+  if (!auto && approved.length === 0) {
+    return (
+      <div className="rounded-2xl border border-gray-200 bg-gray-50 px-6 py-10 text-center">
+        <p className="text-[15px] font-semibold text-gray-700">검토가 필요한 규칙이 없습니다.</p>
+        <p className="mt-1 text-[13px] text-gray-500">
+          이미 확정된 규칙은 위 <strong>[선정 대상]</strong> 화면과 다음 단계에서 확인할 수 있습니다.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-violet-200 bg-violet-50/60 px-6 py-6">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 rounded-lg bg-violet-100 p-2 text-violet-600">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9z"/></svg>
+        </div>
+        <div className="flex-1">
+          <h3 className="text-[16px] font-bold text-violet-900">고속 자동 분석 — AI 제안값으로 자동 승인되었습니다</h3>
+          <p className="mt-1 text-[13.5px] leading-relaxed text-violet-800/80">
+            감리 단계를 건너뛴 것이 아닙니다. 이 실행은 규칙 확인 게이트에서 멈춘 뒤,
+            사람 대신 <strong>AI 제안값을 그대로 확정</strong>하고 진행했습니다.
+            직접 값을 정하려면 처음 화면에서 <strong>맞춤형 대화 분석</strong>으로 다시 실행하세요.
+          </p>
+
+          {approved.length > 0 ? (
+            <ul className="mt-4 flex flex-col gap-1.5">
+              {approved.map((a, i) => (
+                <li key={i} className="flex items-center gap-2 rounded-lg bg-white/70 px-3 py-2 text-[13px] border border-violet-100">
+                  <span className="font-mono text-[11px] text-violet-500">{a.dataset_id}</span>
+                  <span className="font-semibold text-gray-800">{a.facility ?? "—"}</span>
+                  <span className="ml-auto text-gray-600">
+                    설치 금지 반경 {a.radius == null ? "면 전체" : meters(a.radius)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            // 🔴 「자동으로 돌렸는데 자동 승인된 값이 하나도 없다」는 그 자체가 정보다.
+            //    빈 목록을 조용히 감추면 「0건」과 「못 읽었다」가 구분되지 않는다.
+            <p className="mt-4 rounded-lg bg-white/70 px-3 py-2 text-[13px] text-gray-600 border border-violet-100">
+              자동 승인 표시(<code>llm_auto_approved</code>)가 붙은 규칙이 없습니다 — 이 실행에서는
+              물을 것이 없었거나, 값의 출처가 다르게 기록됐습니다.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 선정 대상 표. **`Body` 에서 떼어냈다** — 값의 출처가 둘이기 때문이다.
+ *
+ * 같은 값이 두 산출물에 있고 나오는 시점이 다르다: `facility.json` 은 STEP 0.5
+ * 직후(실측 ~15초), `reviewed.facility_inference` 는 감리 뒤(실측 ~240초).
+ * 이 표는 감리 결과를 한 글자도 안 쓰므로 앞의 것으로 먼저 그린다.
+ *
+ * 🔴 여기엔 「감리가 아직 도는 중」 안내를 **안 적는다.** 이 단계는 값이 이미
+ *    확정이고 [다음 단계] 도 열려 있다 — 기다림은 STEP2「규칙 확인」에서
+ *    `Processing`(스피너 + 예상시간)이 맡는다. 두 곳에서 같은 말을 하면 한쪽은
+ *    반드시 낡는다.
+ */
+function TargetSection({ fi }: { fi: FacilityInference }) {
   return (
     <div className="flex flex-col gap-10">
-      {/* ── 선정 대상 분석 ── */}
-      {!hideTarget && (
-        <section className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
+      <section className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
           <div className="flex items-center gap-3">
             <div className="p-2.5 bg-blue-50 text-blue-600 rounded-xl">
               <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
@@ -346,8 +552,18 @@ function Body({ doc, hideFlags, hideTarget }: { doc: ReviewedDoc, hideFlags?: bo
               </div>
             </div>
           )}
-        </section>
-      )}
+
+      </section>
+    </div>
+  );
+}
+
+function Body({ doc, hideFlags, hideTarget }: { doc: ReviewedDoc, hideFlags?: boolean, hideTarget?: boolean }) {
+  const [openCategory, setOpenCategory] = useState<string | null>(null);
+
+  return (
+    <div className="flex flex-col gap-10">
+      {!hideTarget && <TargetSection fi={doc.facility_inference} />}
 
       {/* ── 데이터셋 판정 ── */}
       {!hideFlags && (
@@ -462,49 +678,6 @@ function KV({ icon, k, v, tone }: { icon: React.ReactNode, k: string; v: string;
       <dd className={`text-[15px] font-bold ${tone === "warn" ? "text-orange-600" : tone === "ok" ? "text-green-600" : tone === "info" ? "text-blue-600" : "text-gray-900"} pl-7`}>
         {v}
       </dd>
-    </div>
-  );
-}
-
-function NoGateCTA({ run }: { run: RunDoc | null }) {
-  // 사용자의 요청에 따라 다음 단계로 이동을 유도하는 띠 배너를 완전히 제거
-  return null;
-}
-
-function NoGateNotice({ run }: { run: RunDoc | null }) {
-  const status = run?.status;
-
-  if (status === "succeeded") {
-    return null;
-  }
-  
-  if (status === "running") {
-    return (
-      <div className="flex flex-col items-center justify-center p-12 bg-blue-50/50 rounded-2xl border border-blue-100 text-center shadow-sm">
-        <div className="w-12 h-12 rounded-full border-4 border-blue-200 border-t-blue-600 animate-spin mb-5" />
-        <h3 className="text-[15px] font-bold text-blue-900 mb-1.5">AI가 다음 분석을 위해 열심히 데이터를 처리하고 있습니다...</h3>
-        <p className="text-sm text-blue-700/80">우측의 실시간 분석 모니터링 창을 통해 진행 상황을 확인하실 수 있습니다.</p>
-      </div>
-    );
-  }
-
-  if (status === "awaiting_hitl" && run?.gate) {
-    const target = gateScreen(run.gate.id);
-    if (target && target.no !== "2") {
-      return (
-        <div className="flex items-center gap-2 text-sm text-green-700 bg-green-50 px-4 py-3 rounded-xl w-fit border border-green-200">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-          <span className="font-bold">감리 확인이 완료되었습니다.</span>
-          <span>다음 단계를 확인해 주세요.</span>
-        </div>
-      );
-    }
-  }
-
-  return (
-    <div className="flex items-center gap-2 text-sm text-gray-500 bg-gray-50 px-4 py-3 rounded-xl w-fit border border-gray-200">
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-      <span>현재 감리 대기 중인 항목이 없습니다. {status && `(상태: ${status})`}</span>
     </div>
   );
 }

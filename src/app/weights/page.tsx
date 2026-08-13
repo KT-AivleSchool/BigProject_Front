@@ -31,6 +31,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { WeightGate } from "@/components/gate/WeightGate";
 import { ArtifactView } from "@/components/ui/ArtifactView";
+import { Failed } from "@/components/ui/State";
 import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { GATE_WEIGHT, openGate, gateScreen } from "@/lib/omnisite/gate";
 import { useRun } from "@/lib/omnisite/RunProvider";
@@ -81,7 +82,7 @@ export default function Screen3Page() {
   
   const displayGate = gate ?? cachedGate;
   
-  const gateSubmitRef = useRef<(() => Promise<void>) | null>(null);
+  const gateSubmitRef = useRef<(() => Promise<boolean | void>) | null>(null);
   const [isSubmittingGate, setIsSubmittingGate] = useState(false);
   const [isWaitingForSync, setIsWaitingForSync] = useState(false);
   
@@ -130,8 +131,17 @@ export default function Screen3Page() {
         if (!gateSubmitRef.current) return;
         setIsSubmittingGate(true);
         try {
-          await gateSubmitRef.current();
-          setIsWaitingForSync(true);
+          /**
+           * 🔴 **성공했을 때만 기다린다.** 예전엔 `await` 뒤에서 무조건
+           *    `isWaitingForSync` 를 켰다 — `WeightGate.onSubmit` 이 검증 실패도
+           *    POST 실패도 예외로 안 던지고 삼켰기 때문에(지금은 `false` 를
+           *    돌려준다) 게이트가 그대로 열려 있는 채로 대기에 들어갔다.
+           *    대기를 푸는 조건은 「게이트가 닫혔다」뿐이라 영원히 안 풀리고,
+           *    그동안 `이전 단계`·`다음 단계` 가 **둘 다 비활성**이다.
+           *    실패 사유는 게이트 안 빨간 띠에 이미 떠 있다 — 화면만 안 잠그면 된다.
+           */
+          const ok = await gateSubmitRef.current();
+          if (ok !== false) setIsWaitingForSync(true);
         } catch (e) {
           console.error(e);
         } finally {
@@ -458,6 +468,22 @@ function Line({ k, v }: { k: string; v: string }) {
 
 function NoGateNotice({ run, step }: { run: RunDoc | null, step?: number }) {
   const status = run?.status;
+
+  /**
+   * 🔴 **실행이 죽었으면 그 사실을 먼저 말한다.**
+   *    예전엔 `failed` 가 아래 기본 문구로 떨어져 「지금 답할 게이트가 열려 있지
+   *    않습니다 (상태: failed)」 만 떴다 — 게이트 얘기는 **사실이지만 사유가 아니다.**
+   *    사람은 2단계에서 「처리 중...」 이 끝난 뒤 이 문구를 보고 무엇이 잘못됐는지
+   *    모른 채 멈춘다(실제 제보: 「가중치 1단계 뒤 2단계에서 막힘」).
+   *    서버가 준 `run.error` 를 **요약하지 않고 그대로** 보여준다(원칙 4).
+   */
+  if (status === "failed") {
+    return (
+      <div className="mt-6">
+        <Failed message={run?.error ?? null} />
+      </div>
+    );
+  }
 
   if (status === "succeeded") {
     if (step === 2) {

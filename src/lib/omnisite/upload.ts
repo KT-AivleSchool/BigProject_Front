@@ -53,6 +53,15 @@ export interface DomainItem {
    *   「안 된다」까지만 말하고 사유를 지어내지 않는다.
    */
   has_fixture: boolean;
+  /**
+   * 업로드 원장에 없는 파일 수(data+law) = **배포 원본**(프리셋 모드가 읽는 것).
+   *
+   * 🔴 0 보다 크면 이 도메인은 **이미 쓰이고 있는 폴더**다. 이름을 맞춰서 고르면
+   *    남의 파일이 「내가 올린 것」처럼 보이고, 실제로 그렇게 보고 지워서
+   *    `datasets/흡연/data` 가 통째로 사라진 적이 있다(2026-08-13).
+   *    그래서 화면은 이 값이 0 이 아니면 **고르기 전에** 경고한다.
+   */
+  preexisting_files: number;
 }
 
 /**
@@ -74,6 +83,15 @@ export interface RegulationItem {
   /** 텍스트 추출이 끝나 STEP1 이 읽을 수 있는가. `false` 면 저장은 됐지만 안 쓰인다. */
   text_ready: boolean;
   chunks_in_vector_db: number;
+  /** `upload`(이 저장소를 통해 올린 것) | `preexisting`(폴더에 원래 있던 배포 원본). */
+  source: string;
+  /**
+   * `false` 면 삭제에 `force=true` 가 필요하다(배포 원본).
+   *
+   * 🔴 **판정은 서버가 한다.** 프런트가 `source === "upload"` 를 다시 계산하면
+   *    규칙이 두 곳이 되고, 어긋나면 화면은 지울 수 있다고 그려놓고 서버가 409 다.
+   */
+  deletable: boolean;
 }
 
 /**
@@ -198,8 +216,16 @@ export interface DataFile {
   /** 부속 파일(.dbf 등)은 dataset 이 아니다. */
   is_dataset: boolean;
   uploaded_at?: string | null;
-  /** 목록 응답에만 있다. `upload` | `preexisting`. */
+  /**
+   * 목록 응답에만 있다. `upload` | `preexisting`.
+   *
+   * 🔴 판정 정본은 **디스크 원장**(`datasets/<도메인>/.upload_ledger.json`)이다.
+   *    예전엔 Redis 색인의 sha256 유무로 판정했는데, TTL(30일)·`volatile-lru`
+   *    로 걷히면 **내가 올린 파일이 「폴더에 있던 것」으로 바뀐다**.
+   */
   source?: string;
+  /** 목록 응답에만 있다. `false` 면 삭제에 `force=true` 가 필요하다(배포 원본). */
+  deletable?: boolean;
   /** 목록 응답에만 있다. 부속 파일이면 `null`. */
   dataset_id?: string | null;
   replaced?: boolean;

@@ -61,7 +61,38 @@ const nextConfig: NextConfig = {
    *    ⚠ `FIRST_PACKET_TIMEOUT_MS` 를 올리면 **이 값도 같이 올린다.**
    *    (`import` 로 묶지 않은 이유: 이 파일은 CJS 로 로드된다 — 위 `__dirname` 주석)
    */
-  experimental: { proxyTimeout: 6 * 60 * 1000 },
+  /**
+   * 🔴 **업로드 본문 상한.** 기본값은 **10MB** 이고, 넘으면 프록시가 몸통을 잘라
+   *    보낸 뒤 소켓을 끊는다. 이것 때문에 화면1 데이터 업로드가 통째로 막혀 있었다.
+   *
+   *    증상이 「느리다」로 읽힌다 — 실측(2026-08-13):
+   *      · 백엔드 직접(`:8000`) 129.7MB → **200 · 0.60초**(215MB/s). 느리지 않다
+   *      · Next 프록시(`:3000`) 같은 파일 → **500 · 360.09초**(= 위 proxyTimeout)
+   *      · 절벽은 4.6MB(200 · 0.06초) ↔ 19.5MB(**300초 TimeoutError**) 사이
+   *    Next 자신의 로그가 원인을 정확히 말한다:
+   *      `Request body exceeded 10MB for /api/v1/upload/data. Only the first 10MB
+   *       will be available unless configured.` → 이어서 `socket hang up (ECONNRESET)`
+   *
+   * ⚠ **그 로그가 가리키는 옵션 이름은 이 버전에서 이미 옛것이다.** 문구는
+   *    `middlewareClientMaxBodySize` 를 안내하는데 Next 16.3 은 그걸 쓰면
+   *    `deprecated` 경고를 내고 `proxyClientMaxBodySize` 로 옮겨 담는다
+   *    (`next/dist/server/config.js:185,747`). 둘을 **같이 적으면 기동이 죽는다**
+   *    (:718). 에러 문구가 알려준 이름을 그대로 믿지 말고 스키마를 볼 것.
+   *
+   * 🔴 제일 나쁜 건 **파일은 실제로 저장된다**는 점이다. 몸통은 백엔드까지 가서
+   *    디스크에 떨어지는데(테스트 4개 전부 확인) 잃는 건 **응답**이다. 그래서
+   *    브라우저는 몇 분 멈췄다가 500 을 받고, 사용자는 「업로드 실패」로 읽는다 —
+   *    서버가 없는 사실을 말하는 것이다(원칙 4). 사용자가 본 빈 `그늘막/{data,law}`
+   *    도 이것이었다: 폴더는 `_dirs()` 가 먼저 만들고 몸통이 거기서 멎었다.
+   *
+   *    값의 근거는 **실제 배치 크기**다 — 사용자 화면의 한 번 업로드가 141.6MB +
+   *    106.8MB ≒ 248MB 였다. 그 위로 여유를 둔다. ⚠ 이 값을 올린다고 백엔드가
+   *    느려지지 않는다(위 215MB/s). 상한은 **프록시가 버퍼링하는 양**이다.
+   */
+  experimental: {
+    proxyTimeout: 6 * 60 * 1000,
+    proxyClientMaxBodySize: 512 * 1024 * 1024,
+  },
 
   /**
    * 동일 출처 프록시.

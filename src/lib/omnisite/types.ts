@@ -68,6 +68,18 @@ export interface GateExclusionQuestion {
   evidence: string | null;
   /** false = 근거문장에 그 시설명이 없다. **다른 시설 규정일 수 있다** — 경고로 띄운다. */
   evidence_matches_facility: boolean | null;
+  /**
+   * 🔴 **원본 파일에서 읽은 사실**이다 — 감리 AI 의 `exclusion_type` 과 다르다.
+   *    STEP0 프로파일(`profiles.json`)의 확장자·좌표컬럼·주소컬럼으로 판정한다.
+   *    `point` 인데 「반경 없음」으로 확정하면 STEP4 에서 배제 면적이 0 이 되어
+   *    run 이 `[중단]` 으로 죽을 수 있다 — **막지는 않는다**(지목 배수 판정이
+   *    면 필지를 잡으면 반경 없이도 배제가 생긴다). 못 읽으면 `"unknown"`.
+   */
+  source_geometry: "point" | "unknown" | string | null;
+  /** 원본 행 수. 화면에 「좌표 49건(점)」처럼 **센 값**을 그대로 적기 위한 것. */
+  source_rows: number | null;
+  /** 위 판정의 근거 문장(예: `좌표 컬럼 ['경도','위도']`). 요약하지 말고 그대로 띄운다. */
+  source_geometry_why: string | null;
 }
 
 export interface GateIntentChoice {
@@ -261,7 +273,12 @@ export interface RunStep {
 }
 
 /**
- * 화이트리스트 산출물 이름 (2026-08-04 기준 **8종**).
+ * 화이트리스트 산출물 이름 (2026-08-13 기준 **9종**).
+ *
+ * `facility` 는 `reviewed.facility_inference` 와 **같은 값**인데 나오는 시점이 다르다 —
+ * STEP 0.5 직후(~15초)와 감리 뒤(~240초). 화면2 STEP1「선정 대상」이 시설·지역
+ * 한 줄 때문에 감리를 기다리지 않게 하려고 뒀다. 🔴 `full` 에서만 생긴다:
+ * fixture·hitl 은 STEP0-1 을 안 돌므로 **항상 없고**, 그때는 `reviewed` 로 되짚는다.
  *
  * `exclusion` 은 나중에 올라갔다(백엔드 커밋 `ea4bef3`). 그래서 **그 이전에 만들어진
  * run 의 `status.json` 에는 이 키가 없다** — 그 파일은 생성 시점의 화이트리스트로
@@ -272,6 +289,7 @@ export interface RunStep {
  */
 export type ArtifactName =
   | "reviewed"
+  | "facility"
   | "clean_report"
   | "candidates"
   | "weight_set"
@@ -300,6 +318,18 @@ export interface RunDoc {
   run_id: string;
   domain: string;
   mode: string;
+  /**
+   * 「고속 자동 분석」으로 돌렸는가.
+   *
+   * 🔴 **`mode` 와 다른 축이다.** `full` 이라고 자동이 아니고 `hitl` 이라고 대화형이
+   *    아니다 — 자동은 게이트를 **없애는 게 아니라** 그 자리에서 AI 제안값으로
+   *    대신 답한다(그래서 사람 눈에는 "감리를 건너뛴 것"으로 보인다).
+   *    `mode` 로 유추하면 게이트에 멈춰 선 맞춤형 full run 이 "자동"으로 표시된다.
+   *
+   * 🔴 나중에 생긴 필드라(2026-08-13) **옛 run 의 `status.json` 에는 키가 없다.**
+   *    `undefined` 는 "자동이 아니다"로 다뤄도 된다 — 그때는 이 기능이 없었다.
+   */
+  auto_approve?: boolean;
   status: RunStatus;
   steps: RunStep[];
   /** 값은 `/api/v1/pipeline/runs/<id>/artifacts/<name>` 절대경로. 그대로 fetch 한다. */

@@ -65,8 +65,17 @@ interface RunContextValue {
   /**
    * 실행 시작. `full` 은 실행 조건(`user_input` 필수 · `topn`)을 같이 보낸다 —
    * 계약 8-2. 다른 모드에 넘기면 `createRun` 이 버린다(보내면 400 이다).
+   *
+   * `autoApprove` = 「고속 자동 분석」. 게이트를 **없애는 게 아니라** 서버가 그 자리에서
+   * AI 제안값으로 답한다 — 그래서 화면은 게이트를 안 보고, 산출물에는 사람이 확정한
+   * run 과 **구분되는 출처**가 남는다. `fixture` 에 주면 서버가 400(게이트가 없다).
    */
-  start: (domain: string, mode?: string, full?: FullParams) => Promise<string | null>;
+  start: (
+    domain: string,
+    mode?: string,
+    full?: FullParams,
+    autoApprove?: boolean,
+  ) => Promise<string | null>;
   /**
    * 게이트 답변. 성공하면 서버가 돌려준 status 를 그대로 현재 run 으로 삼는다 —
    * 그 순간 `running` 이므로 폴링이 저절로 재개된다.
@@ -247,11 +256,16 @@ export function RunProvider({ children }: { children: React.ReactNode }) {
   }, [run]);
 
   const start = useCallback(
-    async (domain: string, mode: string = MODE_FIXTURE, full?: FullParams) => {
+    async (
+      domain: string,
+      mode: string = MODE_FIXTURE,
+      full?: FullParams,
+      autoApprove: boolean = false,
+    ) => {
       setStarting(true);
       setError(null);
       try {
-        const id = await createRun(domain, mode, full);
+        const id = await createRun(domain, mode, full, autoApprove);
         writeRunId(id);
         // 🔴 새 실행은 다시보기가 아니다. **성공한 뒤에** 깃발을 지운다 —
         //    먼저 지우면 실행이 실패했을 때 화면엔 여전히 지난 run 이 떠 있는데

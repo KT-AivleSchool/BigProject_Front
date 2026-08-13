@@ -50,7 +50,7 @@ export function WeightGate({
   gate: RunGate;
   runId: string;
   labels: Map<string, DatasetLabel>;
-  submitRef?: React.MutableRefObject<(() => Promise<void>) | null>;
+  submitRef?: React.MutableRefObject<(() => Promise<boolean | void>) | null>;
 }) {
   const { answerWeight } = useRun();
 
@@ -134,18 +134,27 @@ export function WeightGate({
     return { run_id: runId, radius: outR, slider };
   }
 
-  async function onSubmit() {
+  /**
+   * 🔴 **성공 여부를 돌려준다.** 예전엔 `Promise<void>` 라 검증 실패(`build()` 가
+   *    문자열)도 POST 실패(400·네트워크)도 **정상 완료와 구분이 안 됐다** —
+   *    부모(`weights/page.tsx`)는 `await` 만 하고 `isWaitingForSync` 를 켰고,
+   *    그 뒤엔 게이트가 그대로 열려 있으니 대기가 안 풀린다. 두 버튼이 다
+   *    비활성이라 **「처리 중...」에서 아무 데도 못 간다.**
+   */
+  async function onSubmit(): Promise<boolean> {
     const built = build();
     if (typeof built === "string") {
       setError(built);
-      return;
+      return false;
     }
     setSubmitting(true);
     setError(null);
     try {
       await answerWeight(built);
+      return true;
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      return false;
     } finally {
       setSubmitting(false);
     }

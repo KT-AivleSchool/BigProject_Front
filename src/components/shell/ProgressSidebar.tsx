@@ -76,7 +76,24 @@ function SidebarContent({ run, baseline, runningElapsedSec, refresh }: { run: Ru
           </div>
           <div>
             <dt className="text-sm font-medium text-gray-500 mb-1">모드</dt>
-            <dd className="text-lg font-bold text-gray-800">{run.mode === "hitl" ? "대화형" : "자동"}</dd>
+            {/*
+              🔴 **축이 둘이다.** 데이터 갈래(`mode`: 프리셋 hitl ↔ 업로드 full)와
+                 분석 갈래(`auto_approve`: 맞춤형 ↔ 고속)는 서로 무관하게 조합된다.
+                 예전엔 `mode === "hitl" ? "대화형" : "자동"` 한 줄이라 **게이트에
+                 멈춰 선 맞춤형 full run 도 「자동」**이라고 적었다 — 그래서 화면이
+                 「감리를 건너뛰었다」고 말하는 것처럼 읽혔다(2026-08-13).
+            */}
+            <dd className="text-lg font-bold text-gray-800">{run.mode === "hitl" ? "프리셋" : "업로드"}</dd>
+            {/*
+              ⚠ 키가 **없는** 옛 run 은 아무 말도 안 한다. `undefined` 를 `false` 로
+                접으면 자동으로 돌린 옛 run 이 「맞춤형」으로 둔갑한다 — 모르는 것을
+                모른다고 두는 편이 낫다(원칙 4).
+            */}
+            {run.auto_approve !== undefined && (
+              <dd className="text-xs font-semibold text-gray-500 mt-0.5">
+                {run.auto_approve ? "고속 자동 분석" : "맞춤형 대화 분석"}
+              </dd>
+            )}
           </div>
         </dl>
       </div>
@@ -214,7 +231,10 @@ function StepRow({ step, baselineSec }: { step: RunStep; baselineSec: number | n
 function statusLabel(run: RunDoc): string {
   if (run.status === "awaiting_hitl" && run.gate) {
     if (run.gate.id === "audit") return "데이터 분석 진행 중";
-    if (run.gate.id === "weight") return "가중치 설정 진행 중";
+    // ⚠ 어휘는 아래 `STEP_NAME_MAP` 과 맞춘다 — 같은 패널 안에서 단계 이름은
+    //    「중요도 산정」인데 이 줄만 「가중치」면 두 낱말이 같은 것을 가리키는지
+    //    화면만 보고는 알 수 없다. (앱의 다른 화면은 도메인 용어 「가중치」 그대로다)
+    if (run.gate.id === "weight") return "중요도 설정 진행 중";
   }
   return {
     queued: "대기 중",

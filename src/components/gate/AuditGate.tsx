@@ -264,7 +264,14 @@ export function AuditGate({
   ];
   const totalCount = allIds.length;
   const confirmedCount = allIds.filter((id) => confirmed[id]).length;
-  const isReady = totalCount > 0 && confirmedCount === totalCount;
+  /**
+   * 🔴 **0건도 준비된 상태다.** 예전엔 `totalCount > 0` 이 앞에 붙어 있어서
+   *    확인할 항목이 하나도 없는 게이트(배제 판정 데이터가 없는 도메인)에서
+   *    `isReady` 가 영원히 false 였다 — 화면은 「그대로 제출 버튼을 누르면
+   *    다음 단계로 넘어갑니다」라고 말하는데(:316) 그 버튼이 부모에서
+   *    비활성이라 **아무 데도 못 간다.** 안내문과 잠금이 서로 반대말을 했다.
+   */
+  const isReady = confirmedCount === totalCount;
 
   useEffect(() => {
     onReadyChange(isReady);
@@ -397,6 +404,13 @@ function ExclusionCard({
   readOnly?: boolean;
 }) {
   const suspect = q.evidence_matches_facility === false;
+  /**
+   * 🔴 **감리 AI 의 `exclusion_type` 이 아니라 원본 파일에서 읽은 사실**이다
+   *    (`source_geometry` — STEP0 프로파일의 확장자·좌표컬럼). CLAUDE.md 함정표
+   *    「exclusion_type 오판」이 가리키는 값을 화면 경고의 근거로 쓰면, 틀린 판정을
+   *    사람에게 그대로 되읽어 주는 셈이 된다.
+   */
+  const isPoint = q.source_geometry === "point";
   const [isExpanded, setIsExpanded] = useState(false);
 
   return (
@@ -438,9 +452,26 @@ function ExclusionCard({
                 })()
               }&quot;
             </p>
-            {suspect && (
-              <div className="mt-0.5 flex flex-wrap gap-2">
-                <WarningBadge text="시설명 확인 권장" title="이 시설의 이름이 근거 문장에 명시되어 있지 않아 확인이 필요합니다." />
+            {(suspect || q.source_geometry) && (
+              <div className="mt-0.5 flex flex-wrap items-center gap-2">
+                {suspect && (
+                  <WarningBadge text="시설명 확인 권장" title="이 시설의 이름이 근거 문장에 명시되어 있지 않아 확인이 필요합니다." />
+                )}
+                {/*
+                  🔴 **답을 고르기 전에** 보여준다. 「반경 없음」을 고른 뒤에만 경고하면
+                     사람은 이미 그 선택으로 기울어 있다. 근거 문장(`source_geometry_why`)은
+                     요약하지 않고 그대로 싣는다 — 판정이 아니라 **잰 사실**이다.
+                */}
+                {q.source_geometry && (
+                  <span
+                    className="text-[11px] text-gray-500"
+                    title={q.source_geometry_why ?? undefined}
+                  >
+                    원본 형태: {q.source_geometry === "point" ? "점(Point)" : "미상"}
+                    {q.source_rows != null ? ` · ${q.source_rows}건` : ""}
+                    {q.source_geometry_why ? ` · ${q.source_geometry_why}` : ""}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -491,10 +522,17 @@ function ExclusionCard({
                *    「못 고른다」가 아니라 **배제 면적 0 → 다음 단계(정제) 중단**이다.
                *    언제·왜 문제인지를 다 지우고 「불가능」으로 접으면, 면 데이터에서
                *    옳은 선택지를 사람이 피한다(원칙 4).
+               *
+               * 🔴 그렇다고 **점 데이터에서도 막지 않는다.** 지목 배수 판정(S9)이
+               *    면 필지를 잡으면 반경 없이도 배제 면적이 나온다 — 선택지를
+               *    빼앗는 대신 **잰 사실**(`source_rows`·`source_geometry_why`)을
+               *    보여주고 사람이 정하게 한다(원칙 3·5).
                */}
               {state.mode === "none" && (
                 <span className="text-xs text-orange-600">
-                  ⚠️ 점(Point) 데이터일 경우 &apos;반경 없음&apos;을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다.
+                  {isPoint
+                    ? `⚠️ 이 데이터는 점(Point)입니다${q.source_rows != null ? ` — ${q.source_rows}건` : ""}. 지목 배수 판정으로 면 필지가 잡히지 않으면 배제 면적이 0이 되어 분석이 중단됩니다.`
+                    : "⚠️ 점(Point) 데이터일 경우 '반경 없음'을 선택하면 배제 면적이 0이 되어 분석이 중단됩니다."}
                 </span>
               )}
             </div>
