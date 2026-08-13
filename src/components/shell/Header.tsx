@@ -299,6 +299,7 @@ export function Header() {
         </div>
       </header>
       <AuthModal
+        key={`${authMode}-${authModalOpen}`}
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}
         initialMode={authMode}
