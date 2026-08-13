@@ -415,14 +415,7 @@ export function UploadPanel({
           <div className="flex flex-col gap-2">
             <p className="text-gray-700">
               <span className="font-semibold text-gray-900">{trimmed}</span> — 조례{" "}
-              {entry?.law_files ?? 0}개 · 데이터 {entry?.data_files ?? 0}개 ·{" "}
-              {entry?.has_audit_reviewed ? (
-                <span className="text-green-700">STEP1 감리 확정본 있음</span>
-              ) : (
-                <span className="text-amber-700">
-                  STEP1 감리 확정본 없음 — 조례를 올리려면 &ldquo;시설 유형&rdquo;을 채워야 합니다
-                </span>
-              )}
+              {entry?.law_files ?? 0}개 · 데이터 {entry?.data_files ?? 0}개
             </p>
             {/*
               🔴 **고르기 전에** 말한다. 이름을 맞춰서 들어오면 그 폴더의 배포 원본이
@@ -487,20 +480,18 @@ export function UploadPanel({
         <p className="text-sm text-gray-500 mt-2 max-w-lg mx-auto leading-relaxed">
           {tab === "data" ? (
             <>
-              허용: <code className="font-mono text-xs">{DATA_ACCEPT}</code>
+              업로드 가능 형식: <code className="font-mono text-xs">{DATA_ACCEPT}</code>
               <br />
               <span className="text-gray-400">
-                .shp 는 .dbf·.shx·.prj 를 함께 올려야 읽힙니다. 부속 파일은 dataset 으로
-                세지 않습니다.
+                공간 정보 파일(.shp)을 올리실 때는 반드시 관련된 부속 파일들(.dbf, .shx, .prj)도 같이 선택해서 올려주세요.
               </span>
             </>
           ) : (
             <>
-              허용: <code className="font-mono text-xs">{LAW_ACCEPT}</code>
+              업로드 가능 형식: <code className="font-mono text-xs">{LAW_ACCEPT}</code>
               <br />
               <span className="text-gray-400">
-                .hwp·.doc 는 받지 않습니다 — 추출기가 없어 올려도 0청크입니다. .hwpx 나
-                PDF 로 변환해 올려주세요.
+                일반 한글 문서(.hwp)나 워드(.doc)는 시스템에서 분석하기 어렵습니다. 번거로우시더라도 최신 한글 문서(.hwpx)나 PDF 형식으로 변환하여 올려주세요.
               </span>
             </>
           )}
@@ -647,11 +638,7 @@ export function UploadPanel({
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-bold text-gray-800">
             {tab === "data" ? "업로드된 데이터" : "업로드된 조례"}
-            {tab === "data" && dataList && (
-              <span className="ml-2 font-normal text-gray-500">
-                dataset {dataList.dataset_count}개
-              </span>
-            )}
+
           </h4>
           <button
             type="button"
@@ -776,15 +763,7 @@ function DataTable({
           </li>
         ))}
       </ul>
-      <p className="mt-2 text-xs text-gray-400">
-        정본은 디스크입니다. Redis 는 조회용 색인이고 매 조회마다 디스크와 대조합니다.
-        부속 파일(.dbf 등)은 dataset 번호가 없습니다(—).
-        <br />
-        <span className="text-amber-700">
-          &ldquo;배포 원본&rdquo;은 이 폴더에 원래 있던 파일입니다 — 프리셋 모드가 읽으므로
-          여기서 지울 수 없습니다.
-        </span>
-      </p>
+
     </>
   );
 }

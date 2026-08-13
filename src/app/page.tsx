@@ -178,7 +178,7 @@ export default function Screen1Page() {
                   <BackLink onClick={() => setDataSource(null)} />
                   <div className="mb-6">
                     <label className="block text-sm font-semibold text-gray-800 mb-2">
-                      분석 도메인 <span className="text-blue-500">(필수)</span>
+                      분석 주제 <span className="text-blue-500">(필수)</span>
                     </label>
                     <input
                       ref={domainRef}
@@ -187,16 +187,8 @@ export default function Screen1Page() {
                       placeholder="예) 흡연, 전기차, 따릉이"
                       className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-colors bg-gray-50 hover:bg-white"
                     />
-                    <p className="mt-1.5 text-xs leading-relaxed text-gray-500">
-                      업로드 API 7개가 전부 <code className="font-mono">domain</code> 을 요구합니다.
-                      먼저 정해야 아래 상자가 열립니다 — 기본값을 두면 다른 지자체 파일이 엉뚱한 폴더로 조용히 들어갑니다.
-                    </p>
                   </div>
-                  <p className="mb-4 text-sm text-gray-500">
-                    조례는 <code className="font-mono text-xs">data_임시/&lt;도메인&gt;/law/</code>,
-                    데이터는 <code className="font-mono text-xs">.../data/</code> 로 갑니다 —
-                    파이프라인이 실제로 읽는 폴더입니다.
-                  </p>
+
                   <div className="-mx-2 -mb-2">
                     <UploadPanel domain={domain} facilityType={facility} />
                   </div>

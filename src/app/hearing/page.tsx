@@ -513,16 +513,11 @@ export default function Screen5Page() {
               >
                 AI 토론 시작하기
               </button>
-              <p className="mt-4 text-[13px] text-ink-secondary">
-                {selected
-                  ? `화면 4 에서 고른 위치(${selected.rank}순위, parcel_id ${selected.parcel_id})로 시뮬레이션을 시작합니다.`
-                  : pickMissing
-                    ? "화면 4 에서 공청회를 열 위치를 먼저 고르세요."
+              {!selected && (
+                <p className="mt-4 text-[13px] text-amber-700">
+                  {pickMissing
+                    ? "이전 화면에서 공청회를 열 위치를 먼저 고르세요."
                     : "후보점을 먼저 불러와야 시작할 수 있습니다."}
-              </p>
-              {selected && (
-                <p className="mt-1 text-[12px] text-ink-secondary">
-                  첫 실행은 벡터 저장소 초기화 때문에 첫 발언까지 최대 5분 걸립니다.
                 </p>
               )}
             </div>

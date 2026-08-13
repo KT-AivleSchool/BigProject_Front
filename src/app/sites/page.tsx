@@ -131,12 +131,7 @@ export default function Screen4Page() {
                     *    `basemap` 이 상수 `true` 다 — 조건에서 뺐다. 「토글을 꺼도 된다」는
                     *    안내도 같이 지웠다(끌 자리가 없다).
                     */}
-                  {tileFailed && (
-                    <p className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[12px] text-amber-900">
-                      배경 지도 타일을 받지 못했습니다(외부 망 차단이거나 타일 서버 응답 없음).
-                      <b> 격자와 후보지는 그대로 정확합니다</b> — 배경만 없습니다.
-                    </p>
-                  )}
+
 
                   <div className="flex-1 min-h-0 grid md:grid-cols-5">
                     {/* Left: Map (4 columns) */}
