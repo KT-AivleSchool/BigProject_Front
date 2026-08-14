@@ -10,6 +10,7 @@ import {
   Candidate,
   FIRST_PACKET_TIMEOUT_MS,
   IDLE_TIMEOUT_MS,
+  SSE_ORIGIN,
   STREAM_URL,
   StreamPacket,
   errorTitle,
@@ -355,30 +356,45 @@ export default function Screen5Page() {
               );
             }
             /**
-             * 🔴 **Content-Type 이 아예 없으면 스트림 문제가 아니다.**
-             *    이 자리는 오래 「예상치 못한 Content-Type: (없음) (HTTP 500)」만
-             *    띄웠다. 그 문구를 받은 사람은 백엔드 토론 엔진을 뒤지는데,
-             *    2026-08-14 조사에서 EC2 컨테이너 로그 · nginx 로그 · 로컬
-             *    uvicorn · 핸들러 어디에도 **요청 자체가 닿은 흔적이 없었다.**
+             * 🔴 **Content-Type 이 아예 없으면 스트림 문제가 아니다.** 백엔드는 이
+             *    모양으로 응답하지 않는다 — 성공은 `text/event-stream`, 실패는
+             *    `application/json` 이고 둘 다 위에서 걸린다. 그러니 이 자리에
+             *    떨어졌다는 건 **중간 구간이 만든 응답**이라는 뜻이다.
              *
-             *    백엔드는 이 모양으로 응답하지 않는다 — 성공은 `text/event-stream`,
-             *    실패는 `application/json` 이고 둘 다 위에서 걸린다. 헤더 없는 500
-             *    을 만들 수 있는 건 **그 앞에 있는 Next rewrite 프록시**뿐이다
-             *    (`next.config.ts` 의 proxyTimeout·업로드 상한 주석에 같은 서명이
-             *    두 번 적혀 있다 — 「죽인 쪽은 백엔드가 아니다」).
+             * 🔴 **여기 적혀 있던 두 문장이 틀렸다. 2026-08-14 백엔드 실측으로
+             *    정정한다** — 이 주석이 사건을 두 번 Next 쪽으로 오도했다.
              *
-             *    그래서 코드부터 가른다. 사유를 스트림 쪽으로 읽히게 두면 조사
-             *    인력이 통째로 엉뚱한 곳으로 간다(원칙 4: 없는 사실을 말하지 않는다).
+             *    ① 「요청이 닿은 흔적이 없었다」 → **닿았다.** nginx access log 에
+             *       `13:00:11 … 200 77763` 이 있다. 안 보였던 이유는 ⑴ 로컬 시계가
+             *       서버보다 약 4.2초 느렸고 ⑵ nginx 는 **연결이 끝날 때** 한 줄을
+             *       쓰므로 흐르는 중인 스트림은 끝나기 전까지 로그에 안 나타난다.
+             *       그 `77763` 도 완주가 아니라 **끊긴 지점까지의 부분 스트림**이다
+             *       (직접 호출은 141,895 bytes).
+             *    ② 「헤더 없는 500 을 만들 수 있는 건 Next rewrite 프록시뿐」 →
+             *       **아니다.** Next 는 무죄다 — `onProxyError` 는 본문 21 bytes
+             *       (`Internal Server Error`)를 쓰는데 실측 응답은 **0 bytes** 다.
+             *       범인은 **Amplify Hosting 의 SSR compute**(버퍼링 · 30.0초 상한).
+             *       근거 전부는 `simulation.ts` 의 `SSE_ORIGIN` 머리주석에 있다.
+             *
+             * 🔴 그래도 **코드는 가른 채로 둔다.** 「토론 엔진을 뒤지지 말라」는
+             *    여전히 옳다 — 틀렸던 건 판정이 아니라 **범인 지목과 그 아래 힌트**다.
+             *    사유를 스트림 쪽으로 읽히게 두면 조사 인력이 통째로 엉뚱한 곳으로
+             *    간다(원칙 4: 없는 사실을 말하지 않는다).
+             *
+             * ⚠ 이제 이 스트림은 rewrite 를 안 타고 백엔드를 직접 부른다. 그래서
+             *   힌트도 **바뀐 경로 기준**이다 — 예전 힌트(`OMNISITE_API_ORIGIN`·
+             *   Next 콘솔)는 운영에서 셋 다 정상인 곳을 가리켰다.
              */
             if (ct === "") {
               throw new OpenFailure(
                 "BACKEND_UNREACHABLE",
-                `요청이 백엔드에 닿지 않았습니다. 앞단 프록시가 백엔드 응답 없이 ` +
+                `백엔드 응답이 중간 구간에서 끊겼습니다. 앞단이 백엔드 응답 없이 ` +
                   `HTTP ${response.status} 를 만들었습니다(Content-Type 없음 — 백엔드는 ` +
-                  `이런 응답을 만들지 않습니다). 토론 엔진 문제가 아니므로 확인할 곳은 ` +
-                  `ⓐ 백엔드 프로세스가 떠 있는지 ⓑ \`OMNISITE_API_ORIGIN\` 이 그 주소를 ` +
-                  `가리키는지(안 주면 http://127.0.0.1:8000) ⓒ Next 서버 콘솔의 ` +
-                  `\`Failed to proxy … ECONNREFUSED/ECONNRESET\` 줄입니다.`,
+                  `이런 응답을 만들지 않습니다). 토론 엔진 문제가 아닙니다. 확인할 곳은 ` +
+                  `ⓐ 이 요청이 ${SSE_ORIGIN} 로 직접 갔는지(Network 탭의 Remote Address — ` +
+                  `omnisite.o-r.kr 로 갔다면 Amplify compute 가 버퍼링하다 끊은 것입니다) ` +
+                  `ⓑ 끊긴 시각이 30초 언저리인지(그 벽의 서명입니다 — 백엔드 TTFB 는 49ms 라 ` +
+                  `정상이면 첫 토큰이 1초 안에 뜹니다) ⓒ 브라우저 콘솔의 CORS 차단 메시지입니다.`,
               );
             }
             throw new Error(`예상치 못한 Content-Type: ${ct} (HTTP ${response.status})`);
