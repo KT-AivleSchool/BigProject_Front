@@ -165,8 +165,23 @@ export function UploadPanel({
   const [picked, setPicked] = useState<File[]>([]);
 
   const trimmed = domain.trim();
-  const known = domains?.some((d) => d.domain === trimmed) ?? false;
-  const entry = domains?.find((d) => d.domain === trimmed) ?? null;
+  /**
+   * 🔴 **업로드 루트의 행만** 고른다(백엔드 2026-08-14 루트 분리).
+   *    목록은 두 루트를 합쳐서 오는데(`?root=all`), 프리셋 행은 업로드·삭제가
+   *    **경로상 닿지 않는** 폴더다. 이름만 보고 「있는 도메인」으로 치면
+   *    `create_domain` 칸이 안 뜨고 → `create_domain=false` 로 올라가 →
+   *    서버가 `datasets/user_input/<도메인>` 을 못 찾아 **400** 이다.
+   *    안 터지는 게 아니라 **왜 400 인지 화면에 아무 단서가 없는** 게 문제다.
+   * ⚠ `root` 가 **없으면**(루트 분리 전 서버) 예전처럼 친다 — 없는 필드를
+   *   `"preset"` 으로 채우면 옛 서버에서 모든 도메인이 「없는 도메인」이 된다.
+   */
+  const entry = domains?.find((d) => d.domain === trimmed && d.root !== "preset") ?? null;
+  /**
+   * 같은 이름의 **프리셋 행**. 서버는 이름이 겹치면 업로드 행만 주므로
+   * 이 값이 있다는 건 **업로드 폴더가 아직 없다**는 뜻이다 → `create_domain` 흐름.
+   */
+  const presetEntry = domains?.find((d) => d.domain === trimmed && d.root === "preset") ?? null;
+  const known = entry !== null;
 
   /** 이 패널이 받은 값이 먼저다. 부모 칸(Step 2)은 이미 채워져 있을 때만 거든다. */
   const effectiveFacility = facilityInput.trim() || facilityType.trim();
@@ -422,31 +437,69 @@ export function UploadPanel({
                  아래 목록에 뜨는데, 그게 「내가 올린 것」으로 읽혀 실제로 지워졌다
                  (2026-08-13 — `datasets/흡연/data`). 개수는 서버가 원장과 대조해 센
                  값(`preexisting_files`)을 그대로 적는다.
+
+              🔴 **루트 분리 뒤로 이 값의 뜻이 갈렸다**(백엔드 2026-08-14).
+                 업로드 행에서는 이제 「배포 원본」이 아니다 — 배포 원본은 다른 폴더
+                 (`datasets/<도메인>`)로 나갔고, 여기 남는 건 **내 원장에 없는 파일**
+                 (다른 세션이 올렸거나 원장 30일이 지난 것)이다. 옛 문구를 그대로 두면
+                 없는 사실을 말하게 된다. `root` 를 **모르면**(옛 서버) 옛 문구가 맞다.
             */}
-            {(entry?.preexisting_files ?? 0) > 0 && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                이 도메인에는 <strong>배포 원본 {entry?.preexisting_files}개</strong>가 이미
-                있습니다 — 프리셋 모드가 읽는 파일입니다. 아래 목록에 같이 보이지만
-                <strong> 지울 수 없습니다.</strong> 내 데이터로만 분석하려면 다른 도메인
-                이름을 쓰세요.
-              </p>
-            )}
+            {(entry?.preexisting_files ?? 0) > 0 &&
+              (entry?.root === "upload" ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  이 업로드 폴더에는 <strong>내 기록에 없는 파일 {entry?.preexisting_files}개</strong>
+                  가 있습니다 — 다른 세션이 올렸거나 업로드 기록이 만료된 것입니다.
+                  아래 목록에 같이 보이고, 지우려 하면 <strong>서버가 한 번 되묻습니다.</strong>
+                </p>
+              ) : (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                  이 도메인에는 <strong>배포 원본 {entry?.preexisting_files}개</strong>가 이미
+                  있습니다 — 프리셋 모드가 읽는 파일입니다. 아래 목록에 같이 보이지만
+                  <strong> 지울 수 없습니다.</strong> 내 데이터로만 분석하려면 다른 도메인
+                  이름을 쓰세요.
+                </p>
+              ))}
           </div>
         ) : (
           <div className="flex flex-col gap-2">
-            <p className="text-amber-800">
-              <span className="font-semibold">{trimmed}</span> 은 서버에 없는 도메인입니다.
-              {domains && domains.length > 0 && (
-                <> 현재 도메인: {domains.map((d) => d.domain).join(", ")}</>
-              )}
-            </p>
+            {/*
+              🔴 프리셋 이름을 친 경우와 아예 없는 이름을 친 경우는 **다른 상황**이다.
+                 앞은 「배포 원본이 같은 이름으로 있다」이고, 올리면 **별개 폴더**가
+                 새로 생긴다(같은 폴더에 덧붙이는 게 아니다). 이 말을 안 하면
+                 사용자는 배포 데이터에 내 파일을 얹었다고 믿는다.
+            */}
+            {presetEntry ? (
+              <p className="text-amber-800">
+                <span className="font-semibold">{trimmed}</span> 은 <strong>배포 원본</strong>으로만
+                있는 이름입니다(조례 {presetEntry.law_files}개 · 데이터 {presetEntry.data_files}개).
+                배포 원본 폴더에는 올릴 수 없습니다 — 아래를 켜면 <strong>같은 이름의 별개
+                업로드 폴더</strong>가 새로 만들어지고, 올린 파일은 배포 원본과 섞이지 않습니다.
+              </p>
+            ) : (
+              <p className="text-amber-800">
+                <span className="font-semibold">{trimmed}</span> 은 서버에 없는 도메인입니다.
+                {domains && domains.length > 0 && (
+                  <>
+                    {" "}
+                    현재 업로드 도메인:{" "}
+                    {domains
+                      .filter((d) => d.root !== "preset")
+                      .map((d) => d.domain)
+                      .join(", ") || "없음"}
+                  </>
+                )}
+              </p>
+            )}
             <label className="flex items-center gap-2 text-gray-700">
               <input
                 type="checkbox"
                 checked={createDomain}
                 onChange={(e) => setCreateDomain(e.target.checked)}
               />
-              새 도메인 폴더를 만들고 올린다 (<code className="font-mono text-xs">create_domain</code>)
+              {presetEntry
+                ? "같은 이름의 업로드 폴더를 새로 만들고 올린다"
+                : "새 도메인 폴더를 만들고 올린다"}{" "}
+              (<code className="font-mono text-xs">create_domain</code>)
             </label>
           </div>
         )}
@@ -667,9 +720,23 @@ export function UploadPanel({
             )}
           </p>
         ) : listError ? (
-          <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-600 break-all">
-            {listError}
-          </p>
+          <div className="flex flex-col gap-2">
+            {/*
+              🔴 프리셋 이름이면 이 400 은 고장이 아니라 **구조**다 — 파일 목록
+                 엔드포인트도 업로드 루트만 본다(`upload.py:692`·`:1160` → `_dirs()`).
+                 사유를 안 적으면 「목록이 깨졌다」로 읽힌다. 상태 코드는 화면에
+                 안 쓴다 — 서버 문구는 아래 원문에 그대로 남는다.
+            */}
+            {presetEntry && (
+              <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                <strong>{trimmed}</strong> 은 배포 원본 폴더에만 있는 이름입니다. 파일 목록은
+                내가 올린 폴더만 보여 줍니다 — 배포 원본은 여기서 열람·삭제되지 않습니다.
+              </p>
+            )}
+            <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-600 break-all">
+              {listError}
+            </p>
+          </div>
         ) : tab === "data" ? (
           <DataTable list={dataList} busy={busy} onDelete={onDelete} />
         ) : (

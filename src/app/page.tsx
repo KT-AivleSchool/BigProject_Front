@@ -482,6 +482,18 @@ function SourcePicker({ onPick }: { onPick: (s: DataSource) => void }) {
  *    ⚠ 예전엔 「넷뿐이다(실측 2026-08-10)」라고 적혀 있었다. `has_fixture` 가
  *      나중에 생겼는데 이 주석만 안 고쳐져, **필드가 이미 있는데도 프런트가
  *      「서버가 안 준다」를 근거로 안내를 포기하고 있었다.**
+ *      같은 이유로 `preexisting_files`·`root` 도 여기 적어둔다 — 지금 이 카드가
+ *      안 그리는 필드가 있다면 그건 **없어서가 아니라 안 그려서**다.
+ *
+ * 🔴 `root` 는 이 행이 **어느 폴더에서 왔는지**다(백엔드 2026-08-14 루트 분리).
+ *    카드는 두 루트를 **같이** 보여준다 — 프리셋 모드는 배포 원본으로 돌고,
+ *    업로드 도메인도 기준선만 있으면 같은 모드로 돌기 때문이다. 대신 **어느
+ *    쪽인지 배지로 말한다**: 「배포 원본」 카드는 화면1 에서 파일을 올리거나
+ *    지울 수 없는데, 그 사실이 화면 어디에도 없으면 사용자는 업로드 탭에서
+ *    이유 없는 400 을 만난다.
+ *    ⚠ `root` 가 **없는 응답이 정상**이다(루트 분리 전 서버 — 2026-08-14 현재
+ *      `origin/back_deploy` 가 그렇다). 그때는 배지를 **안 단다** — 모르는 것을
+ *      어느 한쪽으로 찍으면 화면이 확신에 차서 틀린 말을 한다(원칙 5).
  */
 function PresetPicker({
   selected,
@@ -572,6 +584,16 @@ function PresetPicker({
                   }`}
                 />
               </div>
+              {/* `root` 를 안 주는 서버면 아무 배지도 안 단다(위 주석). */}
+              {d.root === "preset" ? (
+                <span className="mt-2 inline-block rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
+                  배포 원본 · 읽기 전용
+                </span>
+              ) : d.root === "upload" ? (
+                <span className="mt-2 inline-block rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
+                  내가 올린 데이터
+                </span>
+              ) : null}
               <dl className="mt-3 space-y-1 text-[12px] text-gray-600">
                 <div className="flex justify-between">
                   <dt>조례 문서</dt>
