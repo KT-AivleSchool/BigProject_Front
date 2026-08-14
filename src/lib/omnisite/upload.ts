@@ -1,9 +1,10 @@
 /**
  * 화면 1(업로드) API — 백엔드 2026-08-09 재작성판.
  * ================================================
- * 근거: `app/api/v1/upload.py` (라인은 각 함수 주석에). 라우트는 **7개**이고
+ * 근거: `app/api/v1/upload.py` (라인은 각 함수 주석에). 라우트는 **8개**이고
  * **전부 `domain` 이 필수**다. 도메인이 없으면 어느 파이프라인의 입력인지
  * 정할 수 없어서 서버가 받지 않는다(`upload.py:12`).
+ * (7 → 8 은 `DELETE /domains/{domain}` — 도메인 초기화. 2026-08-14)
  *
  * 🔴 옛 판(`uploads/regulations/`)은 **파이프라인이 안 읽는 곳**에 저장했다.
  *    올려도 STEP1 감리가 못 봤고 200 이 떨어져서 안 걸렸다. 지금은
@@ -19,8 +20,12 @@
  *    막는 방식이 문지기가 아니라 **경로 자체**라, 프리셋 이름으로 업로드·삭제·
  *    파일목록을 치면 폴더를 못 찾아 **400** 이다(실측 — 전달문의 "404" 는 틀렸다.
  *    `upload.py:145 _dirs()` → `_validate_domain()`).
- *    ⚠ 이 변경은 **아직 `origin/back_deploy` 에 없다**(2026-08-14 실측, 6커밋 뒤).
- *      그래서 `root` 가 **없는 응답이 정상 상태**이고, 그때는 옛 화면 그대로 둔다.
+ *    ✅ **배포됐다** — `origin/back_deploy` `118d414`(2026-08-14 13:30:50 병합)에
+ *      들어 있다. 「아직 없다(6커밋 뒤)」고 적어뒀던 건 그 병합 **전에** 잰 값이라
+ *      지금은 틀리다. 배포 여부는 커밋 개수가 아니라 **조상 관계**로 잰다
+ *      (`git merge-base --is-ancestor <feature> origin/back_deploy`).
+ *    ⚠ 그래도 `root` 가 **없는 응답을 계속 다룬다** — 되돌리거나 옛 서버를 띄우면
+ *      다시 나타나고, 그때 `undefined` 를 채워버리면 화면이 거짓말을 한다.
  */
 import { deleteJson, getJson, postForm } from "./client";
 
@@ -113,6 +118,51 @@ export interface DomainItem {
  */
 export function fetchDomains(): Promise<DomainItem[]> {
   return getJson<DomainItem[]>(`${BASE}/domains`);
+}
+
+/** `DELETE /domains/{domain}` 응답. `upload.py:583-670` */
+export interface DomainResetResult {
+  status: string;
+  domain: string;
+  files_removed: number;
+  bytes_removed: number;
+  vector_chunks_removed: number;
+  /** Redis 업로드 색인이 실제로 지워졌는가(없었으면 `false`). */
+  redis_index_removed: boolean;
+}
+
+/**
+ * 도메인 초기화 — 업로드 폴더를 **통째로** 지운다(data·law·원장·벡터 청크·Redis 색인).
+ *
+ * 🔴 **되돌릴 수 없다.** 그래서 부르는 쪽이 먼저 「무엇이 지워지는지」를 보여준다
+ *    (`DomainItem.law_files`·`data_files`). 「초기화」라는 말만 띄우고 부르면
+ *    사용자는 브라우저 상태만 지워지는 줄 안다.
+ *
+ * 🔴 **프리셋에는 닿지 않는다** — 이 라우터가 보는 루트가 `datasets/user_input/`
+ *    뿐이라 문지기가 아니라 **경로상 불가능**하다. 프리셋 이름으로 부르면
+ *    「업로드 도메인이 없습니다」 **404** 다. 그건 실패가 아니라 **지울 게 없다**는
+ *    뜻이므로, 화면이 빨간 오류로 그리면 거짓이 된다.
+ *
+ * 🔴 실패 갈래를 접지 않는다. 뜻이 전부 다르고 다음 행동도 다르다:
+ *      404 지울 게 없다(프리셋이거나 이미 정리됨) — 정상
+ *      409 그 도메인으로 **진행 중인 run** 이 있다(queued·running·awaiting_hitl).
+ *          🔴 여기에는 `force` 가 **없다**. 파일 삭제(`force=true`)의 409 와
+ *             다른 물건이다 — 재시도 버튼을 달면 **영원히 성공할 수 없는**
+ *             재시도가 되고, 성공해서도 안 된다(돌고 있는 run 의 입력이다).
+ *             그 run 을 먼저 취소해야 한다(`cancelRun`).
+ *      500 두 갈래다 — ⓐ 벡터 청크 삭제 실패 = **아무것도 안 지웠다**(그대로 다시
+ *          시도하면 된다) ⓑ 폴더 삭제 실패 = **청크는 이미 지워졌다**(파일은 남고
+ *          검색만 죽었으므로 다시 올려야 한다). 서버 `detail` 이 둘을 구분해
+ *          적어주므로 **문구를 지어내지 말고 그대로 띄운다**.
+ *
+ * ⚠ 안 눌러도 서버가 **24시간 뒤 자동으로** 같은 것을 지운다(`user_input_pruner`).
+ *   즉 이 버튼은 「쌓이는 걸 막는 유일한 수단」이 아니라 **지금 비우는 경로**다 —
+ *   실패했다고 데이터가 영영 쌓이지는 않는다.
+ */
+export function resetDomain(domain: string): Promise<DomainResetResult> {
+  return deleteJson<DomainResetResult>(
+    `${BASE}/domains/${encodeURIComponent(domain)}`,
+  );
 }
 
 // ── 2. 조례 ───────────────────────────────────────────────────────

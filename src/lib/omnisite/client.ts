@@ -213,6 +213,18 @@ export async function deleteJson<T>(url: string): Promise<T> {
 }
 
 /**
+ * DELETE **204**(본문 없음).
+ *
+ * 🔴 `deleteJson` 을 쓰면 안 된다 — 빈 본문에 `res.json()` 을 부르면
+ *    `SyntaxError: Unexpected end of JSON input` 으로 터진다. **성공했는데 실패로
+ *    보이는** 모양이라, 호출부가 그걸 잡아 재시도하면 이미 된 일을 또 한다.
+ *    실패는 `request()` 가 이미 `ApiError` 로 던졌으므로 여기 올 일이 없다.
+ */
+export async function deleteVoid(url: string): Promise<void> {
+  await request(url, { method: "DELETE" });
+}
+
+/**
  * 바이너리 내려받기(첨부파일).
  *
  * 🔴 `<a href>` 로 열지 않는다 — 그 요청에는 `Authorization` 헤더가 안 붙는데

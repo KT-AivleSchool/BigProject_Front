@@ -23,6 +23,10 @@ import type { ArtifactName, RunDoc } from "@/lib/omnisite/types";
 import { AuthModal } from "./AuthModal";
 import { SessionBadge } from "./SessionBadge";
 import { getAuthUser, clearAuth, UserResponse } from "@/lib/omnisite/auth";
+import { cancelRun } from "@/lib/omnisite/pipeline";
+import { fetchDomains, resetDomain } from "@/lib/omnisite/upload";
+import { ApiError, describeFailure } from "@/lib/omnisite/client";
+import { ResetConfirmModal, type ResetTargets } from "./ResetConfirmModal";
 
 export function Header() {
   const pathname = usePathname();
@@ -124,11 +128,153 @@ export function Header() {
     }
   };
 
-  const handleReset = () => {
-    if (confirm("현재 진행 중인 파이프라인 데이터를 초기화하고 처음부터 다시 시작하시겠습니까?")) {
-      reset();
-      router.push("/");
+  /**
+   * 「데이터 초기화」 — **브라우저만 지우던 버튼에 서버 정리를 더했다**(2026-08-14).
+   *
+   * 세 가지를 이 순서로 한다. **순서가 곧 규칙이다.**
+   *   ① `DELETE /runs/{id}`   진행 중인 run 을 취소한다(자식 프로세스까지 죽는다)
+   *   ② `DELETE /upload/domains/{domain}`  그 도메인의 업로드를 통째로 지운다
+   *   ③ `reset()`             브라우저 상태(run id·게이트·화면 잠금)를 지운다
+   *
+   * 🔴 ①이 ② 앞에 있어야 한다. 서버는 「진행 중인 run 이 있는 도메인」을 **409** 로
+   *    막는데(그게 옳다 — 그 run 이 지금 읽고 있는 입력이다), 초기화를 누르는
+   *    사람의 run 이 바로 그 run 인 경우가 대부분이다. 순서를 바꾸면 **정상 경로가
+   *    거의 항상 409** 다.
+   *
+   * 🔴 **「run 초기화 = 업로드 삭제」는 사람이 정한 것이다**(2026-08-14 지시).
+   *    유추가 아니다 — 화면 1 에서 올린 파일은 그 실행의 입력이고, 실행을 버리면
+   *    입력도 같이 버리는 게 맞다는 결정이다. 안 눌러도 서버가 **24시간 뒤 자동으로**
+   *    같은 것을 지우므로(`user_input_pruner`), 이 버튼은 쌓임을 막는 유일한
+   *    수단이 아니라 **지금 비우는 경로**다. 그래서 ②가 실패해도 ③은 진행한다.
+   *
+   * 🔴 **다시보기(`reviewing`)의 「나가기」와 같은 동작이 아니게 됐다.**
+   *    `ReviewBanner` 는 지난 run 을 **보고만** 있으므로 계속 `reset()` 만 부른다 —
+   *    거기서 지우면 남의(혹은 예전) 실행 입력을 구경하다 삭제하는 꼴이다.
+   *    두 자리의 주석이 「같은 동작」이라고 적혀 있었는데 이제 아니다.
+   *
+   * 🔴 지울 것을 **먼저 세어 보여준다.** 「초기화」라는 말만 띄우면 사용자는
+   *    브라우저 상태만 지워지는 줄 안다(절대원칙 4). 프리셋 도메인이면 지울 게
+   *    없으므로 그 문장도 넣지 않는다 — 없는 삭제를 예고하는 것도 거짓이다.
+   *
+   * 🔴 **확인은 `confirm()` 이 아니라 타이핑 모달이다**(2026-08-14, 백엔드 회신).
+   *    이건 파일 하나가 아니라 **폴더 통째**이고 서버 쪽에 `force` 같은 우회가
+   *    없다 — 되돌릴 방법이 아예 없다. 엔터 한 번에 넘어가는 확인창을 파일 단위
+   *    삭제와 **같은 걸로 쓰면 안 된다**. 이름을 치게 하는 자리는 `ResetConfirmModal`.
+   */
+  const [resetting, setResetting] = useState(false);
+  const [counting, setCounting] = useState(false);
+  const [resetNote, setResetNote] = useState<string | null>(null);
+  const [confirmTargets, setConfirmTargets] = useState<ResetTargets | null>(null);
+
+  /**
+   * 1단계 — **세고 묻는다.** 여기서는 아무것도 안 지운다.
+   *
+   * 🔴 셀 수 없으면 **파일에 손대지 않는다**(`deletable` 이 `null` 로 남는다).
+   *    모르는 채로 지우는 것보다 안 지우는 게 낫다 — 안 지워도 서버가 나중에
+   *    자동으로 정리한다(`user_input_pruner`).
+   */
+  const openResetConfirm = async () => {
+    if (resetting || counting) return;
+    const runId = run?.run_id ?? null;
+    const domain = run?.domain ?? null;
+
+    let deletable: { law: number; data: number } | null = null;
+    let countReason: string | null = null;
+    if (domain) {
+      setCounting(true);
+      try {
+        const row = (await fetchDomains()).find((d) => d.domain === domain);
+        if (!row) {
+          countReason = "업로드 목록에 없습니다(이미 정리됐습니다).";
+        } else if (row.root === "upload") {
+          deletable = { law: row.law_files, data: row.data_files };
+        } else if (row.root === "preset") {
+          /**
+           * 🔴 프리셋은 **라우트를 아예 안 친다.** 서버가 거절해 주니 그냥 쳐도
+           *    된다고 읽기 쉬운데, 그 거절은 **404 가 아니라 400** 이다
+           *    (`upload.py:_dirs():163→166` — 라우터의 뿌리가 `datasets/user_input/`
+           *    뿐이라 프리셋은 **조건이 아니라 경로상** 닿지 않는다). 즉 「없는
+           *    도메인」과 같은 답이 아니고, 400 을 받으면 화면에는 사용자가 뭘
+           *    잘못한 것처럼 뜬다. 여기서 갈라야 그 문장이 안 나온다 —
+           *    「어차피 서버가 막는다」며 이 분기를 접지 말 것.
+           */
+          countReason = "배포 원본(읽기 전용)이라 파일은 지워지지 않습니다.";
+        } else {
+          // `root` 가 없는 서버 = 루트 분리 **전** 배포 = 이 삭제 라우트도 없다
+          // (같은 커밋에서 같이 생겼다). 쳐봐야 404·405 라 치지 않는다.
+          countReason = "이 서버는 도메인 초기화를 지원하지 않습니다(옛 판).";
+        }
+      } catch (e) {
+        countReason = `무엇이 지워지는지 확인하지 못했습니다 — ${describeFailure(e)}`;
+      } finally {
+        setCounting(false);
+      }
     }
+
+    setConfirmTargets({
+      runId,
+      live: live || run?.status === "awaiting_hitl",
+      domain,
+      deletable,
+      countReason,
+    });
+  };
+
+  /** 2단계 — 실제로 지운다. 모달에서 이름을 맞게 친 뒤에만 불린다. */
+  const runReset = async (t: ResetTargets) => {
+    setConfirmTargets(null);
+    setResetting(true);
+    setResetNote(null);
+    const notes: string[] = [];
+
+    // ① run 취소. 404(없는 run)·409(이미 끝남)는 **정상**이다 — 취소할 게 없다는 뜻이다.
+    if (t.runId) {
+      try {
+        await cancelRun(t.runId);
+      } catch (e) {
+        const skip = e instanceof ApiError && (e.status === 404 || e.status === 409);
+        if (!skip) notes.push(`실행 취소 실패 — ${describeFailure(e)}`);
+      }
+    }
+
+    // ② 도메인 삭제. 셀 수 있었던 경우에만 친다.
+    if (t.domain && t.deletable) {
+      try {
+        const r = await resetDomain(t.domain);
+        notes.push(
+          `「${t.domain}」 파일 ${r.files_removed}개(${(r.bytes_removed / 2 ** 20).toFixed(1)} MB)와 ` +
+            `벡터 청크 ${r.vector_chunks_removed}개를 지웠습니다.`,
+        );
+      } catch (e) {
+        // 🔴 재시도 버튼을 달지 않는다. 409 는 `force` 가 없는 종류라 다시 쳐도 같은
+        //    답이고, 성공해서도 안 된다(다른 실행이 그 입력을 읽고 있다).
+        //    문구는 서버 것을 그대로 쓴다 — 500 두 갈래(청크만 지워짐 / 아무것도
+        //    안 지워짐)를 우리가 다시 쓰면 뜻이 뭉개진다.
+        //
+        // ⚠ 뒤에 붙이는 위안 문구는 **서버 규칙 그대로**여야 한다. 자동 정리 시계는
+        //   지금이 아니라 `max(마지막 업로드, 마지막 run 종료)` 에서 시작하고,
+        //   진행 중인 run(`queued`·`running`·`awaiting_hitl`)이 하나라도 있으면
+        //   시각과 무관하게 **건너뛴다**(`app/services/user_input_pruner.py` 머리주석,
+        //   `origin/back_deploy` 에서 실측).
+        //
+        // 🔴 그래서 **상태별로 다른 문장이다.** 처음엔 한 문장을 전부에 붙였는데
+        //    409(진행 중인 run 이 있다) 에 맞춘 그 문장을 500 에 붙이면 **거짓**이다 —
+        //    500 자리엔 기다릴 실행이 없다. 「곧 알아서 정리된다」는 위안은 조건이
+        //    틀리면 그냥 안 지워진 채로 끝난다(절대원칙 4).
+        const wait =
+          e instanceof ApiError && e.status === 409
+            ? "진행 중인 실행이 끝나고 24시간이 지나면 서버가 자동으로 정리합니다"
+            : "마지막 업로드·마지막 실행 종료로부터 24시간이 지나면 서버가 자동으로 정리합니다";
+        notes.push(`업로드 삭제 실패 — ${describeFailure(e)} (${wait})`);
+      }
+    }
+
+    // ③ 브라우저 상태. ②가 실패해도 한다 — run 은 이미 취소됐고, 죽은 run 을
+    //    가리킨 채로 두는 게 더 나쁘다.
+    reset();
+    setResetting(false);
+    setResetNote(notes.length ? notes.join("\n") : null);
+    router.push("/");
   };
 
   return (
@@ -259,13 +405,18 @@ export function Header() {
 
           <div className="flex shrink-0 items-center gap-4 ml-4">
             {run && (
-              <button 
-                onClick={handleReset}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors border border-red-100 shadow-sm"
-                title="진행 중인 데이터 초기화"
+              <button
+                onClick={openResetConfirm}
+                disabled={resetting || counting}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-bold text-red-600 bg-red-50 hover:bg-red-100 transition-colors border border-red-100 shadow-sm disabled:cursor-not-allowed disabled:opacity-50"
+                /* ⚠ 이 버튼은 이제 **서버 파일도 지운다**. 툴팁이 "진행 중인 데이터"
+                     까지만 말하면 올린 파일이 같이 사라지는 걸 예고하지 못한다. */
+                title="실행을 취소하고, 이 도메인에 올린 파일까지 지운 뒤 처음부터 다시 시작합니다"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
-                데이터 초기화
+                {/* 세는 중과 지우는 중은 **다른 상태**다. 둘 다 「초기화 중」이라고
+                    쓰면 아직 아무것도 안 지운 시점이 이미 지운 것처럼 보인다. */}
+                {resetting ? "초기화 중…" : counting ? "확인 중…" : "데이터 초기화"}
               </button>
             )}
 
@@ -298,6 +449,34 @@ export function Header() {
           </div>
         </div>
       </header>
+      {/*
+        초기화 결과. **성공도 실패도 남긴다** — 파일이 몇 개 지워졌는지는 사용자가
+        확인할 수 있어야 하고(절대원칙 4), 실패는 더욱 그렇다. `router.push("/")`
+        뒤에도 살아 있다 — 셸은 클라이언트 내비게이션에서 다시 마운트되지 않는다.
+        🔴 `alert` 로 안 띄운다. 초기화 직후 화면 1 이 뜨는 흐름을 모달이 가로막고,
+           내용이 여러 줄인데 alert 는 닫는 순간 사라져 되짚어볼 수가 없다.
+      */}
+      {resetNote && (
+        <div className="border-b border-amber-200 bg-amber-50 px-5 py-2 text-[12px] text-amber-900">
+          <div className="mx-auto flex max-w-[1600px] items-start gap-3">
+            <span className="whitespace-pre-wrap">{resetNote}</span>
+            <button
+              onClick={() => setResetNote(null)}
+              className="ml-auto shrink-0 rounded px-2 py-0.5 text-amber-700 hover:bg-amber-100"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      )}
+      {confirmTargets && (
+        <ResetConfirmModal
+          isOpen
+          targets={confirmTargets}
+          onClose={() => setConfirmTargets(null)}
+          onConfirm={() => runReset(confirmTargets)}
+        />
+      )}
       <AuthModal
         isOpen={authModalOpen}
         onClose={() => setAuthModalOpen(false)}

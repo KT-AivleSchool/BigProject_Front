@@ -42,7 +42,7 @@
  *    아래 `fetchRuns` 는 **그 405 가 200 이 되는 날을 위해 미리 배선한 것**이고,
  *    지금은 마이페이지가 실패를 화면에 그대로 띄운다(삼키지 않는다).
  */
-import { getJson, postJson, getText } from "./client";
+import { deleteVoid, getJson, postJson, getText } from "./client";
 import { parseCsv } from "./csv";
 import type {
   ArtifactName,
@@ -195,22 +195,29 @@ export function fetchRun(runId: string): Promise<RunDoc> {
 }
 
 /**
- * 🔴 **`cancelRun`(`DELETE /runs/{id}`)은 없앴다. 그런 라우트가 없다.**
+ * 실행 취소 — `DELETE /runs/{run_id}` → **204**(본문 없음). 백엔드 계약 3-4.
  *
- * 2026-08-12 실측 — 살아 있는 서버(`127.0.0.1:8000`)의 `/openapi.json` 에 있는
- * pipeline 라우트는 **5개**이고 DELETE 는 그중에 없다:
- *   `POST /runs` · `GET /runs/{run_id}` · `GET /runs/{run_id}/artifacts/{name}`
- *   `POST /runs/{run_id}/hitl/{gate_id}` · `GET /runs/{run_id}/log`
+ * 🔴 **한때 없앴던 함수를 되살린 것이다.** 2026-08-12 에는 이 라우트가 정말로
+ *    없었고(`/openapi.json` pipeline 5개 중 DELETE 없음), 그때의 구현은
+ *    **세 겹으로 조용했다**: ⓐ 공통 `request()` 를 안 거쳐 `Authorization` 이
+ *    안 붙었고 ⓑ 실패를 `console.warn` 으로 삼켰으며 ⓒ 애초에 405 밖에 못 받았다.
+ *    즉 「취소했다」고 믿게 만들고 아무것도 안 했다(절대원칙 4).
+ *    되살리면서 셋 다 뒤집었다 — `request()` 경유 · 실패는 던진다 · 라우트 실재를
+ *    **배포 브랜치에서** 확인했다(`origin/back_deploy` `118d414`
+ *    `app/api/v1/pipeline.py:178`, 2026-08-14 실측).
  *
- * 없앤 이유가 「안 쓰니까」가 아니다 — 그 함수는 **세 겹으로 조용했다**:
- * ⓐ `client.ts` 의 공통 `request()` 를 안 거쳐 `Authorization` 이 안 붙었고
- * ⓑ 실패를 `console.warn` 으로 삼켜 화면에는 아무 말도 안 했으며
- * ⓒ 애초에 405 밖에 못 받는다. 즉 「취소했다」고 믿게 만들고 아무것도 안 한다.
+ * 🔴 **자식 프로세스를 실제로 죽이고 나서** 204 가 온다(백엔드 `runner.cancel_run`).
+ *    그래서 이 호출이 끝난 뒤에는 그 도메인이 풀려 있다 — 도메인 삭제를 먼저
+ *    치면 「진행 중인 run 이 있다」 **409** 를 받는다. 순서가 곧 규칙이다.
  *
- * 목적(같은 도메인 409 좀비런 방지)은 이미 다른 자리가 맡는다 —
- * `RunProvider` 가 409 를 **실패가 아니라 점유**로 읽고 서버가 `detail` 에 적어준
- * run 에 되붙는다. 취소가 정말 필요하면 백엔드에 라우트가 먼저 생겨야 한다.
+ * 🔴 실패 둘은 **정상 상태**이므로 호출부가 갈라야 한다:
+ *      404 = 없는 run_id(폴더가 정리됐다) · 409 = 이미 끝난 run
+ *    둘 다 「취소할 것이 없다」는 뜻이지 「취소에 실패했다」가 아니다.
+ *    반대로 204 로 뭉뚱그리는 것도 거짓이다 — 백엔드가 일부러 갈라놨다.
  */
+export function cancelRun(runId: string): Promise<void> {
+  return deleteVoid(`${BASE}/runs/${encodeURIComponent(runId)}`);
+}
 
 /**
  * 실행 로그(`run.log`). 백엔드 커밋 `836455e`.
