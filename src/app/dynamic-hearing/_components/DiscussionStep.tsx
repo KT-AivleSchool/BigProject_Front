@@ -77,9 +77,23 @@ export function DiscussionStep({
     }
   }, [messages, chatContainerRef]);
 
+  /**
+   * 🔴 **`vh` 를 쓰지 않는다**(2026-08-15). 이 앱 전체가 `ScaleToFit` 의
+   *    `transform: scale()` 안에 들어 있는데, **`vh`·`dvh` 는 그 배율을 모른다** —
+   *    항상 진짜 뷰포트를 잰다. 그래서 논리 캔버스가 982px 인 화면에서
+   *    `calc(100vh-200px)` 는 975−200 = **775px** 을 요구했고, 자리가 없으니
+   *    초과분이 `PageBody` 로 넘어가 페이지 스크롤바가 생겼다(실측 876 → 945).
+   *    화면 5-A(`/hearing`)가 멀쩡했던 이유도 이것이다 — 거기는 `h-[700px]` 다.
+   *
+   *    이제 높이를 **묻지 않고** 부모가 준 자리를 그대로 채운다(`h-full`).
+   *    자리는 `page.tsx` 의 3단계 칸이 `flex-1 min-h-0` 으로 정한다.
+   *
+   * ⚠ `min-h-[600px]` 도 같이 뺐다. 자리보다 큰 하한을 두면 결국 부모를 뚫어
+   *   같은 스크롤바가 돌아온다. 안쪽 두 칸(`overflow-y-auto`)이 알아서 줄어든다.
+   */
   return (
-    <div className={`transition-all duration-700 ease-in-out transform ${step === 3 ? 'translate-x-0 opacity-100 relative' : 'translate-x-full opacity-0 absolute top-0 w-full pointer-events-none'}`}>
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-[calc(100vh-200px)] min-h-[600px] max-w-[1200px] mx-auto">
+    <div className={`transition-all duration-700 ease-in-out transform ${step === 3 ? 'translate-x-0 opacity-100 relative flex-1 min-h-0' : 'translate-x-full opacity-0 absolute top-0 w-full pointer-events-none'}`}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 h-full min-h-0 max-w-[1200px] mx-auto">
         {/* 왼쪽 채팅 영역 */}
         <div className="lg:col-span-2 glass-panel p-6 md:p-8 rounded-2xl flex flex-col h-full min-h-0 overflow-hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 pb-5 border-b border-hairline flex-shrink-0 gap-4">
@@ -118,7 +132,7 @@ export function DiscussionStep({
           </div>
           
           {/* 이해관계자 필터 태그 (스티커) */}
-          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 scrollbar-none flex-shrink-0">
+          <div className="flex gap-2 overflow-x-auto pb-2 mb-2 hide-scrollbar flex-shrink-0">
             <button 
               onClick={() => setSelectedSpeaker(null)}
               className={`px-3.5 py-1.5 rounded-full text-[12px] font-bold whitespace-nowrap transition-colors border shadow-sm ${selectedSpeaker === null ? 'bg-primary text-white border-primary' : 'bg-white text-ink-secondary border-hairline hover:bg-slate-50'}`}
@@ -138,7 +152,7 @@ export function DiscussionStep({
           
           <div 
             ref={chatContainerRef as React.RefObject<HTMLDivElement>}
-            className="flex-1 overflow-y-auto pr-4 space-y-6 scroll-smooth scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-transparent pb-4"
+            className="custom-scrollbar flex-1 min-h-0 overflow-y-auto pr-4 space-y-6 scroll-smooth pb-4"
           >
           {messages.length === 0 && isDiscussing && (
             <div className="flex flex-col items-center justify-center h-full text-slate-500 space-y-5">
@@ -233,13 +247,16 @@ export function DiscussionStep({
         </div>
 
         {/* 오른쪽 현황 대시보드 */}
-        <div className="glass-panel p-6 rounded-2xl flex flex-col h-full h-[calc(100vh-200px)] min-h-[600px] overflow-hidden">
+        {/* `h-full` 과 `h-[calc(100vh-200px)]` 이 **한 요소에 같이** 붙어 있었다.
+            어느 쪽이 이길지는 Tailwind 가 뽑는 CSS 순서에 달려 있어 읽어서는 알 수
+            없다. 왼쪽 칸과 같은 규칙(`h-full`) 하나만 남긴다. */}
+        <div className="glass-panel p-6 rounded-2xl flex flex-col h-full min-h-0 overflow-hidden">
           <h3 className="font-semibold text-[18px] text-ink mb-5 flex items-center border-b border-hairline pb-4">
             <span className="bg-primary/10 text-primary p-2 rounded-lg mr-2"><Info size={18} /></span>
             실시간 쟁점 요약
           </h3>
           
-          <div className="flex-1 overflow-y-auto pr-2 space-y-4 scroll-smooth scrollbar-thin scrollbar-thumb-slate-300">
+          <div className="custom-scrollbar flex-1 min-h-0 overflow-y-auto pr-2 space-y-4 scroll-smooth">
             {!discussionStatus ? (
               <div className="flex flex-col items-center justify-center h-full text-ink-secondary/70">
                 <Loader2 size={32} className="animate-spin mb-3 opacity-50" />

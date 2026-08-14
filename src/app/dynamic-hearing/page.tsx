@@ -851,7 +851,23 @@ export default function DynamicHearingPage() {
 
       </div>
 
-      <div className={`relative ${step === 1 ? 'flex-1 flex flex-col min-h-0 overflow-hidden' : 'min-h-[600px] overflow-x-hidden'}`}>
+      {/**
+        * 🔴 **3단계도 「남은 자리를 채우는」 칸이다**(2026-08-15). 예전엔 1단계만
+        *    `flex-1` 이고 2·3단계는 `min-h-[600px]` 로 **내용만큼 자라는** 칸이었다.
+        *    3단계 토론판은 자기 높이를 `calc(100vh-200px)` 로 잡고 있어서(그건
+        *    `DiscussionStep` 쪽에서 고쳤다) 이 칸이 775px 로 부풀었고, 그 초과분이
+        *    `PageBody` 로 넘어가 **페이지 스크롤바**가 생겼다(실측 876 → 945).
+        *
+        * ⚠ `overflow-x-hidden` 하나만 준 것도 함정이었다. CSS 는 한 축이
+        *   `visible` 이고 다른 축이 아니면 **`visible` 쪽을 `auto` 로 바꾼다** —
+        *   가로만 자르려 했는데 세로 스크롤 컨테이너가 딸려 생겼다(실측
+        *   clientHeight 600 · scrollHeight 775 로 **두 번째 스크롤바**). 그래서
+        *   3단계는 `overflow-hidden` 으로 두 축을 함께 못박는다.
+        *
+        * 2단계(페르소나 카드 그리드)는 그대로 둔다 — 인원수만큼 자라는 게 맞고,
+        * 자란 만큼 `PageBody` 가 스크롤하는 것도 그 화면에서는 정상이다.
+        */}
+      <div className={`relative ${step === 2 ? 'min-h-[600px] overflow-x-hidden' : 'flex-1 flex flex-col min-h-0 overflow-hidden'}`}>
         <SetupStep
           step={step}
           topic={topic}
@@ -887,8 +903,10 @@ export default function DynamicHearingPage() {
         />
       </div>
 
-      {/* 바닥 내비게이션 바 */}
-      <div className="mt-6 mb-8 flex shrink-0 items-center justify-between rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-sm">
+      {/* 바닥 내비게이션 바. `mb-8` 을 뺐다 — `PageBody` 가 이미 `pb-10` 이라
+          바닥 여백이 두 겹이었고, 그 32px 은 3단계에서 채팅창 높이를 그만큼
+          깎고 있었다(실측 채팅창 296px). */}
+      <div className="mt-6 flex shrink-0 items-center justify-between rounded-2xl border border-gray-100 bg-white px-8 py-5 shadow-sm">
         <Link
           href="/sites"
           className="rounded-xl border border-gray-200 bg-white px-6 py-2.5 text-sm font-bold text-gray-500 transition-colors hover:bg-gray-50"
