@@ -115,6 +115,20 @@ function useDots(active: boolean): string {
   return ".".repeat(n);
 }
 
+/**
+ * 도메인 칸에 글자가 들어오는 동안 목록을 **묻지 않고 기다리는** 시간(ms).
+ *
+ * 🔴 값(`domain`)이 아니라 **effect** 를 늦춘다. 값을 늦추면 그동안 화면에
+ *    **직전 도메인의 목록**이 지금 도메인의 것인 양 남는다 — `listKey` 가 막으려는
+ *    바로 그 「남의 답」이다. effect 만 늦추면 `listKey` 는 글자와 함께 즉시 바뀌므로
+ *    화면은 계속 「불러오는 중」이다.
+ *
+ * ⚠ 그 대가로 이 400ms 동안 화면은 **아직 묻지도 않았는데** 「불러오는 중」이라고
+ *   말한다. 「안 물었다」와 「묻고 기다린다」를 가르려면 상태가 하나 더 필요한데,
+ *   0.4초를 위해 둘 자리는 아니다.
+ */
+const LIST_DEBOUNCE_MS = 400;
+
 function kb(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
@@ -259,9 +273,25 @@ export function UploadPanel({
     });
   }, [listKey, trimmed, tab]);
 
+  /**
+   * 🔴 **한 글자에 한 번씩 묻지 않는다**(2026-08-14, 배포 서버 로그 실측:
+   *    `?domain=t|te|tes|test|tests|testst|teststs|teststst` → 8건 전부 400).
+   *    `listKey` 는 타이핑 중인 `trimmed` 를 그대로 담으므로 글자마다 `loadList` 의
+   *    정체성이 바뀌고 effect 가 다시 돈다. 조례 탭은 목록 한 번이 **약 130초**라
+   *    특히 나쁘다.
+   *
+   * 🔴 `setTimeout` **콜백 안**의 호출이라 `react-hooks/set-state-in-effect` 에
+   *    안 걸린다 — 이 파일 `useDots`(`setInterval`)와 같은 모양이다. 규칙은
+   *    effect 가 **직접** 부르는 것만 본다(await 뒤도 동기로 친다).
+   *
+   * ⚠ 업로드·삭제 뒤의 `loadList()` 직접 호출은 **그대로 즉시**다. 그때는 `listKey`
+   *   가 안 바뀌어 이 effect 가 아예 안 돈다 — 방금 올린 파일이 0.4초 늦게 뜰 이유가 없다.
+   */
   useEffect(() => {
-    void loadList();
-  }, [loadList]);
+    if (!listKey) return;
+    const t = setTimeout(() => void loadList(), LIST_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [listKey, loadList]);
 
   // 렌더 중에 계산한다. `listKey` 가 없으면(도메인 비었음) 아무것도 안 물었으므로 대기도 아니다.
   const listFresh = listAnswer.key === listKey;
