@@ -1,12 +1,20 @@
 /**
  * 파이프라인 실행 API — `pipeline_run_contract.md` 가 유일한 기준.
  * =============================================================
- * 엔드포인트는 **4개다.** 실측(2026-08-05, app/api/v1/pipeline.py):
+ * 라우트는 **7개다.** 실측 2026-08-14, **배포 브랜치**(`origin/back_deploy`)의
+ * `app/api/v1/pipeline.py` 를 직접 읽은 값이다:
  *
- *   POST /api/v1/pipeline/runs                        → 202 {run_id}
- *   GET  /api/v1/pipeline/runs/{run_id}               → status.json 원문
- *   GET  /api/v1/pipeline/runs/{run_id}/artifacts/{n} → 산출물 파일 원본
- *   GET  /api/v1/pipeline/runs/{run_id}/log[?tail=N]  → 실행 로그 (커밋 836455e)
+ *   POST   /api/v1/pipeline/runs                        :67  → 202 {run_id}
+ *   GET    /api/v1/pipeline/runs?mine=true              :96  → 아래 참고
+ *   GET    /api/v1/pipeline/runs/{run_id}               :165 → status.json 원문
+ *   DELETE /api/v1/pipeline/runs/{run_id}               :178 → 204 (실행 취소)
+ *   POST   /api/v1/pipeline/runs/{id}/hitl/{gate_id}    :203 → 게이트 답변
+ *   GET    /api/v1/pipeline/runs/{run_id}/log[?tail=N]  :224 → 실행 로그
+ *   GET    /api/v1/pipeline/runs/{run_id}/artifacts/{n} :242 → 산출물 파일 원본
+ *
+ * 🔴 **브랜치를 적어두는 이유.** 이 표면은 브랜치마다 다르다 — `main` 에는
+ *    `GET /runs` 도 `DELETE /runs/{id}` 도 **없다.** 「백엔드에 있다」가 아니라
+ *    「우리가 치는 서버에 있다」여야 근거가 된다.
  *
  * 쓰기 API 는 **이제 있고 이제 쓴다** — 화면 2 · 3 이 게이트 답변 화면이 됐다
  * (2026-08-05, 계약 7절):
@@ -32,15 +40,23 @@
  *      걸려 조용히 뒤집히고, `direction_source` 가 산출물에서 사라진다.
  *    - 409 는 실패가 아니라 **점유**다 — 같은 도메인을 다른 run 이 잡고 있다.
  *
- * 🔴 **run 목록 API 는 아직 없다.**(실측 2026-08-12: `GET /pipeline/runs?mine=true`
- *    → **405 Method Not Allowed**. 없는 경로가 아니라 `POST /runs` 가 같은 경로를
- *    점유해 **메서드에서** 막힌다 — 404 로 적으면 "없는 걸 만드는 문제" 로 읽히는데
- *    실제로는 "있는 경로에 메서드를 더하는 문제" 다.)
- *    그래서 방금 만든 run_id 를 프런트가 직접 기억해야 한다(`runStore.ts`).
- *    서버가 유일한 진실인데 목록을 못 물어보므로, 브라우저에 남은 id 는 항상
- *    서버에 되물어 확인한 뒤 쓴다.
- *    아래 `fetchRuns` 는 **그 405 가 200 이 되는 날을 위해 미리 배선한 것**이고,
- *    지금은 마이페이지가 실패를 화면에 그대로 띄운다(삼키지 않는다).
+ * ✅ **run 목록 API 는 이제 있다**(2026-08-14). 여기 「아직 없다 — **405 Method Not
+ *    Allowed**」라고 적혀 있던 문단을 지운다. 그때(2026-08-12)는 참이었다: `GET`
+ *    핸들러가 없어 `POST /runs` 가 경로만 점유했고, 그래서 404 가 아니라 405 였다.
+ *    지금은 `:96` 에 `@router.get("/runs")` 가 있다 — **405 는 이제 안 나온다.**
+ *    낡은 주석을 남겨두면 다음 사람이 「목록을 못 물어본다」를 전제로 화면을 짠다.
+ *
+ * 🔴 **대신 401 이 나온다.** 이 라우트만 `Depends(get_current_user)` 라 **인증이
+ *    필수**다(`POST /runs` 는 선택적 인증이라 익명도 202 를 받는다 — 같은 파일의
+ *    두 라우트가 서로 다르다). 그래서 실패 갈래가 셋이다:
+ *      401 = 토큰 없음/만료  ·  400 = `mine` 이 `"true"` 가 아님  ·  200 = 정상
+ *    「목록이 비었다」와 「로그인이 필요하다」는 다른 문장이다. 마이페이지는 실패를
+ *    삼키지 않고 사유를 그대로 띄운다.
+ *
+ * 🔴 **그래도 `runStore.ts` 는 남는다.** 목록이 생겼다고 브라우저 기억이 필요
+ *    없어지는 게 아니다 — ⓐ 로그인 안 한 사람에겐 401 이라 목록 자체가 없고
+ *    ⓑ 익명으로 만든 run 은 주인이 없다(백엔드 설계상 `user_id` 는 영구 nullable).
+ *    브라우저에 남은 id 는 예나 지금이나 **서버에 되물어 확인한 뒤** 쓴다.
  */
 import { deleteVoid, getJson, postJson, getText } from "./client";
 import { parseCsv } from "./csv";
