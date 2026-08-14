@@ -51,6 +51,7 @@ import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { loadCleanReport, loadReport, loadReviewed, loadTopN } from "@/lib/omnisite/pipeline";
 import { areaM2, datetime, fixed, int, km2, percent } from "@/lib/omnisite/format";
+import { jimokLabel, jimokText } from "@/lib/omnisite/jimok";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { readSitePick, type SitePick } from "@/lib/omnisite/sitePick";
 import { useHydrated } from "@/lib/omnisite/useHydrated";
@@ -86,7 +87,7 @@ const SECTIONS = [
   ["s6", "6. 위치 선정 결과"],
   ["s7", "7. 커버율"],
   ["s8", "8. 공청회 토론 결과"],
-  ["s9", "9. 미확인 · 미적용 항목"],
+  ["s9", "9. 확인이 필요한 것 · 반영하지 못한 것"],
 ] as const;
 
 
@@ -306,7 +307,7 @@ function Overview({ rep }: { rep: ReportDoc }) {
         <Item k="후보점" v={`${int(rep.counts.points)}개`} />
         <Item k="배제 후 생존" v={`${int(rep.counts.survive)}개`} />
         <Item
-          k="미확인 · 미적용"
+          k="확인 필요 (9절)"
           v={`${rep.data_gap.length}건`}
           tone={rep.data_gap.length > 0 ? "warn" : undefined}
         />
@@ -642,23 +643,46 @@ function SiteSection({
         상위 {rows.length}곳. 순위는 점수가 아니라 <b>커버 기여</b> 순입니다 — 점수가 높아도
         앞 순위와 덮는 범위가 겹치면 뒤로 밀립니다.
       </p>
+      {/* 🔴 **`table-fixed` + `<colgroup>` 이라야 안 잘린다.** 폭을 안 주면 브라우저가
+          내용 길이대로 칸을 나눠서, 지번(「서울특별시 ○○구 ○○동 1234-5」)과
+          「커버 기여(수요값)」 머리글이 폭을 다 먹고 **오른쪽 끝 「국유」가 잘려 나갔다**
+          (2026-08-14 사용자 보고). `overflow-x-auto` 는 화면에서만 스크롤로 가려 줄
+          뿐이고, 이 화면의 본체는 **인쇄물**이라 A4 밖으로 나간 칸은 그냥 없어진다.
+          그래서 비율을 못 박아 **가로 스크롤 없이 한 장에 들어오게** 한다.
+          합은 100 이어야 한다 — 넘으면 `table-fixed` 가 비례 축소하면서 다시 틀어진다.
+          ⚠ 지목은 이제 부호 한 글자가 아니라 「주유소용지」 같은 정식 명칭이 들어와서
+             (`jimokLabel`) 예전보다 넓어야 한다. 줄여 놓으면 두 줄로 접힌다. */}
       <div className="mt-3 overflow-x-auto rounded-xl border border-hairline">
-        <table className="w-full min-w-[780px] border-collapse text-[12px]">
+        <table className="w-full min-w-[620px] table-fixed border-collapse text-[12px]">
+          <colgroup>
+            <col className="w-[9%]" />
+            <col className="w-[17%]" />
+            <col className="w-[11%]" />
+            <col className="w-[12%]" />
+            <col className="w-[11%]" />
+            <col className="w-[10%]" />
+            <col className="w-[12%]" />
+            <col className="w-[10%]" />
+            <col className="w-[8%]" />
+          </colgroup>
           <thead>
-            <tr className="border-b border-hairline bg-black/[0.02] text-left text-ink-secondary">
-              <th className="px-3 py-2 font-medium">순위</th>
-              <th className="px-3 py-2 font-medium">지번</th>
-              <th className="px-3 py-2 font-medium">지목</th>
-              <th className="px-3 py-2 text-right font-medium">면적</th>
-              <th className="px-3 py-2 text-right font-medium">내접폭</th>
-              <th className="px-3 py-2 text-right font-medium">점수</th>
+            <tr className="border-b border-hairline bg-black/[0.02] text-left align-bottom text-ink-secondary">
+              <th className="px-2 py-2 font-medium">순위</th>
+              <th className="px-2 py-2 font-medium">지번</th>
+              <th className="px-2 py-2 font-medium">지목</th>
+              <th className="px-2 py-2 text-right font-medium">면적</th>
+              <th className="px-2 py-2 text-right font-medium">내접폭</th>
+              <th className="px-2 py-2 text-right font-medium">점수</th>
               {/* 🔴 `커버기여` 는 비율이 아니라 수요값 절대량이다(= coverage.marginal).
                   `percent()` 로 찍었더니 4순위가 "6142.57%" 로 나왔다. 총 수요값이
                   산출물에 없어 백분율 환산이 불가능해서, 단위를 머리글에 밝히고
                   산출물 값을 그대로 쓴다. 진행 정도는 옆의 「누적 커버」로 읽는다. */}
-              <th className="px-3 py-2 text-right font-medium">커버 기여(수요값)</th>
-              <th className="px-3 py-2 text-right font-medium">누적 커버</th>
-              <th className="px-3 py-2 text-right font-medium">국유</th>
+              <th className="px-2 py-2 text-right font-medium">
+                커버 기여
+                <span className="block text-[10px] font-normal">(수요값)</span>
+              </th>
+              <th className="px-2 py-2 text-right font-medium">누적 커버</th>
+              <th className="px-2 py-2 text-right font-medium">국유</th>
             </tr>
           </thead>
           <tbody>
@@ -671,18 +695,18 @@ function SiteSection({
                     isTarget ? "bg-primary/5" : ""
                   }`}
                 >
-                  <td className="tnum px-3 py-2 font-semibold text-primary">
+                  <td className="tnum px-2 py-2 font-semibold text-primary">
                     {r.순위}
-                    {isTarget && <span className="ml-1 text-[10px]">◀ 대상지</span>}
+                    {isTarget && <span className="block text-[10px]">◀ 대상지</span>}
                   </td>
-                  <td className="px-3 py-2">{r.JIBUN}</td>
-                  <td className="px-3 py-2 text-ink-secondary">{r.지목}</td>
-                  <td className="tnum px-3 py-2 text-right">{areaM2(r.면적)}</td>
-                  <td className="tnum px-3 py-2 text-right">{fixed(r.내접폭, 2)} m</td>
-                  <td className="tnum px-3 py-2 text-right">{fixed(r.점수, 4)}</td>
-                  <td className="tnum px-3 py-2 text-right">{fixed(r.커버기여, 4)}</td>
-                  <td className="tnum px-3 py-2 text-right">{percent(r.누적커버율, 1)}</td>
-                  <td className="tnum px-3 py-2 text-right">
+                  <td className="break-all px-2 py-2">{r.JIBUN}</td>
+                  <td className="px-2 py-2 text-ink-secondary">{jimokLabel(r.지목)}</td>
+                  <td className="tnum px-2 py-2 text-right">{areaM2(r.면적)}</td>
+                  <td className="tnum px-2 py-2 text-right">{fixed(r.내접폭, 2)} m</td>
+                  <td className="tnum px-2 py-2 text-right">{fixed(r.점수, 4)}</td>
+                  <td className="tnum px-2 py-2 text-right">{fixed(r.커버기여, 4)}</td>
+                  <td className="tnum px-2 py-2 text-right">{percent(r.누적커버율, 1)}</td>
+                  <td className="tnum px-2 py-2 text-right">
                     {r.국유_건수 > 0 ? percent(r.국유_지분율, 0) : "—"}
                   </td>
                 </tr>
@@ -755,7 +779,7 @@ function TargetBlock({
         <p className="mt-1 text-[17px] font-semibold">{target.JIBUN}</p>
         <dl className="mt-3 grid gap-x-8 gap-y-2 text-[12px] sm:grid-cols-2">
           <Item k="순위" v={`${target.순위}위`} />
-          <Item k="지목" v={target.지목} />
+          <Item k="지목" v={jimokLabel(target.지목)} />
           <Item k="면적" v={areaM2(target.면적)} />
           <Item k="내접폭" v={`${fixed(target.내접폭, 2)} m`} />
           <Item k="점수" v={fixed(target.점수, 4)} />
@@ -1309,7 +1333,58 @@ function Transcript({ lines, onDownload }: { lines: HearingLine[]; onDownload: (
   );
 }
 
-// ── 9. 미확인 · 미적용 ─────────────────────────────────────────
+// ── 9. 확인이 필요한 것 · 반영하지 못한 것 ──────────────────────
+
+/**
+ * `data_gap.kind` 를 **읽는 사람의 말**로 바꾼다.
+ *
+ * 🔴 원래는 `배제판정_확인요청` 같은 **내부 코드값을 그대로 제목에 찍고** 있었다.
+ *    이 문서를 읽는 건 담당 공무원이지 이 엔진을 만든 사람이 아니다
+ *    (2026-08-14 사용자 지시). 코드값은 「무엇을 해야 하는가」를 하나도 안 알려 준다.
+ *
+ * `what` 은 지어낸 설명이 아니라 **실측 산출물의 `detail`·`impact` 를 요약한 것**이다
+ * (`api-samples/r_20260804_003/report.json`). 예컨대 `주변이격_미적용` 의 impact 는
+ * 그 자체로 "이 시설들의 '주변 이격거리' 규제가 있다면 미반영이다" 라고 적혀 있다.
+ *
+ * ⚠ 모르는 `kind` 는 **지어내지 않는다.** 코드값을 그대로 제목으로 쓰고 설명은 비운다.
+ *   백엔드가 새 종류를 추가했을 때 그럴듯한 오역을 붙이는 게 더 위험하다.
+ */
+const GAP_KIND: Readonly<Record<string, { title: string; what: string; todo: string }>> = {
+  배제판정_확인요청: {
+    title: "이 땅을 빼도 되는지 — 담당자 확인이 필요합니다",
+    what:
+      "엔진이 「이 지목의 땅에는 이미 다른 시설이 몰려 있다」고 통계로 추정해 후보에서 뺐습니다. " +
+      "실제 도면을 본 게 아니라 표본으로 추정한 것이라, 맞는지는 사람이 봐야 합니다.",
+    todo: "빼는 게 맞으면 그대로 두고, 아니면 해당 지목을 배제 규칙에서 풀고 다시 실행하십시오.",
+  },
+  주변이격_미적용: {
+    title: "「몇 m 이상 떨어뜨려야 한다」는 규제는 반영되지 않았습니다",
+    what:
+      "이 시설들이 있는 땅 자체는 후보에서 뺐습니다. 그러나 그 시설 " +
+      "'주변 몇 m 이내 금지' 같은 이격거리 규제는 적용하지 못했습니다.",
+    todo:
+      "이격거리 규제가 있는 시설이 목록에 있으면, 그 시설의 위치 데이터를 올려 다시 실행해야 " +
+      "반영됩니다. 지금 결과만으로 이격거리를 충족했다고 볼 수 없습니다.",
+  },
+  수요_도달불가: {
+    title: "어떤 위치를 골라도 닿지 않는 수요가 있습니다",
+    what:
+      "이 수요 지점들은 기준 반경 안에 쓸 수 있는 후보 땅이 하나도 없습니다. " +
+      "따라서 커버율이 100%까지 올라갈 수 없습니다.",
+    todo: "이 지점들을 덮으려면 배제 규칙을 완화하거나 후보 지역 범위를 넓혀야 합니다.",
+  },
+};
+
+/**
+ * `data_gap` 의 문장을 읽는 사람 쪽으로 조금 옮긴다 — 지목 부호와 `dataset` 뿐이다.
+ *
+ * ⚠ **여기서 문장을 다시 쓰지는 않는다.** 「면 판정 · 배수 13.83x」 같은 판정 문구는
+ *   백엔드가 만든 것이고, 프런트가 뜻을 짐작해 바꾸면 그 순간 보고서가 사실과
+ *   달라진다(원칙 4). 뜻풀이는 위 `GAP_KIND` 의 안내문이 맡는다.
+ */
+function gapText(text: string): string {
+  return jimokText(text).replace(/\bdataset\b/g, "데이터셋");
+}
 
 function GapSection({ gaps }: { gaps: DataGap[] }) {
   const byKind = new Map<string, DataGap[]>();
@@ -1320,43 +1395,69 @@ function GapSection({ gaps }: { gaps: DataGap[] }) {
   }
   return (
     <section className="doc-section">
-      <H id="s9">9. 미확인 · 미적용 항목</H>
+      <H id="s9">9. 확인이 필요한 것 · 반영하지 못한 것</H>
       <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
-        엔진이 <b>적용하지 못한 것</b>을 그대로 옮긴 목록입니다. 이 절이 비어 있으면 좋은
-        게 아니라 의심스러운 것입니다 — 도메인이 바뀌면 반드시 무언가 남습니다.
+        <b>이 보고서를 그대로 믿으면 안 되는 지점</b>을 모아 둔 절입니다. 앞의 결과는
+        아래 항목들을 <b>확인하지 못한 채로</b> 나온 것입니다. 이 절이 비어 있으면 안심할
+        일이 아니라 오히려 의심할 일입니다 — 대상 지역이나 시설이 바뀌면 확인할 것이
+        반드시 생깁니다.
         {gaps.length === 0 && " 이번 실행에서는 0건입니다."}
       </p>
 
-      {[...byKind.entries()].map(([kind, list]) => (
-        <div key={kind} className="mt-4">
-          <h3 className="text-[13px] font-semibold">
-            {kind} <span className="text-ink-secondary">· {list.length}건</span>
-          </h3>
-          <ul className="mt-2 flex flex-col gap-2">
-            {list.map((g, i) => (
-              <li
-                key={`${kind}-${i}`}
-                className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-[12px] leading-relaxed"
-              >
-                <div className="font-medium text-ink">{g.target}</div>
-                <p className="mt-1 text-ink-secondary">{g.detail}</p>
-                <p className="mt-1 text-amber-900">영향 · {g.impact}</p>
-                {g.review && (
-                  <pre className="mt-2 overflow-x-auto rounded border border-amber-200 bg-white/70 p-2 font-mono text-[11px] text-ink-secondary">
-                    {JSON.stringify(g.review, null, 2)}
-                  </pre>
-                )}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ))}
+      {[...byKind.entries()].map(([kind, list]) => {
+        const meta = GAP_KIND[kind];
+        return (
+          <div key={kind} className="mt-5">
+            <h3 className="text-[13px] font-semibold">
+              {meta?.title ?? kind} <span className="text-ink-secondary">· {list.length}건</span>
+            </h3>
+            {meta && (
+              <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
+                {meta.what}
+                <br />
+                <b className="text-ink">해야 할 일 ·</b> {meta.todo}
+              </p>
+            )}
+            <ul className="mt-2 flex flex-col gap-2">
+              {list.map((g, i) => (
+                <li
+                  key={`${kind}-${i}`}
+                  className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-[12px] leading-relaxed"
+                >
+                  <div className="font-medium text-ink">{gapText(g.target)}</div>
+                  <p className="mt-2 text-ink-secondary">
+                    <span className="font-medium text-ink">엔진이 한 판단 · </span>
+                    {gapText(g.detail)}
+                  </p>
+                  <p className="mt-1 text-amber-900">
+                    <span className="font-medium">이 결과에 미치는 영향 · </span>
+                    {gapText(g.impact)}
+                  </p>
+                  {/* 🔴 판정 근거 원값은 **접어 둔다.** 예전엔 `JSON.stringify` 를 그대로
+                      펼쳐 놨는데, 읽는 사람에게는 이해 못 할 덩어리가 본문을 밀어낼 뿐이다.
+                      그렇다고 지우지는 않는다 — 판정을 뒤집으려면 근거 숫자가 있어야 한다. */}
+                  {g.review && (
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-[11px] text-ink-secondary">
+                        판정에 쓰인 숫자 보기 (담당자·개발자용)
+                      </summary>
+                      <pre className="mt-1 overflow-x-auto rounded border border-amber-200 bg-white/70 p-2 font-mono text-[11px] text-ink-secondary">
+                        {JSON.stringify(g.review, null, 2)}
+                      </pre>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        );
+      })}
 
-      <p className="mt-4 text-[11px] leading-relaxed text-ink-secondary">
-        화면 2 의 「확인 요청」과 이 목록은 <b>출처가 다릅니다.</b> 저쪽은 감리 단계에서
-        사람 확인이 필요했던 건(<code>reviewed.hitl_flags</code>)이고, 이쪽은 실행이 끝난 뒤
-        엔진이 남긴 건(<code>report.data_gap</code>)입니다. 한 화면에 합치면 어느 단계에서
-        생긴 문제인지 알 수 없게 됩니다.
+      <p className="mt-5 text-[11px] leading-relaxed text-ink-secondary">
+        <b>화면 2 의 「확인 요청」과 이 목록은 서로 다른 것입니다.</b> 저쪽은 분석을{" "}
+        <b>시작하기 전</b>에 올린 데이터를 보고 「이대로 써도 되겠습니까」 물은 것이고,
+        이쪽은 분석이 <b>끝난 뒤</b> 「이건 못 했습니다」 남긴 것입니다. 같은 것으로 보고
+        한쪽만 확인하면, 어느 단계에서 생긴 문제인지 알 수 없게 됩니다.
       </p>
     </section>
   );

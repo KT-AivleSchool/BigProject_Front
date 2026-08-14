@@ -26,6 +26,7 @@ import { useRun } from "@/lib/omnisite/RunProvider";
 import { writeSitePick } from "@/lib/omnisite/sitePick";
 import { loadExclusion, loadReport, loadScoreGrid, loadTopN } from "@/lib/omnisite/pipeline";
 import { areaM2, fixed, int, percent } from "@/lib/omnisite/format";
+import { jimokLabel } from "@/lib/omnisite/jimok";
 import { SCREENS } from "@/lib/omnisite/screens";
 import type { ExclusionDoc, ReportDoc, ScoreGridDoc, TopNCsvRow } from "@/lib/omnisite/types";
 
@@ -492,7 +493,9 @@ function Detail({
           v={`+${fixed(deltaCover * 100, 2)}%p`}
         />
         <Row k="누적 수요 커버율" v={percent(row.누적커버율, 2)} />
-        <Row k="토지 유형" v={row.지목 === "대" ? "대지" : row.지목} />
+        {/* 지목 부호 → 정식 명칭. 예전엔 여기서 「대」만 손으로 풀었는데, 부호는
+            28 종이라 나머지는 한 글자 그대로 나왔다. 표는 `jimokLabel` 로 통일한다. */}
+        <Row k="토지 유형" v={jimokLabel(row.지목)} />
         <Row k="부지 면적" v={`${int(row.면적)}㎡`} />
         <Row k="실제 설치 가능 폭" v={`${fixed(row.내접폭, 1)}m`} />
         <Row

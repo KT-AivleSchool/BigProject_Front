@@ -209,6 +209,44 @@ export function GridMap({
    */
   const drawRef = useRef<() => void>(() => {});
 
+  /**
+   * 타일 도착으로 인한 재그리기를 **프레임당 한 번**으로 합친다.
+   *
+   * 🔴 2026-08-14, "확대하면 지도가 느리게 뜬다(예전엔 빨랐다)" 보고의 원인.
+   *    `img.onload` 가 곧장 `drawRef.current()` 를 불렀다. 그런데 한 번의
+   *    그리기는 싼 일이 아니다 — 매번 **점수 셀 6,797개로 히트맵을 새로 만들고
+   *    블러**하고, **배제 폴리곤(링 491 · 점 6,253)을 다시 만들어** 그린다.
+   *    새 줌 레벨은 타일이 전부 캐시 미스라, 타일 20~30장이 도착하는 동안
+   *    그 전체가 **20~30번** 반복됐다. 전부 메인 스레드라 타일 디코딩까지 밀린다.
+   *
+   *    타일 서버는 무죄다 — `tile.openstreetmap.org` 실측 TTFB 26~104ms.
+   *    느린 건 받아온 뒤다.
+   *
+   *    예전에 빨랐던 것도 맞다. `3c9f733`(점수 격자 블러 + 배제 구역을 산출물
+   *    형상으로) 전에는 한 번의 그리기가 싸서 20번을 해도 티가 안 났다.
+   *    **느려진 건 타일이 아니라 그리기 한 번의 값이다.**
+   *
+   * 🔴 그리는 내용은 한 글자도 안 바뀐다. 바뀌는 건 **횟수**뿐이다(같은 프레임에
+   *    도착한 타일들은 어차피 마지막 한 번의 그리기에 다 반영된다).
+   *    ⚠ 이 파일 위쪽 SSE 버퍼링 처치와 같은 모양의 실수를 피한다 — 여기서
+   *      「모아서 나중에」로 가면 안 된다. rAF 는 **다음 프레임**이라 눈에는
+   *      즉시다. 타이머로 지연시키면 그건 진짜로 느려지는 것이다.
+   */
+  const tileFrame = useRef<number | null>(null);
+  const requestTileRedraw = useCallback(() => {
+    if (tileFrame.current !== null) return;
+    tileFrame.current = requestAnimationFrame(() => {
+      tileFrame.current = null;
+      drawRef.current();
+    });
+  }, []);
+  useEffect(
+    () => () => {
+      if (tileFrame.current !== null) cancelAnimationFrame(tileFrame.current);
+    },
+    [],
+  );
+
   const draw = useCallback(() => {
     const cv = canvasRef.current;
     // 🔴 `size.h` 도 본다. 좁은 폭에서 지도 칸이 **0 높이로 접히는** 순간이
@@ -253,7 +291,7 @@ export function GridMap({
           if (!img) {
             img = new Image();
             img.crossOrigin = "anonymous";
-            img.onload = () => drawRef.current();
+            img.onload = () => requestTileRedraw();
             img.onerror = () => onTileError();
             img.src = TILE_URL(z, wx, ty);
             tiles.current.set(key, img);
@@ -420,7 +458,7 @@ export function GridMap({
       ctx.textBaseline = "middle";
       ctx.fillText(String(r.순위), x, y + 0.5);
     }
-  }, [view, size, grid, topn, exclusion, selected, showExcluded, showGrid, basemap, onTileError]);
+  }, [view, size, grid, topn, exclusion, selected, showExcluded, showGrid, basemap, onTileError, requestTileRedraw]);
 
   useEffect(() => {
     drawRef.current = draw;
@@ -488,9 +526,35 @@ export function GridMap({
     return null;
   }
 
+  /**
+   * 마우스 좌표를 **캔버스 논리 좌표**로 바꾼다.
+   *
+   * 🔴 **배율로 나눠야 한다**(2026-08-14, "후보를 눌러도 아무 반응이 없다" 보고).
+   *    이 화면은 `ScaleToFit` 이 전체를 `transform: scale()` 로 줄여서 그린다.
+   *    그래서 좌표계가 둘이고, 여기서 둘이 섞여 있었다 —
+   *      · 그리기: `size` = `el.clientWidth` → **논리 px**(transform 영향 없음)
+   *      · 클릭:   `e.clientX - rect.left`  → **시각 px**(transform 반영됨)
+   *    `getBoundingClientRect()` 만 배율을 먹으므로 둘의 비가 그대로 배율이다.
+   *
+   *    실측(824×832 뷰포트, `--fit` 0.544974) — 논리 폭 1512 인 상자의
+   *    `rect.width` 가 824 로 나왔다. 비 `824/1512 = 0.544974` 로 **배율과 정확히
+   *    일치**한다. 즉 논리 600px 지점을 누르면 327 로 읽혀 **273px** 어긋났다.
+   *    마커 히트 반경은 14px 라 맞을 수가 없다.
+   *
+   * 🔴 배율을 `ScaleToFit` 에서 가져오지 않고 **스스로 잰다.** 그쪽 계산식
+   *    (`--fit`)을 여기서 다시 쓰면 한쪽만 바뀌는 날 조용히 어긋난다. 비는
+   *    이 요소 자신에게서 나오므로 위에서 무슨 변형을 걸든 따라간다.
+   *
+   * ⚠ `offsetWidth` 와 짝지어 나눈다 — `rect.width` 는 테두리를 포함하므로
+   *   테두리를 뺀 `clientWidth` 와 나누면 테두리가 생기는 날 배율이 틀어진다.
+   *   0 으로 나누는 것만 막고(레이아웃 전 한 프레임) 그 외 폴백은 두지 않는다.
+   */
   function toLocal(e: React.MouseEvent): { x: number; y: number } {
-    const b = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    return { x: e.clientX - b.left, y: e.clientY - b.top };
+    const el = e.currentTarget as HTMLElement;
+    const b = el.getBoundingClientRect();
+    const sx = el.offsetWidth > 0 ? b.width / el.offsetWidth : 1;
+    const sy = el.offsetHeight > 0 ? b.height / el.offsetHeight : 1;
+    return { x: (e.clientX - b.left) / sx, y: (e.clientY - b.top) / sy };
   }
 
   return (
