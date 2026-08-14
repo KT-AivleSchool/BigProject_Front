@@ -49,7 +49,14 @@ import { ArtifactView2 } from "@/components/ui/ArtifactView";
 import { PageBody, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { useRun } from "@/lib/omnisite/RunProvider";
-import { loadCleanReport, loadReport, loadReviewed, loadTopN } from "@/lib/omnisite/pipeline";
+import {
+  loadCleanReport,
+  loadReport,
+  loadReviewed,
+  loadTopN,
+  MODE_FULL,
+  TOPN_MAX,
+} from "@/lib/omnisite/pipeline";
 import { areaM2, datetime, fixed, int, km2, percent } from "@/lib/omnisite/format";
 import { jimokLabel, jimokText } from "@/lib/omnisite/jimok";
 import { SCREENS } from "@/lib/omnisite/screens";
@@ -73,6 +80,7 @@ import type {
   DataGap,
   ReportDoc,
   ReviewedDoc,
+  RunDoc,
   TopNCsvRow,
 } from "@/lib/omnisite/types";
 
@@ -87,7 +95,7 @@ const SECTIONS = [
   ["s6", "6. 위치 선정 결과"],
   ["s7", "7. 커버율"],
   ["s8", "8. 공청회 토론 결과"],
-  ["s9", "9. 확인이 필요한 것 · 반영하지 못한 것"],
+  ["s9", "9. 개선 방법"],
 ] as const;
 
 
@@ -232,7 +240,7 @@ export default function Screen6Page() {
                 b={side?.b ?? null}
                 read={side !== null}
               />
-              <GapSection gaps={rep.data_gap} />
+              <GapSection gaps={rep.data_gap} run={run ?? null} />
 
               <p className="mt-10 border-t border-hairline pt-4 text-[11px] leading-relaxed text-ink-secondary">
                 이 문서의 모든 수치는 위 실행(<span className="tnum">{run?.run_id ?? "—"}</span>)의
@@ -307,7 +315,7 @@ function Overview({ rep }: { rep: ReportDoc }) {
         <Item k="후보점" v={`${int(rep.counts.points)}개`} />
         <Item k="배제 후 생존" v={`${int(rep.counts.survive)}개`} />
         <Item
-          k="확인 필요 (9절)"
+          k="미확인 · 미적용"
           v={`${rep.data_gap.length}건`}
           tone={rep.data_gap.length > 0 ? "warn" : undefined}
         />
@@ -1333,60 +1341,97 @@ function Transcript({ lines, onDownload }: { lines: HearingLine[]; onDownload: (
   );
 }
 
-// ── 9. 확인이 필요한 것 · 반영하지 못한 것 ──────────────────────
+// ── 9. 개선 방법 ────────────────────────────────────────────────
 
 /**
- * `data_gap.kind` 를 **읽는 사람의 말**로 바꾼다.
+ * 이 run 이 **어떻게 실행됐는지**. 조치 문구가 여기에 따라 갈린다.
+ *
+ * 🔴 조치는 **이 프런트에서 실제로 누를 수 있는 것**이어야 한다(2026-08-15 사용자 지시).
+ *    예전 문구는 「배제 규칙을 완화하거나 후보 범위를 넓혀」처럼 **화면에 없는 동작**을
+ *    시켰다. 읽는 사람은 그걸 어디서 하는지 못 찾는다 — 조치가 아니라 소원이다.
+ *
+ * 🔴 그래서 **실행 설정을 보고 문구를 고른다.** 같은 결함이라도 프리셋으로 돌린 run 과
+ *    업로드로 돌린 run 은 손댈 수 있는 자리가 다르다 — 「입지 선정 개수 (Top-N)」는
+ *    `full` 에서만 전송되고(`app/page.tsx` 의 「이 모드에서는 전송되지 않음」),
+ *    업로드 칸 자체가 「실제 데이터 업로드」로 시작한 실행에만 있다.
+ */
+interface RunSetup {
+  /** 「고속 자동 분석 모드」였나. `undefined` = 서버가 안 알려준 실행이다(옛 run). */
+  auto: boolean | undefined;
+  /** `full` = 「실제 데이터 업로드」로 시작한 실행. 업로드 칸과 Top-N 이 이쪽에만 있다. */
+  full: boolean;
+}
+
+/**
+ * `data_gap.kind` 를 **「다시 돌릴 때 어느 화면에서 무엇을 바꾸면 되는지」** 로 바꾼다.
  *
  * 🔴 원래는 `배제판정_확인요청` 같은 **내부 코드값을 그대로 제목에 찍고** 있었다.
- *    이 문서를 읽는 건 담당 공무원이지 이 엔진을 만든 사람이 아니다
- *    (2026-08-14 사용자 지시). 코드값은 「무엇을 해야 하는가」를 하나도 안 알려 준다.
+ *    이 문서를 읽는 건 담당 공무원이지 이 엔진을 만든 사람이 아니다.
  *
- * `what` 은 지어낸 설명이 아니라 **실측 산출물의 `detail`·`impact` 를 요약한 것**이다
- * (`api-samples/r_20260804_003/report.json`). 예컨대 `주변이격_미적용` 의 impact 는
- * 그 자체로 "이 시설들의 '주변 이격거리' 규제가 있다면 미반영이다" 라고 적혀 있다.
+ * 🔴 **뜻풀이를 길게 달았다가 걷어냈다**(2026-08-15 사용자 지시). 「엔진이 왜 그렇게
+ *    판단했는지」를 문단으로 설명해 놨는데, 읽는 사람이 원하는 건 사유가 아니라
+ *    **다음에 뭘 누르면 되는지**다. 남기는 건 조치 한 줄뿐이다.
  *
- * ⚠ 모르는 `kind` 는 **지어내지 않는다.** 코드값을 그대로 제목으로 쓰고 설명은 비운다.
+ * ⚠ 화면 이름·단계 이름은 **실물에서 가져온 것만 쓴다** — 화면 2 의 「금지 구역 선정
+ *   배경」·「데이터 역할 확인」은 `app/audit/page.tsx` 의 스테퍼 4·5 라벨이고,
+ *   「입지 선정 개수 (Top-N)」·「실제 데이터 업로드」는 `app/page.tsx` 의 라벨이다.
+ *   여기서 이름을 지어내면 보고서가 없는 버튼을 누르라고 시킨다.
+ *
+ * ⚠ 「화면 3 에서 수요 지표의 중요도를 올리라」고는 못 쓴다 — 가중치 지표는 산출물에
+ *   `07+02` · `04` 같은 **부호로만** 온다(`weight_set.indicators`). 어느 것이 수요인지
+ *   프런트가 모르는데 지목해 주면 엉뚱한 슬라이더를 만지게 한다.
+ *
+ * ⚠ 모르는 `kind` 는 **지어내지 않는다.** 코드값을 그대로 제목으로 쓰고 조치는 비운다.
  *   백엔드가 새 종류를 추가했을 때 그럴듯한 오역을 붙이는 게 더 위험하다.
  */
-const GAP_KIND: Readonly<Record<string, { title: string; what: string; todo: string }>> = {
+const GAP_KIND: Readonly<
+  Record<string, { title: string; todo: (s: RunSetup) => string }>
+> = {
   배제판정_확인요청: {
-    title: "이 땅을 빼도 되는지 — 담당자 확인이 필요합니다",
-    what:
-      "엔진이 「이 지목의 땅에는 이미 다른 시설이 몰려 있다」고 통계로 추정해 후보에서 뺐습니다. " +
-      "실제 도면을 본 게 아니라 표본으로 추정한 것이라, 맞는지는 사람이 봐야 합니다.",
-    todo: "빼는 게 맞으면 그대로 두고, 아니면 해당 지목을 배제 규칙에서 풀고 다시 실행하십시오.",
+    title: "배제 규칙 다시 보기",
+    todo: (s) =>
+      (s.auto === true ? "이 실행은 이 자리를 AI 제안값으로 넘겼습니다. " : "") +
+      "화면 2 「금지 구역 선정 배경」에서 배제 반경을, 「데이터 역할 확인」에서 " +
+      "해당 데이터셋의 역할을 다시 정하고 실행하면 아래 지목의 배제가 달라집니다.",
   },
   주변이격_미적용: {
-    title: "「몇 m 이상 떨어뜨려야 한다」는 규제는 반영되지 않았습니다",
-    what:
-      "이 시설들이 있는 땅 자체는 후보에서 뺐습니다. 그러나 그 시설 " +
-      "'주변 몇 m 이내 금지' 같은 이격거리 규제는 적용하지 못했습니다.",
-    todo:
-      "이격거리 규제가 있는 시설이 목록에 있으면, 그 시설의 위치 데이터를 올려 다시 실행해야 " +
-      "반영됩니다. 지금 결과만으로 이격거리를 충족했다고 볼 수 없습니다.",
+    title: "시설 위치 데이터 올리기",
+    todo: (s) =>
+      s.full
+        ? "화면 1 의 업로드에 아래 지목의 시설 위치 데이터를 더해 다시 실행하면 " +
+          "「주변 몇 m 이내 금지」가 적용됩니다."
+        : "이 실행은 업로드 없이 저장된 데이터로 돌았습니다. 화면 1 에서 " +
+          "「실제 데이터 업로드」로 시작해 아래 지목의 시설 위치 데이터를 올리면 " +
+          "「주변 몇 m 이내 금지」가 적용됩니다.",
   },
   수요_도달불가: {
-    title: "어떤 위치를 골라도 닿지 않는 수요가 있습니다",
-    what:
-      "이 수요 지점들은 기준 반경 안에 쓸 수 있는 후보 땅이 하나도 없습니다. " +
-      "따라서 커버율이 100%까지 올라갈 수 없습니다.",
-    todo: "이 지점들을 덮으려면 배제 규칙을 완화하거나 후보 지역 범위를 넓혀야 합니다.",
+    title: "후보 범위 넓히기",
+    todo: (s) =>
+      s.full
+        ? `화면 1 의 「입지 선정 개수 (Top-N)」를 지금보다 크게(최대 ${TOPN_MAX}) 잡거나, ` +
+          "화면 2 「금지 구역 선정 배경」에서 배제 반경을 줄여 다시 실행하십시오."
+        : "화면 2 「금지 구역 선정 배경」에서 배제 반경을 줄이면 후보가 늘어납니다. " +
+          "「입지 선정 개수 (Top-N)」까지 늘리려면 화면 1 에서 " +
+          "「실제 데이터 업로드」로 시작해야 합니다.",
   },
 };
 
 /**
  * `data_gap` 의 문장을 읽는 사람 쪽으로 조금 옮긴다 — 지목 부호와 `dataset` 뿐이다.
  *
- * ⚠ **여기서 문장을 다시 쓰지는 않는다.** 「면 판정 · 배수 13.83x」 같은 판정 문구는
- *   백엔드가 만든 것이고, 프런트가 뜻을 짐작해 바꾸면 그 순간 보고서가 사실과
- *   달라진다(원칙 4). 뜻풀이는 위 `GAP_KIND` 의 안내문이 맡는다.
+ * ⚠ **여기서 문장을 다시 쓰지는 않는다.** 백엔드가 만든 문구를 프런트가 뜻을 짐작해
+ *   바꾸면 그 순간 보고서가 사실과 달라진다(원칙 4).
  */
 function gapText(text: string): string {
   return jimokText(text).replace(/\bdataset\b/g, "데이터셋");
 }
 
-function GapSection({ gaps }: { gaps: DataGap[] }) {
+function GapSection({ gaps, run }: { gaps: DataGap[]; run: RunDoc | null }) {
+  const setup: RunSetup = {
+    auto: run?.auto_approve,
+    full: run?.mode === MODE_FULL,
+  };
+
   const byKind = new Map<string, DataGap[]>();
   for (const g of gaps) {
     const list = byKind.get(g.kind) ?? [];
@@ -1395,70 +1440,67 @@ function GapSection({ gaps }: { gaps: DataGap[] }) {
   }
   return (
     <section className="doc-section">
-      <H id="s9">9. 확인이 필요한 것 · 반영하지 못한 것</H>
+      <H id="s9">9. 개선 방법</H>
       <p className="mt-3 text-[13px] leading-relaxed text-ink-secondary">
-        <b>이 보고서를 그대로 믿으면 안 되는 지점</b>을 모아 둔 절입니다. 앞의 결과는
-        아래 항목들을 <b>확인하지 못한 채로</b> 나온 것입니다. 이 절이 비어 있으면 안심할
-        일이 아니라 오히려 의심할 일입니다 — 대상 지역이나 시설이 바뀌면 확인할 것이
-        반드시 생깁니다.
-        {gaps.length === 0 && " 이번 실행에서는 0건입니다."}
+        {gaps.length === 0 && setup.auto !== true
+          ? "이번 실행에서 손볼 것으로 남은 항목은 없습니다."
+          : "아래를 손보고 다시 실행하면 결과가 나아집니다."}
       </p>
+
+      {/*
+        🔴 **실행 방식이 첫 번째 개선 지점이다.** 결함 목록보다 위에 둔다 — 게이트를
+           AI 가 대신 답한 실행이면 아래 조치들("화면 2 에서 다시 정하십시오")을 애초에
+           할 수가 없다. 순서를 뒤집으면 못 누르는 버튼부터 읽힌다.
+        🔴 `auto_approve === true` **일 때만** 띄운다. `undefined` 는 서버가 안 알려준
+           옛 run 이고, 모르는 것을 「맞춤형으로 돌았다」고 단정하지 않는다(원칙 4).
+           맞춤형으로 돌았다면 여기서 더 나아질 것이 없으니 띄울 것도 없다.
+      */}
+      {setup.auto === true && (
+        <div className="mt-4">
+          <h3 className="text-[13px] font-semibold">실행 방식 바꾸기</h3>
+          <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
+            화면 1 의 마지막 단계에서 「맞춤형 대화 분석 모드」를 고르면, 아래 자리들을
+            AI 제안값이 아니라 직접 확정한 뒤 결과를 뽑을 수 있습니다.
+          </p>
+          <ul className="mt-2 flex flex-col gap-2">
+            <li className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[12px] leading-relaxed">
+              이 실행은 「고속 자동 분석 모드」였습니다 — 화면 2 「금지 구역 선정 배경」·
+              「데이터 역할 확인」과 화면 3 「중요도」를 AI 제안값으로 자동 승인했습니다.
+            </li>
+          </ul>
+        </div>
+      )}
 
       {[...byKind.entries()].map(([kind, list]) => {
         const meta = GAP_KIND[kind];
         return (
-          <div key={kind} className="mt-5">
+          <div key={kind} className="mt-4">
             <h3 className="text-[13px] font-semibold">
               {meta?.title ?? kind} <span className="text-ink-secondary">· {list.length}건</span>
             </h3>
             {meta && (
               <p className="mt-1 text-[12px] leading-relaxed text-ink-secondary">
-                {meta.what}
-                <br />
-                <b className="text-ink">해야 할 일 ·</b> {meta.todo}
+                {meta.todo(setup)}
               </p>
             )}
+            {/* 🔴 카드 안은 **`target` 한 줄뿐이다.** `detail`·`impact`·`review` 를 다
+                펼쳐 놨었는데(「면 판정 · 배수 13.83x」 · JSON 덩어리), 읽는 사람에게는
+                무엇을 해야 하는지가 그 밑에 깔려 안 보였다(2026-08-15 사용자 지시).
+                지운 게 아니라 **이 절에서 안 쓰는 것**이다 — 판정 숫자가 필요하면
+                산출물 `report.json` 의 `data_gap[].review` 에 그대로 있다. */}
             <ul className="mt-2 flex flex-col gap-2">
               {list.map((g, i) => (
                 <li
                   key={`${kind}-${i}`}
-                  className="rounded-lg border border-amber-200 bg-amber-50/60 p-4 text-[12px] leading-relaxed"
+                  className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-2.5 text-[12px] leading-relaxed"
                 >
-                  <div className="font-medium text-ink">{gapText(g.target)}</div>
-                  <p className="mt-2 text-ink-secondary">
-                    <span className="font-medium text-ink">엔진이 한 판단 · </span>
-                    {gapText(g.detail)}
-                  </p>
-                  <p className="mt-1 text-amber-900">
-                    <span className="font-medium">이 결과에 미치는 영향 · </span>
-                    {gapText(g.impact)}
-                  </p>
-                  {/* 🔴 판정 근거 원값은 **접어 둔다.** 예전엔 `JSON.stringify` 를 그대로
-                      펼쳐 놨는데, 읽는 사람에게는 이해 못 할 덩어리가 본문을 밀어낼 뿐이다.
-                      그렇다고 지우지는 않는다 — 판정을 뒤집으려면 근거 숫자가 있어야 한다. */}
-                  {g.review && (
-                    <details className="mt-2">
-                      <summary className="cursor-pointer text-[11px] text-ink-secondary">
-                        판정에 쓰인 숫자 보기 (담당자·개발자용)
-                      </summary>
-                      <pre className="mt-1 overflow-x-auto rounded border border-amber-200 bg-white/70 p-2 font-mono text-[11px] text-ink-secondary">
-                        {JSON.stringify(g.review, null, 2)}
-                      </pre>
-                    </details>
-                  )}
+                  {gapText(g.target)}
                 </li>
               ))}
             </ul>
           </div>
         );
       })}
-
-      <p className="mt-5 text-[11px] leading-relaxed text-ink-secondary">
-        <b>화면 2 의 「확인 요청」과 이 목록은 서로 다른 것입니다.</b> 저쪽은 분석을{" "}
-        <b>시작하기 전</b>에 올린 데이터를 보고 「이대로 써도 되겠습니까」 물은 것이고,
-        이쪽은 분석이 <b>끝난 뒤</b> 「이건 못 했습니다」 남긴 것입니다. 같은 것으로 보고
-        한쪽만 확인하면, 어느 단계에서 생긴 문제인지 알 수 없게 됩니다.
-      </p>
     </section>
   );
 }
