@@ -92,7 +92,8 @@ export default function Screen5Page() {
   const [failure, setFailure] = useState<Failure | null>(null);
   /** 실제로 `/stream` 에 넘긴 후보. 복원된 대화가 어느 점의 것인지 밝히려고 남긴다. */
   const [usedParcelId, setUsedParcelId] = useState<number | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  /** 대화 스크롤 상자. **이 요소 하나만** 스크롤한다 — 아래 효과의 주석 참고. */
+  const chatBoxRef = useRef<HTMLDivElement>(null);
 
   // 세션 복원
   useEffect(() => {
@@ -165,7 +166,7 @@ export default function Screen5Page() {
 
   /**
    * 🔴 패킷 하나에 렌더 하나를 하지 않는다. 토론 한 번이 **1,586패킷 / 32초**
-   *    (실측)이고 그때마다 ⓐ 전체 대화 리렌더 ⓑ `scrollIntoView` 강제 레이아웃이
+   *    (실측)이고 그때마다 ⓐ 전체 대화 리렌더 ⓑ 맨 아래로 스크롤(강제 레이아웃)이
    *    걸린다 — 브라우저가 프레임을 못 그려 **끝나고 한꺼번에 뜨는 것처럼** 보인다.
    *    받은 조각은 버퍼에 쌓고 **프레임당 한 번** 합쳐 넣는다. 화면에 들어가는
    *    내용은 한 글자도 안 바뀐다(합치는 규칙이 같다) — 바뀌는 건 횟수뿐이다.
@@ -481,10 +482,41 @@ export default function Screen5Page() {
     };
   }, [isStarted, isFinished, selected, queuePacket, flushPending]);
 
+  /**
+   * 새 말풍선이 오면 대화 상자를 맨 아래로 내린다.
+   *
+   * 🔴 **`scrollIntoView` 를 쓰지 않는다**(2026-08-14, 토론 중 헤더가 사라지고
+   *    화면이 아래에 고정된다는 보고). 이 API 는 대상이 보이게 만들려고
+   *    **조상 스크롤 컨테이너를 전부** 스크롤한다 — 대화 상자만이 아니다.
+   *    그리고 `overflow: hidden` 은 **프로그램적 스크롤을 막지 못한다.**
+   *    사용자 스크롤만 막을 뿐이라, 한 번 밀리면 되돌릴 방법이 없다.
+   *
+   *    실측(824×832, `/hearing`) — `scrollIntoView` **한 번**에:
+   *      · `ScaleToFit` 바깥 상자(`position:fixed` · `overflow:hidden`)
+   *        `scrollTop 0 → 31`, 그래서 `headerTop 0 → −31` (헤더가 화면 밖)
+   *      · 본문 상자(`.mx-auto.w-full`) `scrollTop 0 → 334`
+   *    정작 내려야 할 대화 상자는 `599/599` 로 **넘치지도 않았다** — 즉 스크롤이
+   *    필요 없는데 애먼 조상 둘을 민 것이다.
+   *
+   *    바깥 상자가 넘치는 건 버그가 아니라 `transform: scale()` 의 성질이다 —
+   *    **배율은 레이아웃 크기를 안 줄인다.** 논리 높이 `100dvh / 0.5449 = 1527px`
+   *    가 그대로 스크롤 높이로 잡히고 보이는 높이는 832 라, 이 상자는 늘 695px
+   *    넘쳐 있다. 평소엔 아무도 안 건드려 안 보일 뿐이다.
+   *
+   *    ⚠ 2026-08-14 에 고친 「헤더 잘림」(`ScaleToFit` 의 정렬·원점)과 **증상만
+   *      같고 원인이 다르다.** 그건 캔버스가 놓이는 자리가 틀렸던 것이고, 이건
+   *      제자리에 놓인 캔버스를 나중에 밀어낸 것이다. 헤더가 또 안 보이면 먼저
+   *      바깥 상자의 `scrollTop` 을 보라 — 0 이 아니면 이 종류다.
+   *
+   * 🔴 `behavior` 를 안 준다. `scrollTop` 대입은 원래 즉시 반영이라 smooth 가
+   *    끼어들 여지가 없다. 예전 주석이 `auto` 를 고른 이유(SSE 토큰이 초당 수십
+   *    번 들어올 때 smooth 애니메이션이 겹쳐 렌더링이 밀리고, 결국 통신이 끝나야
+   *    한꺼번에 보이던 버그)는 이 방식에서 자동으로 지켜진다.
+   */
   useEffect(() => {
-    // 🔴 smooth 스크롤을 쓰면 SSE 토큰이 초당 수십 번씩 렌더링될 때 브라우저 렌더링 엔진이 마비되어
-    // 통신이 끝날 때까지 화면이 멈추는(한 번에 나오는) 버그가 발생하므로 auto 를 쓴다.
-    chatEndRef.current?.scrollIntoView({ behavior: "auto" });
+    const box = chatBoxRef.current;
+    if (!box) return;
+    box.scrollTop = box.scrollHeight;
   }, [messages]);
 
   function reset() {
@@ -585,7 +617,7 @@ export default function Screen5Page() {
             </div>
           )}
 
-          <div className="custom-scrollbar flex-1 overflow-y-auto pr-4">
+          <div ref={chatBoxRef} className="custom-scrollbar flex-1 overflow-y-auto pr-4">
             {messages.length === 0 && (
               <div className="mt-10 text-center text-[13px] text-ink-secondary">
                 시뮬레이션 대기 중...
@@ -594,7 +626,6 @@ export default function Screen5Page() {
             {messages.map((msg) => (
               <ChatBubble key={msg.id} message={msg} />
             ))}
-            <div ref={chatEndRef} />
           </div>
         </div>
 
