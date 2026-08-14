@@ -41,6 +41,27 @@
  *    좁은 화면에선 `min()` 이 가로를 고르므로 논리 폭이 정확히 `baseWidth` 로
  *    떨어진다 — 기준 캔버스는 여전히 하한이다. 안쪽 레이아웃은 가로 flex 라
  *    지면이 넓어져도 안 깨진다(세로는 `h-full` + `min-h-0` 로 이미 늘어난다).
+ *
+ * 🔴 **가운데 정렬을 걷어내고 좌상단에 못박는다**(2026-08-14, 배포본에서 헤더가
+ *    잘려 보고됨). 예전에는 부모가 `align-items:center` 로 캔버스를 **가운데**
+ *    두고, 캔버스 크기는 `100dvw`·`100dvh` 로 **자기가** 정했다 — 뷰포트를 재는
+ *    자리가 둘이었다. 둘이 어긋나면 그 차이의 **절반이 위로** 밀리고, 캔버스
+ *    맨 앞에 있는 헤더가 그걸 통째로 뒤집어쓴다.
+ *
+ *    실측(2026-08-14, 824×832) — 배포본과 로컬이 `--fit`(0.544974)도 논리 크기
+ *    (1512×1527)도 **똑같은데** 렌더 위치만 갈렸다:
+ *      · 로컬   `renderedTop = +0.01`
+ *      · 배포본 `renderedTop = −31.99`  ← 헤더 위쪽 32px 가 화면 밖
+ *    렌더 높이는 양쪽 다 832 = `dvh` 였다. 832 짜리를 832 안에 가운데 두면 top 은
+ *    0 이어야 하므로, 배포본에서는 **부모가 64px 짧았다**(384−416 = −32).
+ *
+ *    고치는 방법은 부모를 고치는 게 아니라 **부모에게 안 묻는 것**이다. 캔버스는
+ *    이미 「화면을 정확히 채우는 크기」로 계산돼 있어서 가운데 정렬은 정상일 때
+ *    **아무 일도 안 한다** — 없어도 결과가 같고, 어긋났을 때만 해를 끼친다.
+ *    그래서 원점을 `top left` 로 놓고 정렬을 `flex-start` 로 내린다. 이제 렌더
+ *    결과는 부모 높이와 무관하게 항상 (0, 0) 에서 시작한다.
+ *    ⚠ `transformOrigin` 과 정렬은 **한 벌이다.** 원점만 옮기고 정렬을 `center`
+ *      로 두면 축소분만큼 다시 밀린다.
  */
 export function ScaleToFit({
   baseWidth,
@@ -58,8 +79,8 @@ export function ScaleToFit({
         inset: 0,
         overflow: "hidden",
         display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
+        alignItems: "flex-start",
+        justifyContent: "flex-start",
         background: "var(--canvas-soft)",
       }}
     >
@@ -78,7 +99,7 @@ export function ScaleToFit({
             height: "calc(100dvh / var(--fit))",
             flexShrink: 0,
             transform: "scale(var(--fit))",
-            transformOrigin: "center center",
+            transformOrigin: "top left",
           } as React.CSSProperties
         }
       >
