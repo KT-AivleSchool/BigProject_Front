@@ -163,6 +163,19 @@ const nextConfig: NextConfig = {
        *       보안 조치로 `127.0.0.1` 에만 바인딩돼 있다(백엔드 CLAUDE.md 함정).
        *    그래서 나머지 넷과 **같은 방식**으로 접는다. 새 화면만 다른 규칙을
        *    쓰면 백엔드 주소가 바뀔 때 여기만 남는다.
+       *
+       * 🔴 **2026-08-14 정정 — 이 rewrite 를 타지 않는 경로가 하나 생겼다.**
+       *    `/api/v1/stakeholders/dynamic/discuss/stream` 은 브라우저가 백엔드를
+       *    직접 부른다. Amplify Hosting 의 SSR compute 가 응답을 버퍼링하다
+       *    30.0초에 바디 없는 500 을 만드는데, 이 토론은 실측 55.7초라 그 벽을
+       *    못 넘는다. 위 ⓐⓑⓒ 가 틀려서가 아니라 **SSE 는 그 값을 치를 수밖에
+       *    없어서**다(ⓐ 는 감수, ⓑ 는 preflight 200 실측으로 해소, ⓒ 는 붙이는
+       *    값이 공개 도메인이라 해당 없음). 근거 전부는 `simulation.ts` 의
+       *    `SSE_ORIGIN` 머리주석에 있다.
+       *
+       *    ⚠ 같은 prefix 의 `/generate` 는 **그대로 이 rewrite 를 탄다** — SSE 가
+       *      아니라 한 번에 받는 JSON 이라 버퍼링이 무해하다. 즉 이 source 는
+       *      「전부」가 아니라 「스트림 하나를 뺀 전부」다.
        */
       {
         source: "/api/v1/stakeholders/:path*",

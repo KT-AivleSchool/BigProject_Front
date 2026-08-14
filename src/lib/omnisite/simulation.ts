@@ -174,4 +174,59 @@ export interface StreamPacket {
   message?: string;
 }
 
-export const STREAM_URL = `${BASE}/stream`;
+/**
+ * SSE 전용 백엔드 오리진.
+ *
+ * 🔴 **이 저장소의 규칙(「브라우저는 항상 같은 출처로만 부른다」)에 대한 예외가
+ *    둘 있고, 그 둘은 SSE 다.** 규칙이 흔들린 게 아니다 — 나머지 라우트는 전부
+ *    rewrite 그대로다. 여기를 보고 「이제 절대 URL 을 써도 된다」로 읽지 말 것.
+ *
+ * 왜 예외인가 — **Amplify Hosting 의 SSR compute 구간이 응답을 통째로 버퍼링하다
+ * 30.0초에 바디 없는 500 을 만든다.** 같은 요청을 두 경로로 잰 실측(2026-08-14):
+ *   · Amplify 경유 `omnisite.o-r.kr`      → **30.065s · 500 · 0 bytes · CT 없음**
+ *   · 백엔드 직접  `api.omnisite.o-r.kr`  → TTFB **0.049s** · 44.4s · 200 ·
+ *                                            141,895 bytes · chunked
+ * 읽는 자리는 **TTFB 한 칸**이다. 백엔드는 49ms 에 첫 바이트를 내는데 Amplify
+ * 경유는 30초 동안 한 바이트도 못 받는다 — 느린 게 아니라 들고 있는 것이다.
+ *
+ * 🔴 **타임아웃을 올려서는 못 고친다.** `SIZE=0` 은 느림이 아니라 버퍼링이라,
+ *    상한만 올리면 「30초에 에러」가 「50초 무반응 뒤 한꺼번에」로 바뀔 뿐이고
+ *    화면 5 의 존재 이유(토큰이 실시간으로 흐르는 것)는 그대로 죽는다.
+ *    그래서 처치는 **그 구간을 들어내는 것** 하나뿐이다.
+ *
+ * 다른 후보는 실측으로 다 뺐다 — nginx 는 `proxy_buffering off` + TTFB 49ms 로
+ * 무죄, CloudFront 는 타임아웃이 **504 + HTML 본문**이라 무죄, Next rewrite 는
+ * `proxyTimeout` 360초에 idle 기준이고 결정적으로 `onProxyError` 가 본문 **21
+ * bytes**(`Internal Server Error`)를 쓰는데 실측이 **0 bytes** 라 무죄다.
+ *
+ * ⚠ **`credentials: "include"` 를 쓰지 말 것.** 실제 응답의 `access-control-allow-origin`
+ *   이 `*` 라 브라우저가 credentials 모드에서 거부한다. 지금 두 호출 다 쿠키·
+ *   `Authorization` 을 안 싣으므로 고칠 것이 없다 — 이 스트림에 인증을 붙이는
+ *   날 백엔드에 오리진 명시를 요청할 것(preflight 는 이미 200 이다).
+ *
+ * ⚠ 백엔드가 다른 호스트로 가면 **여기 한 줄만** 고치면 된다. 값을 흩뿌리지 않는
+ *   이유가 그것이다. `NEXT_PUBLIC_` 을 안 쓰는 이유 — 값이 하나뿐이고 빌드마다
+ *   바뀌지 않으며, 이 호스트는 공개 DNS·인증서 투명성 로그에 이미 공개돼 있어
+ *   번들에 박혀도 잃는 게 없다(숨겨져 있던 적이 없다).
+ */
+export const SSE_ORIGIN = "https://api.omnisite.o-r.kr";
+
+/**
+ * SSE 경로를 부를 주소로 바꾼다.
+ *
+ * 🔴 **로컬 개발은 rewrite 를 그대로 탄다.** Amplify compute 가 로컬에는 없어서
+ *    이 문제 자체가 없고, 절대 URL 로 돌리면 `OMNISITE_API_ORIGIN` 이 가리키는
+ *    **로컬 백엔드 대신 운영을 친다** — 개발 중에 운영 데이터로 토론이 돌아간다.
+ *    (`next.config.ts` 의 ⓒ 함정은 여기 해당 없다. 붙이는 값이 `localhost` 가
+ *     아니라 공개 도메인이라 IPv6 우선 해석 문제가 안 생긴다.)
+ *
+ * ⚠ `next build && next start` 를 로컬에서 돌리면 운영 백엔드를 친다. 프로덕션
+ *   빌드를 로컬에서 검증할 때만 생기는 일이고, 그때 운영을 읽는 것 자체는 해가
+ *   없어 분기를 더 얹지 않는다.
+ */
+export function sseUrl(path: string): string {
+  if (process.env.NODE_ENV === "development") return path;
+  return `${SSE_ORIGIN}${path}`;
+}
+
+export const STREAM_URL = sseUrl(`${BASE}/stream`);
