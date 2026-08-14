@@ -276,29 +276,57 @@ export function GridMap({
     const py = (lat: number) => latToWorldY(lat, z) - originY;
 
     // 1) 배경 타일
+    //
+    // 🔴 **타일 주소의 `z/x/y` 는 전부 정수여야 한다.** 여기서 `view.z` 를 그대로
+    //    넣고 있었는데, 후보지를 눌렀을 때 도는 fly-to 는 500ms 동안 z 를 **연속
+    //    보간**한다(아래 애니메이션). 그래서 프레임마다 다른 소수 줌으로 주소가
+    //    만들어졌다 — 사용자 콘솔에 찍힌 실물:
+    //      `.../15.999050896000327/55846.00000000001/25372.png`
+    //    실측(2026-08-15, `Origin: https://omnisite.o-r.kr` 실어서):
+    //      · `/16/55846/25372.png`  → **200** · `image/png` · `ACAO: *`
+    //      · 위 소수점 주소          → **400** · **ACAO 헤더 없음**
+    //
+    // 🔴 **그래서 콘솔에 CORS 로 찍혔다.** OSM 이 CORS 를 안 주는 게 아니다 —
+    //    200 에는 `ACAO: *` 가 있다. 없는 건 400 쪽이고, 우리가
+    //    `crossOrigin="anonymous"` 를 걸어 뒀으니 브라우저는 「400」이 아니라
+    //    「CORS 위반」으로 말한다. 진짜 사유가 한 겹 가려져 있었다.
+    //
+    // 🔴 값이 두 배로 나갔다 — ⓐ 그 응답들이 `onerror` 를 때려 `onTileError()` 가
+    //    서고, 화면은 **멀쩡한 타일을 두고 「배경을 못 불러왔다」**고 말한다(원칙 4).
+    //    ⓑ 실패한 `Image` 가 소수점 키로 `tiles.current` 에 **영구 캐시**돼,
+    //    같은 프레임을 다시 그려도 영영 안 뜬다. ⓒ 500ms 트윈 한 번에 프레임마다
+    //    새 줌이 나오므로 **한 번 누를 때마다 죽은 요청 수백 건**이 연결 풀을
+    //    채운다 — 「확대하면 지도가 느리다」의 한 축이다.
+    //
+    // 처치 — 타일은 **가장 가까운 정수 줌**에서 가져오고, 소수 부분은 그린
+    // 크기(`ts`)로만 반영한다. 투영은 계속 소수 `z` 를 쓰므로 확대가 부드러운
+    // 것은 그대로다. ⚠ `z` 대신 `tz` 를 쓰는 곳은 **여기 블록 안뿐**이다 —
+    // 격자·마커·배제구역까지 정수로 돌리면 애니메이션이 계단으로 튄다.
     if (basemap) {
-      const n = 2 ** z;
-      const x0 = Math.floor(originX / TILE_SIZE);
-      const y0 = Math.floor(originY / TILE_SIZE);
-      const x1 = Math.floor((originX + size.w) / TILE_SIZE);
-      const y1 = Math.floor((originY + size.h) / TILE_SIZE);
+      const tz = Math.round(z);
+      const ts = TILE_SIZE * 2 ** (z - tz); // 화면에 그릴 타일 한 변
+      const n = 2 ** tz;
+      const x0 = Math.floor(originX / ts);
+      const y0 = Math.floor(originY / ts);
+      const x1 = Math.floor((originX + size.w) / ts);
+      const y1 = Math.floor((originY + size.h) / ts);
       for (let tx = x0; tx <= x1; tx++) {
         for (let ty = y0; ty <= y1; ty++) {
           if (ty < 0 || ty >= n) continue;
           const wx = ((tx % n) + n) % n;
-          const key = `${z}/${wx}/${ty}`;
+          const key = `${tz}/${wx}/${ty}`;
           let img = tiles.current.get(key);
           if (!img) {
             img = new Image();
             img.crossOrigin = "anonymous";
             img.onload = () => requestTileRedraw();
             img.onerror = () => onTileError();
-            img.src = TILE_URL(z, wx, ty);
+            img.src = TILE_URL(tz, wx, ty);
             tiles.current.set(key, img);
           }
           if (img.complete && img.naturalWidth > 0) {
             ctx.globalAlpha = 0.85;
-            ctx.drawImage(img, tx * TILE_SIZE - originX, ty * TILE_SIZE - originY, TILE_SIZE, TILE_SIZE);
+            ctx.drawImage(img, tx * ts - originX, ty * ts - originY, ts, ts);
             ctx.globalAlpha = 1;
           }
         }
