@@ -175,11 +175,22 @@ export interface StreamPacket {
 }
 
 /**
- * SSE 전용 백엔드 오리진.
+ * **30초를 넘을 수 있는 호출** 전용 백엔드 오리진.
  *
- * 🔴 **이 저장소의 규칙(「브라우저는 항상 같은 출처로만 부른다」)에 대한 예외가
- *    둘 있고, 그 둘은 SSE 다.** 규칙이 흔들린 게 아니다 — 나머지 라우트는 전부
- *    rewrite 그대로다. 여기를 보고 「이제 절대 URL 을 써도 된다」로 읽지 말 것.
+ * 🔴 **이 저장소의 규칙(「브라우저는 항상 같은 출처로만 부른다」)에 대한 예외다.**
+ *    규칙이 흔들린 게 아니다 — 나머지 라우트는 전부 rewrite 그대로다. 여기를
+ *    보고 「이제 절대 URL 을 써도 된다」로 읽지 말 것.
+ *
+ * 🔴 **판정 기준은 「SSE 냐」가 아니라 「30초를 넘느냐」다**(2026-08-15 정정).
+ *    이 함수는 이름부터 `sseUrl` 이었고 주석도 「예외는 둘이고 둘 다 SSE」라고
+ *    적고 있었는데, 그 분류 때문에 SSE 가 아닌 `POST /stakeholders/generate` 를
+ *    「한 번에 받는 JSON 이라 버퍼링이 무해하다」며 남겨 뒀다가 그대로 터졌다 —
+ *    사용자 화면에 **HTTP 504 · 본문 없음**. LLM 이 페르소나를 뽑는 동안 걸리는
+ *    시간이 30초 벽을 넘는다는 것은 같은 파일이 이미 실측으로 알고 있었다
+ *    (`next.config.ts:49` — 같은 요청이 29.2s 200 · 30.0s 실패). 응답이
+ *    스트림이냐 단발이냐는 상관이 없었다. **소요 시간만 본다.**
+ *    ⚠ 504 는 앞선 실측의 500 과 코드가 다르다. 30초 벽에서 나온다는 점은
+ *      같지만 어느 계층이 낸 코드인지는 재보지 않았다 — 확인한 것만 적는다.
  *
  * 왜 예외인가 — **Amplify Hosting 의 SSR compute 구간이 응답을 통째로 버퍼링하다
  * 30.0초에 바디 없는 500 을 만든다.** 같은 요청을 두 경로로 잰 실측(2026-08-14):
@@ -209,10 +220,10 @@ export interface StreamPacket {
  *   바뀌지 않으며, 이 호스트는 공개 DNS·인증서 투명성 로그에 이미 공개돼 있어
  *   번들에 박혀도 잃는 게 없다(숨겨져 있던 적이 없다).
  */
-export const SSE_ORIGIN = "https://api.omnisite.o-r.kr";
+export const BACKEND_ORIGIN = "https://api.omnisite.o-r.kr";
 
 /**
- * SSE 경로를 부를 주소로 바꾼다.
+ * 오래 걸리는 경로를 부를 주소로 바꾼다.
  *
  * 🔴 **로컬 개발은 rewrite 를 그대로 탄다.** Amplify compute 가 로컬에는 없어서
  *    이 문제 자체가 없고, 절대 URL 로 돌리면 `OMNISITE_API_ORIGIN` 이 가리키는
@@ -224,9 +235,9 @@ export const SSE_ORIGIN = "https://api.omnisite.o-r.kr";
  *   빌드를 로컬에서 검증할 때만 생기는 일이고, 그때 운영을 읽는 것 자체는 해가
  *   없어 분기를 더 얹지 않는다.
  */
-export function sseUrl(path: string): string {
+export function directUrl(path: string): string {
   if (process.env.NODE_ENV === "development") return path;
-  return `${SSE_ORIGIN}${path}`;
+  return `${BACKEND_ORIGIN}${path}`;
 }
 
-export const STREAM_URL = sseUrl(`${BASE}/stream`);
+export const STREAM_URL = directUrl(`${BASE}/stream`);

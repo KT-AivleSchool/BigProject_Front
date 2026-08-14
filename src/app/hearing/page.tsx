@@ -10,7 +10,7 @@ import {
   Candidate,
   FIRST_PACKET_TIMEOUT_MS,
   IDLE_TIMEOUT_MS,
-  SSE_ORIGIN,
+  BACKEND_ORIGIN,
   STREAM_URL,
   StreamPacket,
   errorTitle,
@@ -375,7 +375,7 @@ export default function Screen5Page() {
              *       **아니다.** Next 는 무죄다 — `onProxyError` 는 본문 21 bytes
              *       (`Internal Server Error`)를 쓰는데 실측 응답은 **0 bytes** 다.
              *       범인은 **Amplify Hosting 의 SSR compute**(버퍼링 · 30.0초 상한).
-             *       근거 전부는 `simulation.ts` 의 `SSE_ORIGIN` 머리주석에 있다.
+             *       근거 전부는 `simulation.ts` 의 `BACKEND_ORIGIN` 머리주석에 있다.
              *
              * 🔴 그래도 **코드는 가른 채로 둔다.** 「토론 엔진을 뒤지지 말라」는
              *    여전히 옳다 — 틀렸던 건 판정이 아니라 **범인 지목과 그 아래 힌트**다.
@@ -392,7 +392,7 @@ export default function Screen5Page() {
                 `백엔드 응답이 중간 구간에서 끊겼습니다. 앞단이 백엔드 응답 없이 ` +
                   `HTTP ${response.status} 를 만들었습니다(Content-Type 없음 — 백엔드는 ` +
                   `이런 응답을 만들지 않습니다). 토론 엔진 문제가 아닙니다. 확인할 곳은 ` +
-                  `ⓐ 이 요청이 ${SSE_ORIGIN} 로 직접 갔는지(Network 탭의 Remote Address — ` +
+                  `ⓐ 이 요청이 ${BACKEND_ORIGIN} 로 직접 갔는지(Network 탭의 Remote Address — ` +
                   `omnisite.o-r.kr 로 갔다면 Amplify compute 가 버퍼링하다 끊은 것입니다) ` +
                   `ⓑ 끊긴 시각이 30초 언저리인지(그 벽의 서명입니다 — 백엔드 TTFB 는 49ms 라 ` +
                   `정상이면 첫 토큰이 1초 안에 뜹니다) ⓒ 브라우저 콘솔의 CORS 차단 메시지입니다.`,

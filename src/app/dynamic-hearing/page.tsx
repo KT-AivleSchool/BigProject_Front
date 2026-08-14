@@ -37,7 +37,7 @@ import { ApiError, NetworkError, postJson } from "@/lib/omnisite/client";
 import { loadReviewed } from "@/lib/omnisite/pipeline";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { useSelectedSite, type Failure } from "@/lib/omnisite/useSelectedSite";
-import { FIRST_PACKET_TIMEOUT_MS, IDLE_TIMEOUT_MS, sseUrl } from "@/lib/omnisite/simulation";
+import { FIRST_PACKET_TIMEOUT_MS, IDLE_TIMEOUT_MS, directUrl } from "@/lib/omnisite/simulation";
 import {
   readPersonas,
   writePersonas,
@@ -53,20 +53,24 @@ import { DiscussionStep } from "./_components/DiscussionStep";
 
 const SCREEN = SCREENS.find((s) => s.no === "5")!;
 
-const GENERATE_URL = "/api/v1/stakeholders/generate";
 /**
- * 🔴 **SSE 라서 백엔드를 직접 부른다**(`sseUrl` 머리주석에 근거 전부). Amplify
- *    compute 가 응답을 버퍼링하다 30.0초에 바디 없는 500 을 만드는데, 이 토론은
- *    실측 **55.7초**라 그 벽에 그대로 걸린다.
+ * 🔴 **둘 다 백엔드를 직접 부른다** — 둘 다 30초를 넘기 때문이다. 근거 전부는
+ *    `simulation.ts` 의 `BACKEND_ORIGIN` 머리주석에 있다. Amplify compute 가
+ *    응답을 버퍼링하다 30초 벽에서 본문 없는 오류를 만드는데, 토론은 실측
+ *    **55.7초**, 페르소나 발굴은 실측 **29.2초에 200 · 30.0초에 실패**다.
  *
- * 🔴 A(`simulation.ts` 의 `STREAM_URL`)와 **같이** 고쳐야 하는 자리다. 하나만
- *    고치면 「A 는 되는데 B 는 안 된다」가 되고, 다음 사람은 멀쩡한 B 엔진을 의심한다.
+ * 🔴 `/generate` 는 **한 번 빼먹었다가 그대로 터진 자리다**(2026-08-15). 여기
+ *    주석이 「SSE 가 아니라 한 번에 받는 JSON 이라 버퍼링이 무해하다」고 적고
+ *    남겨 뒀는데, 사용자 화면에 **「페르소나를 발굴하지 못했습니다 / HTTP 504
+ *    (본문 없음)」** 이 떴다. 응답이 스트림이냐 단발이냐는 상관이 없다 —
+ *    **버퍼링은 걸린 시간에만 반응한다.**
  *
- * ⚠ 바로 위 `GENERATE_URL` 은 **그대로 둔다.** SSE 가 아니라 한 번에 받는 JSON 이라
- *   버퍼링이 무해하다. 다만 이 저장소 실측에 29.2초짜리가 있어(`next.config.ts:47`)
- *   30초 벽에 아슬아슬하다 — 여기서 500 이 뜨면 그때는 같은 원인이다.
+ * ⚠ `credentials: "include"` 를 붙이지 말 것. 응답의 `access-control-allow-origin`
+ *   이 `*` 라 브라우저가 credentials 모드에서 거부한다. 지금 두 호출 다 쿠키·
+ *   `Authorization` 을 안 싣는다.
  */
-const DISCUSS_URL = sseUrl("/api/v1/stakeholders/dynamic/discuss/stream");
+const GENERATE_URL = directUrl("/api/v1/stakeholders/generate");
+const DISCUSS_URL = directUrl("/api/v1/stakeholders/dynamic/discuss/stream");
 
 /** 백엔드 `StakeholderCandidate` 그대로. 전부 필수거나 기본값이 있다(스키마 확인). */
 interface StakeholderCandidate {
