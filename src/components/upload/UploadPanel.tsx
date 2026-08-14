@@ -8,9 +8,12 @@
  * "업로드할 수 있다" 고 말하고 있었으므로 원칙 4 위반이다.
  *
  * 배선 규칙
- *  · **도메인은 필수.** 7개 엔드포인트 전부가 요구한다. 목록을 먼저 받아
- *    고르게 하고, 없는 이름을 새로 만들려면 `create_domain` 을 **명시적으로**
- *    켜게 한다 — 오타 하나로 새 도메인이 조용히 생기면 안 된다.
+ *  · **도메인은 필수.** 7개 엔드포인트 전부가 요구한다. 다만 **묻지 않는다** —
+ *    타이핑 중에 목록을 조회해 「있는 이름인가」를 그리던 자리는 지웠다
+ *    (2026-08-14 사람 지시). 「다음 단계」를 누를 때 한 번만 묻고, 이름이 겹치면
+ *    막는 대신 `<도메인>_2` 로 **다른 폴더**를 쓴다(`resolveDomain`).
+ *    → 그래서 이 패널은 **자기가 쓴 폴더 이름을 부모에게 돌려준다**(`commit`).
+ *      파이프라인이 그 이름으로 돌지 않으면 빈 폴더를 분석한다.
  *  · **서버가 준 값을 그대로 보여준다.** `renumbered`·`warnings`·
  *    `facility_type_source`·`redis_stale_removed`·`saved_to` 는 서버가
  *    일부러 내보낸 것이다. 프런트에서 접으면 그걸 내보낸 이유가 사라진다.
@@ -31,7 +34,6 @@ import {
   uploadRegulations,
   type DataFile,
   type DataListResult,
-  type DomainItem,
   type RegulationItem,
   type RegulationUploadResult,
   type Renumbered,
@@ -116,18 +118,35 @@ function useDots(active: boolean): string {
 }
 
 /**
- * 도메인 칸에 글자가 들어오는 동안 목록을 **묻지 않고 기다리는** 시간(ms).
+ * 이 세션이 **실제로 쓸 업로드 폴더 이름**을 정한다 — 이미 있으면 `_2`, `_3` …
  *
- * 🔴 값(`domain`)이 아니라 **effect** 를 늦춘다. 값을 늦추면 그동안 화면에
- *    **직전 도메인의 목록**이 지금 도메인의 것인 양 남는다 — `listKey` 가 막으려는
- *    바로 그 「남의 답」이다. effect 만 늦추면 `listKey` 는 글자와 함께 즉시 바뀌므로
- *    화면은 계속 「불러오는 중」이다.
+ * 🔴 **묻는 시점이 바뀐 것이 핵심이다**(2026-08-14 사람 지시). 예전엔 도메인 칸에
+ *    글자가 들어올 때마다 목록을 물어 「있는 이름인가」를 화면에 그렸다 —
+ *    `t|te|tes|test…` 한 글자마다 왕복이었고, 그 답으로 하는 일은 결국
+ *    **경고 문구를 띄우는 것뿐**이었다. 이제 안 묻는다. 대신 「다음 단계」를
+ *    누르는 **딱 한 번** 여기서 묻고, 겹치면 사람을 막는 대신 **다른 폴더를 준다.**
  *
- * ⚠ 그 대가로 이 400ms 동안 화면은 **아직 묻지도 않았는데** 「불러오는 중」이라고
- *   말한다. 「안 물었다」와 「묻고 기다린다」를 가르려면 상태가 하나 더 필요한데,
- *   0.4초를 위해 둘 자리는 아니다.
+ * 🔴 겹침 판정은 **업로드 루트만** 본다. 같은 이름의 프리셋(배포 원본) 행은
+ *    애초에 별개 폴더라 비켜줄 이유가 없다.
+ *    ⚠ `root` 가 **없는**(루트 분리 전) 서버에서는 업로드/프리셋을 가를 수 없어
+ *      전부 「쓰이고 있다」로 친다 — 그쪽에서는 프리셋 이름도 `_2` 가 된다.
+ *      새 폴더가 하나 더 생기는 것이 남의 폴더에 올리는 것보다 낫다.
+ *
+ * 🔴 목록을 못 받으면 **던진다.** 여기서 `base` 로 폴백하면 남이 쓰는 폴더에
+ *    조용히 올리게 되는데, 그건 `datasets/흡연/data` 가 통째로 지워진
+ *    2026-08-13 사고와 같은 자리다. 못 정하면 안 올린다.
  */
-const LIST_DEBOUNCE_MS = 400;
+async function resolveDomain(base: string): Promise<string> {
+  const taken = new Set(
+    (await fetchDomains()).filter((d) => d.root !== "preset").map((d) => d.domain),
+  );
+  if (!taken.has(base)) return base;
+  for (let n = 2; n <= 999; n++) {
+    const candidate = `${base}_${n}`;
+    if (!taken.has(candidate)) return candidate;
+  }
+  throw new Error(`${base} 부터 ${base}_999 까지 전부 쓰이고 있습니다. 다른 이름을 쓰세요.`);
+}
 
 function kb(n: number): string {
   if (n < 1024) return `${n} B`;
@@ -137,8 +156,15 @@ function kb(n: number): string {
 
 /** 화면1 「다음 단계」가 잡는 손잡이. */
 export interface UploadPanelHandle {
-  /** 고른 파일을 올린다. `false` 면 넘어가지 말 것(사유는 패널이 화면에 적는다). */
-  commit: () => Promise<boolean>;
+  /**
+   * 고른 파일을 올리고 **이 세션이 실제로 쓴 도메인**을 돌려준다.
+   * `null` 이면 넘어가지 말 것(사유는 패널이 화면에 적는다).
+   *
+   * 🔴 **문자열을 돌려주는 이유.** 같은 이름이 이미 있으면 `그늘막_2` 에 저장된다.
+   *    부모가 그걸 모르고 `start("그늘막")` 을 치면 파일은 `그늘막_2` 에 있는데
+   *    파이프라인은 `그늘막` 을 읽는다 — **안 터지고 빈 폴더로 분석한다.**
+   */
+  commit: () => Promise<string | null>;
 }
 
 export function UploadPanel({
@@ -161,8 +187,6 @@ export function UploadPanel({
   ref?: Ref<UploadPanelHandle>;
 }) {
   const [tab, setTab] = useState<Tab>("data");
-  const [domains, setDomains] = useState<DomainItem[] | null>(null);
-  const [domainsError, setDomainsError] = useState<string | null>(null);
   const [ingest, setIngest] = useState(true);
   /**
    * 조례 업로드용 시설 유형 — **이 패널이 직접 묻는다.**
@@ -179,6 +203,18 @@ export function UploadPanel({
    */
   const [facilityInput, setFacilityInput] = useState("");
 
+  /**
+   * 이번 세션이 **실제로 쓴** 폴더. `base` 는 사람이 친 이름, `actual` 은 `_2` 가
+   * 붙었을 수도 있는 진짜 이름이다.
+   *
+   * 🔴 **한 번만 정한다.** 매번 `resolveDomain` 을 부르면 두 번째 업로드가
+   *    `그늘막_2` 를 「이미 있다」로 보고 `그늘막_3` 을 새로 만든다 — 같은 세션의
+   *    데이터가 폴더 두 개로 쪼개진다.
+   * 🔴 사람이 이름을 **고쳐 쓰면** 무효다. 아래처럼 렌더 중에 대조해서 판단한다
+   *    (effect 로 지우면 한 프레임 동안 옛 폴더 이름이 남는다).
+   */
+  const [saved, setSaved] = useState<{ base: string; actual: string } | null>(null);
+
   const [busy, setBusy] = useState(false);
   const dots = useDots(busy);
   const [notice, setNotice] = useState<Notice | null>(null);
@@ -187,62 +223,22 @@ export function UploadPanel({
   const [picked, setPicked] = useState<File[]>([]);
 
   const trimmed = domain.trim();
-  /**
-   * 🔴 **업로드 루트의 행만** 고른다(백엔드 2026-08-14 루트 분리).
-   *    목록은 두 루트를 합쳐서 오는데(`?root=all`), 프리셋 행은 업로드·삭제가
-   *    **경로상 닿지 않는** 폴더다. 이름만 보고 「있는 도메인」으로 치면
-   *    `create_domain` 칸이 안 뜨고 → `create_domain=false` 로 올라가 →
-   *    서버가 `datasets/user_input/<도메인>` 을 못 찾아 **400** 이다.
-   *    안 터지는 게 아니라 **왜 400 인지 화면에 아무 단서가 없는** 게 문제다.
-   * ⚠ `root` 가 **없으면**(루트 분리 전 서버) 예전처럼 친다 — 없는 필드를
-   *   `"preset"` 으로 채우면 옛 서버에서 모든 도메인이 「없는 도메인」이 된다.
-   */
-  const entry = domains?.find((d) => d.domain === trimmed && d.root !== "preset") ?? null;
-  /**
-   * 같은 이름의 **프리셋 행**. 서버는 이름이 겹치면 업로드 행만 주므로
-   * 이 값이 있다는 건 **업로드 폴더가 아직 없다**는 뜻이다 → `create_domain` 흐름.
-   */
-  const presetEntry = domains?.find((d) => d.domain === trimmed && d.root === "preset") ?? null;
-  const known = entry !== null;
+  /** 이미 올린 폴더. 사람이 이름을 고쳐 쓰면 `null` 로 돌아간다. */
+  const savedDomain = saved && saved.base === trimmed ? saved.actual : null;
 
   /** 이 패널이 받은 값이 먼저다. 부모 칸(Step 2)은 이미 채워져 있을 때만 거든다. */
   const effectiveFacility = facilityInput.trim() || facilityType.trim();
   /**
-   * 서버가 되짚을 데(STEP1 감리 확정본)도 없고 값도 안 왔으면 **400 이 확정**이다.
-   * 왕복하기 전에 막고 **이유를 적는다** — 그냥 비활성화만 하면 왜 못 누르는지 안 보인다.
+   * 조례 업로드에 시설 유형이 비면 서버가 **무조건 400** 이다. 왕복하기 전에 막고
+   * **이유를 적는다** — 그냥 비활성화만 하면 왜 못 누르는지 안 보인다.
    *
-   * ⚠ `has_audit_reviewed` 를 못 얻었으면(`entry === null`: 목록 로딩 실패·새 도메인)
-   *   막는 쪽으로 친다. 서버가 되짚을 수 있는지 모르는 채로 보내면 400 을 받는다.
+   * 🔴 예전엔 `entry?.has_audit_reviewed` 가 참이면 생략을 허용했다. **이제 그 갈래는
+   *    없다** — 겹치면 `_2` 로 새 폴더를 만드는 구조라 STEP1 감리가 있는 폴더에
+   *    덧올리는 일 자체가 안 생긴다. 서버가 되짚을 데가 항상 없으므로 **항상 필수**다.
    */
-  const facilityMissing = tab === "law" && !effectiveFacility && !entry?.has_audit_reviewed;
+  const facilityMissing = tab === "law" && !effectiveFacility;
 
-  // ── 도메인 목록 ─────────────────────────────────────────────
-  /**
-   * 🔴 **`async/await` 가 아니라 `.then()/.catch()` 다.**
-   *    `react-hooks/set-state-in-effect` 는 **await 뒤도 동기로 친다** — effect 에서
-   *    부르는 async 함수 안이면 첫 await 뒤에 있어도 걸린다(실측). 규칙이 받아주는
-   *    모양은 **콜백 안의 setState** 뿐이다. 반환값은 그대로 Promise 라 업로드·삭제
-   *    뒤의 `await loadDomains()` 는 안 바뀐다.
-   */
-  const loadDomains = useCallback(
-    () =>
-      fetchDomains()
-        .then((list) => {
-          setDomains(list);
-          setDomainsError(null);
-        })
-        .catch((e: unknown) => {
-          setDomains(null);
-          setDomainsError(describe(e));
-        }),
-    [],
-  );
-
-  useEffect(() => {
-    void loadDomains();
-  }, [loadDomains]);
-
-  // ── 현재 도메인의 파일 목록 ──────────────────────────────────
+  // ── 올린 폴더의 파일 목록 ────────────────────────────────────
   /**
    * 🔴 「불러오는 중」을 **상태로 두지 않는다.** `setListLoading(true)` 는 effect 에서
    *    동기로 불릴 수밖에 없어 같은 규칙에 걸리고, 규칙 문제만도 아니다 — setState 는
@@ -255,7 +251,18 @@ export function UploadPanel({
    *    「새로고침」을 누른 횟수다 — 같은 것을 다시 묻는 유일한 길이다.
    */
   const [listNonce, setListNonce] = useState(0);
-  const listKey = trimmed ? `${trimmed}::${tab}::${listNonce}` : null;
+  /**
+   * 🔴 **`trimmed` 가 아니라 `savedDomain` 이다**(2026-08-14 사람 지시).
+   *    타이핑 중인 값을 key 에 담으면 글자마다 `loadList` 의 정체성이 바뀌어
+   *    effect 가 다시 돈다 — 배포 서버 로그 실측으로 `?domain=t|te|tes|test|…`
+   *    8건이 전부 400 이었고, 조례 탭은 목록 한 번이 **약 130초**라 특히 나빴다.
+   *    `savedDomain` 은 **업로드가 끝나야** 생기므로 그때까지 이 값은 `null` 이고
+   *    호출은 0건이다. 디바운스로 줄이던 자리가 통째로 없어졌다.
+   *
+   * ⚠ 그래서 업로드 전에는 목록이 **아예 안 뜬다**(대기도 아니다 — 안 물었다).
+   *   어차피 겹치면 `_2` 로 새 폴더를 만드니 올리기 전 목록은 **항상 0개**였다.
+   */
+  const listKey = savedDomain ? `${savedDomain}::${tab}::${listNonce}` : null;
 
   const [listAnswer, setListAnswer] = useState<{
     key: string | null;
@@ -264,24 +271,28 @@ export function UploadPanel({
     error: string | null;
   }>({ key: null, dataList: null, lawList: null, error: null });
 
-  /** 🔴 위 `loadDomains` 와 같은 이유로 `.then()/.catch()` 다. */
+  /**
+   * 🔴 **`async/await` 가 아니라 `.then()/.catch()` 다.**
+   *    `react-hooks/set-state-in-effect` 는 **await 뒤도 동기로 친다** — effect 에서
+   *    부르는 async 함수 안이면 첫 await 뒤에 있어도 걸린다(실측). 규칙이 받아주는
+   *    모양은 **콜백 안의 setState** 뿐이다.
+   */
   const loadList = useCallback((): Promise<void> => {
-    if (!listKey) return Promise.resolve();
+    if (!listKey || !savedDomain) return Promise.resolve();
     const asked =
       tab === "data"
-        ? fetchDataFiles(trimmed).then((r) =>
+        ? fetchDataFiles(savedDomain).then((r) =>
             setListAnswer({ key: listKey, dataList: r, lawList: null, error: null }),
           )
-        : fetchRegulations(trimmed).then((r) =>
+        : fetchRegulations(savedDomain).then((r) =>
             setListAnswer({ key: listKey, dataList: null, lawList: r, error: null }),
           );
     return asked.catch((e: unknown) => {
       /*
-       * 🔴 **400 은 오류가 아니라 「아직 폴더가 없다」다.** 새 도메인을 치는 사람은
-       *    반드시 여기를 지나는데, 그 자리에 서버 문구(`400 — 도메인 폴더가 없습니다:
-       *    /code/datasets/user_input/흡연 · … 현재 도메인: []`)를 그대로 띄우면
+       * 🔴 **400 은 오류가 아니라 「그 탭 폴더가 아직 없다」다.** 데이터만 올린
+       *    사람이 조례 탭을 누르면 반드시 여기를 지난다. 서버 문구(`400 — 도메인
+       *    폴더가 없습니다: /code/datasets/user_input/흡연 · …`)를 그대로 띄우면
        *    **정상 경로가 빨간 에러로 보인다**(2026-08-14 사람 지시로 제거).
-       *    빈 목록으로 친다 — 위 도메인 상태 줄이 이미 「새로 만들어집니다」라고 말한다.
        *
        * 🔴 400 **만** 접는다. 500·타임아웃·네트워크는 그대로 문구를 낸다 —
        *    전부 접으면 목록을 못 받은 것이 「파일 0개」로 보이고, 사람은 방금 올린
@@ -293,26 +304,16 @@ export function UploadPanel({
       }
       setListAnswer({ key: listKey, dataList: null, lawList: null, error: describe(e) });
     });
-  }, [listKey, trimmed, tab]);
+  }, [listKey, savedDomain, tab]);
 
   /**
-   * 🔴 **한 글자에 한 번씩 묻지 않는다**(2026-08-14, 배포 서버 로그 실측:
-   *    `?domain=t|te|tes|test|tests|testst|teststs|teststst` → 8건 전부 400).
-   *    `listKey` 는 타이핑 중인 `trimmed` 를 그대로 담으므로 글자마다 `loadList` 의
-   *    정체성이 바뀌고 effect 가 다시 돈다. 조례 탭은 목록 한 번이 **약 130초**라
-   *    특히 나쁘다.
-   *
-   * 🔴 `setTimeout` **콜백 안**의 호출이라 `react-hooks/set-state-in-effect` 에
-   *    안 걸린다 — 이 파일 `useDots`(`setInterval`)와 같은 모양이다. 규칙은
-   *    effect 가 **직접** 부르는 것만 본다(await 뒤도 동기로 친다).
-   *
-   * ⚠ 업로드·삭제 뒤의 `loadList()` 직접 호출은 **그대로 즉시**다. 그때는 `listKey`
-   *   가 안 바뀌어 이 effect 가 아예 안 돈다 — 방금 올린 파일이 0.4초 늦게 뜰 이유가 없다.
+   * 🔴 디바운스가 없다. `listKey` 는 **업로드·삭제·탭 전환·새로고침**으로만 바뀌는데
+   *    전부 사람이 한 번씩 하는 동작이라 늦출 것이 없다. 타이핑은 이제 이 key 를
+   *    건드리지 않는다(위 `listKey` 주석).
    */
   useEffect(() => {
     if (!listKey) return;
-    const t = setTimeout(() => void loadList(), LIST_DEBOUNCE_MS);
-    return () => clearTimeout(t);
+    void loadList();
   }, [listKey, loadList]);
 
   // 렌더 중에 계산한다. `listKey` 가 없으면(도메인 비었음) 아무것도 안 물었으므로 대기도 아니다.
@@ -329,12 +330,19 @@ export function UploadPanel({
 
   // ── 업로드 ──────────────────────────────────────────────────
   /**
-   * @returns 다음 칸으로 넘어가도 되는가. **「성공했다」가 아니라 「막을 이유가
-   *          없다」**다 — 올릴 게 없으면(`picked` 비었음) `true` 다. 이 값을
-   *          `commit()` 이 그대로 쓴다.
+   * @param stay 끝난 뒤 이 패널에 **머무는가**. 참이면 목록을 다시 읽는다.
+   *
+   *   🔴 「다음 단계」(`commit`)는 **거짓**이다. 그 순간 부모가 Step 2 로 넘어가며
+   *      이 패널을 언마운트하므로 목록을 읽어봐야 아무도 안 본다 — 그런데 조례
+   *      목록은 한 번이 **약 130초**라, 읽고 기다리면 「다음 단계」가 그만큼 멈춘다.
+   *
+   * @returns 다음 칸으로 넘어가도 되면 **실제로 쓴 도메인**, 막아야 하면 `null`.
+   *          **「성공했다」가 아니라 「막을 이유가 없다」**다 — 올릴 게 없으면
+   *          (`picked` 비었음) 이미 정해둔 폴더나 사람이 친 이름을 그대로 돌려준다.
    */
-  async function onUpload(): Promise<boolean> {
-    if (!trimmed || picked.length === 0) return true;
+  async function onUpload(stay: boolean): Promise<string | null> {
+    if (!trimmed) return null;
+    if (picked.length === 0) return savedDomain ?? trimmed;
     // 🔴 조례 탭에서 시설 유형이 비면 서버가 **무조건 400** 이다. 왕복하지 않고
     //    여기서 막는다 — 화면에는 이미 그 이유가 적혀 있다(아래 안내 상자).
     if (facilityMissing) {
@@ -343,14 +351,29 @@ export function UploadPanel({
         title: "시설 유형을 먼저 입력하세요",
         lines: ["조례 업로드는 `facility_type` 이 필요합니다. 비워 두면 서버가 400 으로 거절합니다."],
       });
-      return false;
+      return null;
     }
     setBusy(true);
     setNotice(null);
+    let target = savedDomain;
     try {
+      /*
+       * 🔴 **여기가 도메인 목록을 묻는 유일한 자리다.** 이름이 겹치면 사람을
+       *    막는 대신 `_2` 를 붙여 **다른 폴더**를 쓴다 — 남의 폴더에 올려서
+       *    `datasets/흡연/data` 가 통째로 지워진 자리(2026-08-13)를 이렇게 막는다.
+       *    한 세션에서는 한 번만 정한다(`saved` 주석).
+       *
+       * 🔴 **업로드 결과와 무관하게 여기서 바로 기억한다.** 실패해도 파일은 남을
+       *    수 있고(`partialLines` 주석: 422 여도 `law/` 에 파일과 `.txt` 가 남는다),
+       *    그때 폴더 이름을 안 들고 있으면 **뭐가 남았는지 물어볼 데가 없다.**
+       */
+      if (target === null) {
+        target = await resolveDomain(trimmed);
+        setSaved({ base: trimmed, actual: target });
+      }
       if (tab === "data") {
         const r = await uploadDataFiles({
-          domain: trimmed,
+          domain: target,
           files: picked,
           // 🔴 **항상 true 다**(2026-08-14 사람 지시 「업로드 하면 새로 폴더를 만들어야
           //    하니까」). 서버는 이미 있는 폴더면 아무것도 안 한다
@@ -378,7 +401,7 @@ export function UploadPanel({
         });
       } else {
         const r: RegulationUploadResult = await uploadRegulations({
-          domain: trimmed,
+          domain: target,
           files: picked,
           facilityType: effectiveFacility || undefined,
           createDomain: true, // 위 데이터 업로드와 같은 이유(멱등).
@@ -407,8 +430,8 @@ export function UploadPanel({
         });
       }
       resetPicked();
-      await Promise.all([loadList(), loadDomains()]);
-      return true;
+      if (stay) setListNonce((n) => n + 1);
+      return target;
     } catch (e) {
       const extra = partialLines(e);
       setNotice({
@@ -417,9 +440,10 @@ export function UploadPanel({
         lines: [describe(e), ...extra],
       });
       // 🔴 실패해도 목록을 다시 읽는다. 저장은 됐는데 화면만 「0개」로 남으면
-      //    사람은 같은 파일을 또 올린다.
-      await Promise.all([loadList(), loadDomains()]);
-      return false;
+      //    사람은 같은 파일을 또 올린다. 단 **폴더가 정해진 뒤**에만 —
+      //    `resolveDomain` 자체가 실패했으면 물어볼 폴더가 없다.
+      if (stay && target !== null) setListNonce((n) => n + 1);
+      return null;
     } finally {
       setBusy(false);
     }
@@ -434,19 +458,23 @@ export function UploadPanel({
    *    에 묶으려면 파일 목록을 부모로 끌어올려야 하는데, 다음 단계 시점엔 패널이
    *    아직 살아 있으므로 그럴 필요가 없다.
    *
-   * 🔴 실패하면 `false` 다 — 부모는 넘어가지 않는다. 사유는 이 패널의 `notice` 가
+   * 🔴 실패하면 `null` 이다 — 부모는 넘어가지 않는다. 사유는 이 패널의 `notice` 가
    *    이미 말하고 있으므로 부모가 문구를 지어내지 않는다.
+   *
+   * 🔴 `stay: false` — 넘어가는 길이라 목록을 다시 읽지 않는다(`onUpload` 주석).
    */
-  useImperativeHandle(ref, () => ({ commit: onUpload }));
+  useImperativeHandle(ref, () => ({ commit: () => onUpload(false) }));
 
   // ── 삭제 ────────────────────────────────────────────────────
   async function onDelete(filename: string) {
-    if (!trimmed) return;
+    // 목록은 `savedDomain` 것만 뜨므로 지우는 대상도 그 폴더다 — 사람이 친 이름
+    // (`trimmed`)으로 지우면 `_2` 가 붙은 세션에서 **남의 폴더 파일을 지운다.**
+    if (!savedDomain) return;
     setBusy(true);
     setNotice(null);
     try {
       if (tab === "data") {
-        const r = await deleteDataFile(trimmed, filename);
+        const r = await deleteDataFile(savedDomain, filename);
         const lines = [`dataset 총 ${r.dataset_count}개`];
         if (r.warning) lines.push(r.warning);
         setNotice({
@@ -456,7 +484,7 @@ export function UploadPanel({
           renumbered: r.renumbered,
         });
       } else {
-        const r = await deleteRegulation(trimmed, filename);
+        const r = await deleteRegulation(savedDomain, filename);
         setNotice({
           kind: "ok",
           title: `삭제: ${r.filename}`,
@@ -466,7 +494,7 @@ export function UploadPanel({
           ],
         });
       }
-      await Promise.all([loadList(), loadDomains()]);
+      setListNonce((n) => n + 1);
     } catch (e) {
       setNotice({ kind: "error", title: "삭제 실패", lines: [describe(e)] });
     } finally {
@@ -503,79 +531,21 @@ export function UploadPanel({
         ))}
       </div>
 
-      {/* ── 도메인 상태 ── */}
-      <div className="mb-5 rounded-xl border border-gray-200 bg-gray-50/60 px-4 py-3 text-sm">
-        {!trimmed ? (
+      {/*
+        🔴 여기 있던 **도메인 상태 상자를 지웠다**(2026-08-14 사람 지시).
+           그 상자는 「이 이름이 백엔드에 있나」를 묻고 그 답으로 경고를 그렸는데,
+           묻는 값이 타이핑 중인 도메인이라 **글자마다 왕복**했다. 겹침은 이제
+           경고가 아니라 `_2` 폴더로 처리하므로(`resolveDomain`) 물을 일이 없다.
+           남은 것은 **아무것도 안 묻는** 이 한 줄뿐이다.
+      */}
+      {!trimmed && (
+        <div className="mb-5 rounded-xl border border-gray-200 bg-gray-50/60 px-4 py-3 text-sm">
           <p className="text-gray-600">
-            위 <strong>분석 도메인</strong>을 먼저 입력하세요. 업로드 API 7개는 전부 도메인이
+            위 <strong>분석 주제</strong>를 먼저 입력하세요. 업로드 API 는 전부 도메인이
             필수입니다 — 도메인이 없으면 어느 파이프라인의 입력인지 정할 수 없습니다.
           </p>
-        ) : domainsError ? (
-          <p className="text-red-700 font-mono text-xs break-all">
-            도메인 목록을 못 받았습니다: {domainsError}
-          </p>
-        ) : known ? (
-          <div className="flex flex-col gap-2">
-            <p className="text-gray-700">
-              <span className="font-semibold text-gray-900">{trimmed}</span> — 조례{" "}
-              {entry?.law_files ?? 0}개 · 데이터 {entry?.data_files ?? 0}개
-            </p>
-            {/*
-              🔴 **고르기 전에** 말한다. 이름을 맞춰서 들어오면 그 폴더의 배포 원본이
-                 아래 목록에 뜨는데, 그게 「내가 올린 것」으로 읽혀 실제로 지워졌다
-                 (2026-08-13 — `datasets/흡연/data`). 개수는 서버가 원장과 대조해 센
-                 값(`preexisting_files`)을 그대로 적는다.
-
-              🔴 **루트 분리 뒤로 이 값의 뜻이 갈렸다**(백엔드 2026-08-14).
-                 업로드 행에서는 이제 「배포 원본」이 아니다 — 배포 원본은 다른 폴더
-                 (`datasets/<도메인>`)로 나갔고, 여기 남는 건 **내 원장에 없는 파일**
-                 (다른 세션이 올렸거나 원장 30일이 지난 것)이다. 옛 문구를 그대로 두면
-                 없는 사실을 말하게 된다. `root` 를 **모르면**(옛 서버) 옛 문구가 맞다.
-            */}
-            {(entry?.preexisting_files ?? 0) > 0 &&
-              (entry?.root === "upload" ? (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  이 업로드 폴더에는 <strong>내 기록에 없는 파일 {entry?.preexisting_files}개</strong>
-                  가 있습니다 — 다른 세션이 올렸거나 업로드 기록이 만료된 것입니다.
-                  아래 목록에 같이 보이고, 지우려 하면 <strong>서버가 한 번 되묻습니다.</strong>
-                </p>
-              ) : (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                  이 도메인에는 <strong>배포 원본 {entry?.preexisting_files}개</strong>가 이미
-                  있습니다 — 프리셋 모드가 읽는 파일입니다. 아래 목록에 같이 보이지만
-                  <strong> 지울 수 없습니다.</strong> 내 데이터로만 분석하려면 다른 도메인
-                  이름을 쓰세요.
-                </p>
-              ))}
-          </div>
-        ) : (
-          /*
-           * 🔴 **아직 없는 도메인은 오류가 아니다.** 새로 올리는 사람은 늘 여기를
-           *    지난다 — 예전엔 이 자리에 긴 설명과 `create_domain` 체크박스가 있었는데,
-           *    올린다는 것 자체가 「폴더를 만들어 달라」이므로 물을 것이 없다
-           *    (2026-08-14 사람 지시). 지금은 `create_domain=true` 를 항상 보낸다.
-           *
-           * 🔴 프리셋 한 줄은 **남긴다.** 같은 이름의 배포 원본이 있으면 도메인 목록엔
-           *    파일이 13개라고 적혀 있는데 아래 목록은 **0개**로 뜬다 — 이 줄이 없으면
-           *    그 어긋남을 설명할 데가 없다(올리면 별개 폴더가 새로 생긴다).
-           */
-          <p className="text-gray-600">
-            {presetEntry ? (
-              <>
-                <span className="font-semibold text-gray-900">{trimmed}</span> 은 배포 원본으로만
-                있는 이름입니다. 올리면 <strong>같은 이름의 별개 업로드 폴더</strong>가 새로
-                만들어지고, 배포 원본({presetEntry.law_files + presetEntry.data_files}개)과 섞이지
-                않습니다.
-              </>
-            ) : (
-              <>
-                <span className="font-semibold text-gray-900">{trimmed}</span> — 새 도메인입니다.
-                올리면 폴더가 새로 만들어집니다.
-              </>
-            )}
-          </p>
-        )}
-      </div>
+        </div>
+      )}
 
       {/* ── 파일 선택 ── */}
       <label
@@ -646,13 +616,10 @@ export function UploadPanel({
                   태그로 거른다. 서버는 이 값을 추측하지 않는다(추측하면 다른 시설의
                   조례가 인용되는데 예외가 안 난다) — 그래서 여기서 받는다. */}
               <label className="mt-3 block text-sm text-gray-700">
+                {/* 「(선택)」 갈래는 없앴다 — 되짚을 STEP1 감리가 있는 폴더에 덧올리는
+                    일이 구조상 안 생기므로 이 값은 **항상 필수**다. */}
                 <span className="font-medium">
-                  시설 유형
-                  {facilityMissing ? (
-                    <span className="ml-1 text-red-600">*</span>
-                  ) : (
-                    <span className="ml-1 text-gray-400">(선택)</span>
-                  )}
+                  시설 유형<span className="ml-1 text-red-600">*</span>
                 </span>
                 <input
                   type="text"
@@ -664,10 +631,8 @@ export function UploadPanel({
                   }`}
                 />
                 <span className="mt-1 block text-xs text-gray-500">
-                  {entry?.has_audit_reviewed
-                    ? "비우면 STEP1 감리 확정본의 값을 씁니다."
-                    : "이 도메인은 STEP1 감리가 아직 없어 서버가 되짚을 데가 없습니다 — 직접 적어주세요."}
-                  {" 토론 단계의 조례 검색 필터와 "}
+                  조례는 항상 새 폴더에 저장되므로 서버가 되짚을 STEP1 감리가 없습니다 —
+                  직접 적어주세요. 토론 단계의 조례 검색 필터와{" "}
                   <strong>정확히 같은 낱말</strong>이어야 합니다.
                 </span>
               </label>
@@ -685,7 +650,9 @@ export function UploadPanel({
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              onClick={() => void onUpload()}
+              // 🔴 `stay: true` — 이 버튼은 패널에 머문다. 「다음 단계」와 다른 점이
+              //    여기뿐이다(`onUpload` 주석).
+              onClick={() => void onUpload(true)}
               disabled={busy || facilityMissing}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
             >
@@ -771,14 +738,24 @@ export function UploadPanel({
             //    안 뜬다. 조례 목록은 매번 약 130초라 그 표시가 없으면 눌러도
             //    아무 일도 안 일어난 것처럼 보인다.
             onClick={() => setListNonce((n) => n + 1)}
-            disabled={!trimmed || busy}
+            // 아직 올린 적이 없으면 물어볼 폴더가 없다.
+            disabled={!savedDomain || busy}
             className="text-xs text-gray-500 hover:text-gray-800 disabled:opacity-40"
           >
             새로고침
           </button>
         </div>
 
-        {listLoading ? (
+        {!savedDomain ? (
+          /*
+           * 🔴 **「아직 안 물었다」와 「0개다」는 다른 문장이다.** 업로드 전에는
+           *    폴더가 아예 없으므로(겹치면 `_2` 로 새로 만든다) 조회할 것이 없다.
+           *    여기에 「아직 없습니다」를 띄우면 **서버에 물어본 결과 0개**로 읽힌다.
+           */
+          <p className="rounded-lg border border-dashed border-gray-200 bg-gray-50/60 p-4 text-center text-sm text-gray-400">
+            올리면 여기에 목록이 뜹니다.
+          </p>
+        ) : listLoading ? (
           <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 text-sm text-gray-600">
             불러오는 중...
             {tab === "law" && (
@@ -793,11 +770,9 @@ export function UploadPanel({
           </p>
         ) : listError ? (
           /*
-           * 🔴 여기 오는 건 이제 **400 이 아닌 것**뿐이다(400 = 아직 없는 폴더 →
+           * 🔴 여기 오는 건 **400 이 아닌 것**뿐이다(400 = 그 탭 폴더가 아직 없음 →
            *    위 `loadList` 에서 빈 목록으로 접었다). 즉 진짜 고장이므로 서버 문구를
            *    그대로 낸다 — 지어내지 않는다.
-           *    (프리셋 이름을 설명하던 줄은 도메인 상태 칸으로 옮겼다. 여긴 400 이
-           *     안 오므로 그 줄이 뜰 자리가 아니다.)
            */
           <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-600 break-all">
             {listError}

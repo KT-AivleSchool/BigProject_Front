@@ -76,6 +76,22 @@ export default function Screen1Page() {
    *    이 시점엔 패널이 아직 살아 있으므로 파일 목록을 부모로 끌어올릴 필요가 없다.
    */
   const uploadRef = useRef<UploadPanelHandle>(null);
+  /**
+   * 업로드가 **실제로 쓴** 폴더. `base` 는 사람이 친 이름, `actual` 은 겹쳐서
+   * `_2` 가 붙었을 수도 있는 진짜 이름이다(`UploadPanel.resolveDomain`).
+   *
+   * 🔴 **파이프라인은 `actual` 로 돌려야 한다.** 파일은 `그늘막_2` 에 있는데
+   *    `start("그늘막")` 을 치면 안 터지고 **빈 폴더로 분석한다** — 화면에는
+   *    「정상 실행」으로 보이고 결과만 틀린다.
+   * 🔴 사람이 Step 1 로 돌아가 이름을 고치면 무효다. `base` 를 같이 들고
+   *    렌더 중에 대조한다.
+   */
+  const [uploadedDomain, setUploadedDomain] = useState<{
+    base: string;
+    actual: string;
+  } | null>(null);
+  /** 실행에 쓸 도메인. 겹쳐서 다른 폴더에 올라갔으면 **그쪽**이다. */
+  const runDomain = uploadedDomain?.base === domain ? uploadedDomain.actual : domain;
   useEffect(() => {
     const el = domainRef.current;
     if (el && typedDomain === null && el.value.trim()) setTypedDomain(el.value);
@@ -121,8 +137,11 @@ export default function Screen1Page() {
     if (dataSource === "upload" && uploadRef.current) {
       setStep1Busy(true);
       try {
-        const ok = await uploadRef.current.commit();
-        if (!ok) return;
+        const actual = await uploadRef.current.commit();
+        if (actual === null) return;
+        // 🔴 이름이 겹치면 패널이 `그늘막_2` 에 올린다. 그 사실을 **여기서 받아
+        //    들고 있어야** `onRun` 이 같은 폴더로 실행한다.
+        setUploadedDomain({ base: value, actual });
       } finally {
         setStep1Busy(false);
       }
@@ -149,8 +168,16 @@ export default function Screen1Page() {
     const value = (dataSource === "preset" ? domain : fromDom || domain).trim();
     setInputError(null);
 
+    /*
+     * 🔴 **업로드가 실제로 쓴 폴더로 돈다.** 같은 이름이 이미 있으면 파일은
+     *    `그늘막_2` 에 저장됐는데, 여기서 `그늘막` 을 보내면 파이프라인이
+     *    **다른(혹은 빈) 폴더**를 읽는다 — 예외 없이 결과만 틀린다.
+     *    프리셋 갈래는 카드가 정한 이름 그대로다(`uploadedDomain` 이 안 생긴다).
+     */
+    const target = uploadedDomain?.base === value ? uploadedDomain.actual : value;
+
     const id = await start(
-      value,
+      target,
       effectiveMode,
       isFull
         ? {
@@ -263,6 +290,22 @@ export default function Screen1Page() {
                       <span className="text-gray-400">— Step 1 에서 먼저 정합니다</span>
                     )}
                   </div>
+                  {/*
+                    🔴 **`_2` 를 알리는 유일한 자리다**(2026-08-14 사람 지시:
+                       도메인 칸을 고칠 때마다 뜨지 말고 「다음 단계」를 지난 뒤
+                       여기서 조그맣게). 같은 이름이 이미 있어서 다른 폴더에 올라갔다는
+                       사실을 아예 안 적으면, 나중에 마이페이지 run 목록에 `그늘막_2`
+                       가 떴을 때 그게 자기 실행인지 알 방법이 없다.
+                       ⚠ 위 칸은 계속 사람이 친 이름을 보여준다 — 바뀐 것은 저장 폴더지
+                         분석 주제가 아니다.
+                  */}
+                  {runDomain !== domain && (
+                    <p className="mt-1.5 text-xs text-gray-400">
+                      같은 이름이 이미 있어 저장 폴더는{" "}
+                      <code className="font-mono text-gray-500">{runDomain}</code> 입니다. 이번
+                      분석은 이 폴더로 돌아갑니다.
+                    </p>
+                  )}
                 </div>
 
                 <Field
