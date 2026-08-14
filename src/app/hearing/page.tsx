@@ -691,16 +691,8 @@ export default function Screen5Page() {
           </button>
         )}
       </div>
-
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 10px; }
-      `,
-        }}
-      />
+      {/* `.custom-scrollbar` 정의는 `globals.css` 로 옮겼다(2026-08-15) —
+          화면 5-B 도 같은 모양을 써야 해서, 같은 규칙이 두 곳에 있으면 안 된다. */}
     </PageBody>
   );
 }

@@ -29,6 +29,35 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 🔴 스크롤바 모양은 **여기 한 곳**에서 정한다(2026-08-15).
+   화면 5-B(다인 토론)가 `scrollbar-thin scrollbar-thumb-slate-300
+   scrollbar-track-transparent` · `scrollbar-none` 을 쓰고 있었는데, 그건
+   `tailwind-scrollbar` **플러그인 클래스**다. 이 프로젝트엔 그 플러그인이 없다
+   (`package.json` 확인 · `@plugin` 선언도 없다) — 즉 **한 줄도 생성되지 않는
+   죽은 클래스**였고, 화면에는 OS 기본 스크롤바가 그대로 나왔다. 얇게 만든 줄
+   알고 있었을 뿐이다(원칙 1: 조용한 실패).
+
+   화면 5-A(`/hearing`)만 멀쩡했던 건 그 파일이 같은 규칙을 **인라인
+   `<style>` 로 자기만 따로** 갖고 있었기 때문이다. 그 블록은 지웠다 —
+   같은 클래스 정의가 두 곳에 있으면 언젠가 한쪽만 바뀐다.
+
+   ⚠ 이름을 `scrollbar-*` 로 짓지 않는다. 나중에 그 플러그인을 실제로 넣으면
+     레이어 밖인 이 규칙이 유틸리티를 **영영** 이긴다(이 파일 아래 `.btn-*`
+     주석의 그 함정). */
+.custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.2); }
+.custom-scrollbar::-webkit-scrollbar-corner { background: transparent; }
+
+/* 스크롤은 되지만 막대는 안 그린다. 가로로 넘치는 태그 줄처럼, 넘친다는 사실이
+   내용으로 이미 보이는 자리에만 쓸 것 — 아무 표시도 없으면 못 찾는다. */
+.hide-scrollbar { scrollbar-width: none; }
+.hide-scrollbar::-webkit-scrollbar { display: none; }
+
 /* 🔴 여기 `.map-canvas { position:absolute; inset:0 }` 가 있었다. **지웠다.**
    전면 지도였던 옛 설계의 잔재인데, 지도를 액자 안에 넣은 뒤로는 **화면을 부쉈다.**
 
