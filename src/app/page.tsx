@@ -4,7 +4,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { PageBody, PageHeader } from "@/components/ui/Page";
-import { UploadPanel } from "@/components/upload/UploadPanel";
+import { UploadPanel, type UploadPanelHandle } from "@/components/upload/UploadPanel";
 import {
   MODE_FULL,
   MODE_HITL,
@@ -62,9 +62,20 @@ export default function Screen1Page() {
 
   const [activeStep, setActiveStep] = useState(1);
   const [step1Error, setStep1Error] = useState<string | null>(null);
+  // 「다음 단계」가 업로드를 기다리는 동안 참. 없으면 두 번 눌러 **같은 파일이
+  // 두 번 올라간다** — 패널의 `busy` 는 자기 버튼만 막는다.
+  const [step1Busy, setStep1Busy] = useState(false);
   const [step2Error, setStep2Error] = useState<string | null>(null);
 
   const domainRef = useRef<HTMLInputElement>(null);
+  /**
+   * 업로드 패널의 손잡이. **「다음 단계」가 파일을 올린다**(2026-08-14 사람 지시).
+   *
+   * 🔴 「분석 시작하기」가 아니라 여기인 이유: 아래 `{activeStep === 1 && …}` 이라
+   *    다음 칸으로 넘어가는 순간 패널이 **언마운트되고 고른 파일이 사라진다.**
+   *    이 시점엔 패널이 아직 살아 있으므로 파일 목록을 부모로 끌어올릴 필요가 없다.
+   */
+  const uploadRef = useRef<UploadPanelHandle>(null);
   useEffect(() => {
     const el = domainRef.current;
     if (el && typedDomain === null && el.value.trim()) setTypedDomain(el.value);
@@ -77,7 +88,7 @@ export default function Screen1Page() {
 
   const topnParsed = parseTopn(topnText);
 
-  function handleStep1Confirm() {
+  async function handleStep1Confirm() {
     const fromDom = domainRef.current?.value ?? "";
     const value = (dataSource === "preset" ? domain : fromDom || domain).trim();
     if (!dataSource) {
@@ -97,6 +108,26 @@ export default function Screen1Page() {
       setTypedDomain(fromDom);
     }
     setStep1Error(null);
+
+    /*
+     * 업로드 갈래에서만 — 고른 파일을 **여기서** 서버로 보낸다.
+     *
+     * 🔴 실패하면 넘어가지 않는다. 사유 문구는 **지어내지 않는다** — 패널이 이미
+     *    자기 자리에 서버 응답을 그대로 적어놨다(같은 실패를 두 곳에서 다르게
+     *    말하면 어느 쪽이 진짜인지 알 수 없다).
+     * 🔴 올릴 게 없어도 `true` 다. `commit()` 은 「성공했다」가 아니라
+     *    **「막을 이유가 없다」**를 돌려준다 — 이미 올려둔 사람은 그냥 지나간다.
+     */
+    if (dataSource === "upload" && uploadRef.current) {
+      setStep1Busy(true);
+      try {
+        const ok = await uploadRef.current.commit();
+        if (!ok) return;
+      } finally {
+        setStep1Busy(false);
+      }
+    }
+
     setActiveStep(2);
   }
 
@@ -190,7 +221,7 @@ export default function Screen1Page() {
                   </div>
 
                   <div className="-mx-2 -mb-2">
-                    <UploadPanel domain={domain} facilityType={facility} />
+                    <UploadPanel ref={uploadRef} domain={domain} facilityType={facility} />
                   </div>
                 </div>
               )}
@@ -367,12 +398,16 @@ export default function Screen1Page() {
               </div>
             </button>
           ) : (
-            <button 
-               onClick={activeStep === 1 ? handleStep1Confirm : handleStep2Confirm}
-               className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-md shadow-blue-200"
+            <button
+               onClick={() => {
+                 if (activeStep === 1) void handleStep1Confirm();
+                 else handleStep2Confirm();
+               }}
+               disabled={step1Busy}
+               className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-md shadow-blue-200 disabled:opacity-60"
             >
               <div className="flex items-center gap-2 text-sm">
-                다음 단계
+                {step1Busy ? "업로드 중..." : "다음 단계"}
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </button>

@@ -17,7 +17,7 @@
  *  · **실패 문구를 지어내지 않는다.** `ApiError.detail` 을 그대로 쓴다.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { ApiError, NetworkError } from "@/lib/omnisite/client";
 import {
   DATA_ACCEPT,
@@ -135,9 +135,16 @@ function kb(n: number): string {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
 
+/** 화면1 「다음 단계」가 잡는 손잡이. */
+export interface UploadPanelHandle {
+  /** 고른 파일을 올린다. `false` 면 넘어가지 말 것(사유는 패널이 화면에 적는다). */
+  commit: () => Promise<boolean>;
+}
+
 export function UploadPanel({
   domain,
   facilityType,
+  ref,
 }: {
   /** 화면 1 의 "분석 도메인" 입력값. 비어 있으면 아무 호출도 하지 않는다. */
   domain: string;
@@ -150,11 +157,12 @@ export function UploadPanel({
    *    상위 15건 중 4건이 전기차충전소 조례였다).
    */
   facilityType: string;
+  /** React 19 는 `ref` 를 그냥 prop 으로 받는다(`forwardRef` 불필요). */
+  ref?: Ref<UploadPanelHandle>;
 }) {
   const [tab, setTab] = useState<Tab>("data");
   const [domains, setDomains] = useState<DomainItem[] | null>(null);
   const [domainsError, setDomainsError] = useState<string | null>(null);
-  const [createDomain, setCreateDomain] = useState(false);
   const [ingest, setIngest] = useState(true);
   /**
    * 조례 업로드용 시설 유형 — **이 패널이 직접 묻는다.**
@@ -268,7 +276,21 @@ export function UploadPanel({
             setListAnswer({ key: listKey, dataList: null, lawList: r, error: null }),
           );
     return asked.catch((e: unknown) => {
-      // 400 = 아직 없는 도메인. 이건 오류가 아니라 "만들어야 한다" 는 안내다.
+      /*
+       * 🔴 **400 은 오류가 아니라 「아직 폴더가 없다」다.** 새 도메인을 치는 사람은
+       *    반드시 여기를 지나는데, 그 자리에 서버 문구(`400 — 도메인 폴더가 없습니다:
+       *    /code/datasets/user_input/흡연 · … 현재 도메인: []`)를 그대로 띄우면
+       *    **정상 경로가 빨간 에러로 보인다**(2026-08-14 사람 지시로 제거).
+       *    빈 목록으로 친다 — 위 도메인 상태 줄이 이미 「새로 만들어집니다」라고 말한다.
+       *
+       * 🔴 400 **만** 접는다. 500·타임아웃·네트워크는 그대로 문구를 낸다 —
+       *    전부 접으면 목록을 못 받은 것이 「파일 0개」로 보이고, 사람은 방금 올린
+       *    파일이 사라진 줄 안다(조용한 실패 금지).
+       */
+      if (e instanceof ApiError && e.status === 400) {
+        setListAnswer({ key: listKey, dataList: null, lawList: null, error: null });
+        return;
+      }
       setListAnswer({ key: listKey, dataList: null, lawList: null, error: describe(e) });
     });
   }, [listKey, trimmed, tab]);
@@ -306,8 +328,23 @@ export function UploadPanel({
   }
 
   // ── 업로드 ──────────────────────────────────────────────────
-  async function onUpload() {
-    if (!trimmed || picked.length === 0) return;
+  /**
+   * @returns 다음 칸으로 넘어가도 되는가. **「성공했다」가 아니라 「막을 이유가
+   *          없다」**다 — 올릴 게 없으면(`picked` 비었음) `true` 다. 이 값을
+   *          `commit()` 이 그대로 쓴다.
+   */
+  async function onUpload(): Promise<boolean> {
+    if (!trimmed || picked.length === 0) return true;
+    // 🔴 조례 탭에서 시설 유형이 비면 서버가 **무조건 400** 이다. 왕복하지 않고
+    //    여기서 막는다 — 화면에는 이미 그 이유가 적혀 있다(아래 안내 상자).
+    if (facilityMissing) {
+      setNotice({
+        kind: "error",
+        title: "시설 유형을 먼저 입력하세요",
+        lines: ["조례 업로드는 `facility_type` 이 필요합니다. 비워 두면 서버가 400 으로 거절합니다."],
+      });
+      return false;
+    }
     setBusy(true);
     setNotice(null);
     try {
@@ -315,7 +352,12 @@ export function UploadPanel({
         const r = await uploadDataFiles({
           domain: trimmed,
           files: picked,
-          createDomain,
+          // 🔴 **항상 true 다**(2026-08-14 사람 지시 「업로드 하면 새로 폴더를 만들어야
+          //    하니까」). 서버는 이미 있는 폴더면 아무것도 안 한다
+          //    (`upload.py:154` `if create and not root.is_dir():`) — 멱등이다.
+          //    ⚠ 잃은 것: 도메인 이름 오타가 이제 **조용히 새 폴더를 만든다.**
+          //      막는 자리는 여기가 아니라 화면1 의 도메인 칸이다.
+          createDomain: true,
         });
         const lines = [
           `저장 위치: ${r.saved_to}`,
@@ -339,7 +381,7 @@ export function UploadPanel({
           domain: trimmed,
           files: picked,
           facilityType: effectiveFacility || undefined,
-          createDomain,
+          createDomain: true, // 위 데이터 업로드와 같은 이유(멱등).
           ingest,
         });
         const lines = [
@@ -366,6 +408,7 @@ export function UploadPanel({
       }
       resetPicked();
       await Promise.all([loadList(), loadDomains()]);
+      return true;
     } catch (e) {
       const extra = partialLines(e);
       setNotice({
@@ -376,10 +419,25 @@ export function UploadPanel({
       // 🔴 실패해도 목록을 다시 읽는다. 저장은 됐는데 화면만 「0개」로 남으면
       //    사람은 같은 파일을 또 올린다.
       await Promise.all([loadList(), loadDomains()]);
+      return false;
     } finally {
       setBusy(false);
     }
   }
+
+  /**
+   * 화면1 「다음 단계」가 부른다 — **고른 파일을 여기서 서버로 보낸다**(2026-08-14
+   * 사람 지시 「그냥 업로드단 다음 단계 버튼 누르면 api 보내는걸로 하면 어때?」).
+   *
+   * 🔴 이 자리인 이유: `page.tsx:162` 이 `{activeStep === 1 && …}` 라 다음 칸으로
+   *    넘어가는 순간 이 패널이 **언마운트되고 `picked` 가 사라진다.** 「분석 시작하기」
+   *    에 묶으려면 파일 목록을 부모로 끌어올려야 하는데, 다음 단계 시점엔 패널이
+   *    아직 살아 있으므로 그럴 필요가 없다.
+   *
+   * 🔴 실패하면 `false` 다 — 부모는 넘어가지 않는다. 사유는 이 패널의 `notice` 가
+   *    이미 말하고 있으므로 부모가 문구를 지어내지 않는다.
+   */
+  useImperativeHandle(ref, () => ({ commit: onUpload }));
 
   // ── 삭제 ────────────────────────────────────────────────────
   async function onDelete(filename: string) {
@@ -491,47 +549,31 @@ export function UploadPanel({
               ))}
           </div>
         ) : (
-          <div className="flex flex-col gap-2">
-            {/*
-              🔴 프리셋 이름을 친 경우와 아예 없는 이름을 친 경우는 **다른 상황**이다.
-                 앞은 「배포 원본이 같은 이름으로 있다」이고, 올리면 **별개 폴더**가
-                 새로 생긴다(같은 폴더에 덧붙이는 게 아니다). 이 말을 안 하면
-                 사용자는 배포 데이터에 내 파일을 얹었다고 믿는다.
-            */}
+          /*
+           * 🔴 **아직 없는 도메인은 오류가 아니다.** 새로 올리는 사람은 늘 여기를
+           *    지난다 — 예전엔 이 자리에 긴 설명과 `create_domain` 체크박스가 있었는데,
+           *    올린다는 것 자체가 「폴더를 만들어 달라」이므로 물을 것이 없다
+           *    (2026-08-14 사람 지시). 지금은 `create_domain=true` 를 항상 보낸다.
+           *
+           * 🔴 프리셋 한 줄은 **남긴다.** 같은 이름의 배포 원본이 있으면 도메인 목록엔
+           *    파일이 13개라고 적혀 있는데 아래 목록은 **0개**로 뜬다 — 이 줄이 없으면
+           *    그 어긋남을 설명할 데가 없다(올리면 별개 폴더가 새로 생긴다).
+           */
+          <p className="text-gray-600">
             {presetEntry ? (
-              <p className="text-amber-800">
-                <span className="font-semibold">{trimmed}</span> 은 <strong>배포 원본</strong>으로만
-                있는 이름입니다(조례 {presetEntry.law_files}개 · 데이터 {presetEntry.data_files}개).
-                배포 원본 폴더에는 올릴 수 없습니다 — 아래를 켜면 <strong>같은 이름의 별개
-                업로드 폴더</strong>가 새로 만들어지고, 올린 파일은 배포 원본과 섞이지 않습니다.
-              </p>
+              <>
+                <span className="font-semibold text-gray-900">{trimmed}</span> 은 배포 원본으로만
+                있는 이름입니다. 올리면 <strong>같은 이름의 별개 업로드 폴더</strong>가 새로
+                만들어지고, 배포 원본({presetEntry.law_files + presetEntry.data_files}개)과 섞이지
+                않습니다.
+              </>
             ) : (
-              <p className="text-amber-800">
-                <span className="font-semibold">{trimmed}</span> 은 서버에 없는 도메인입니다.
-                {domains && domains.length > 0 && (
-                  <>
-                    {" "}
-                    현재 업로드 도메인:{" "}
-                    {domains
-                      .filter((d) => d.root !== "preset")
-                      .map((d) => d.domain)
-                      .join(", ") || "없음"}
-                  </>
-                )}
-              </p>
+              <>
+                <span className="font-semibold text-gray-900">{trimmed}</span> — 새 도메인입니다.
+                올리면 폴더가 새로 만들어집니다.
+              </>
             )}
-            <label className="flex items-center gap-2 text-gray-700">
-              <input
-                type="checkbox"
-                checked={createDomain}
-                onChange={(e) => setCreateDomain(e.target.checked)}
-              />
-              {presetEntry
-                ? "같은 이름의 업로드 폴더를 새로 만들고 올린다"
-                : "새 도메인 폴더를 만들고 올린다"}{" "}
-              (<code className="font-mono text-xs">create_domain</code>)
-            </label>
-          </div>
+          </p>
         )}
       </div>
 
@@ -643,7 +685,7 @@ export function UploadPanel({
           <div className="mt-4 flex gap-2">
             <button
               type="button"
-              onClick={onUpload}
+              onClick={() => void onUpload()}
               disabled={busy || facilityMissing}
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-bold hover:bg-blue-700 disabled:opacity-60"
             >
@@ -750,23 +792,16 @@ export function UploadPanel({
             )}
           </p>
         ) : listError ? (
-          <div className="flex flex-col gap-2">
-            {/*
-              🔴 프리셋 이름이면 이 400 은 고장이 아니라 **구조**다 — 파일 목록
-                 엔드포인트도 업로드 루트만 본다(`upload.py:692`·`:1160` → `_dirs()`).
-                 사유를 안 적으면 「목록이 깨졌다」로 읽힌다. 상태 코드는 화면에
-                 안 쓴다 — 서버 문구는 아래 원문에 그대로 남는다.
-            */}
-            {presetEntry && (
-              <p className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-                <strong>{trimmed}</strong> 은 배포 원본 폴더에만 있는 이름입니다. 파일 목록은
-                내가 올린 폴더만 보여 줍니다 — 배포 원본은 여기서 열람·삭제되지 않습니다.
-              </p>
-            )}
-            <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-600 break-all">
-              {listError}
-            </p>
-          </div>
+          /*
+           * 🔴 여기 오는 건 이제 **400 이 아닌 것**뿐이다(400 = 아직 없는 폴더 →
+           *    위 `loadList` 에서 빈 목록으로 접었다). 즉 진짜 고장이므로 서버 문구를
+           *    그대로 낸다 — 지어내지 않는다.
+           *    (프리셋 이름을 설명하던 줄은 도메인 상태 칸으로 옮겼다. 여긴 400 이
+           *     안 오므로 그 줄이 뜰 자리가 아니다.)
+           */
+          <p className="rounded-lg border border-gray-200 bg-gray-50 p-3 font-mono text-xs text-gray-600 break-all">
+            {listError}
+          </p>
         ) : tab === "data" ? (
           <DataTable list={dataList} busy={busy} onDelete={onDelete} />
         ) : (
