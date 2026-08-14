@@ -786,7 +786,7 @@ export default function DynamicHearingPage() {
   ]);
 
   return (
-    <PageBody fullWidth={true}>
+    <PageBody>
       <PageHeader
         screen={SCREEN}
         lead="이해관계자를 생성해 다자간 토론을 진행합니다."
@@ -1042,14 +1042,16 @@ function SitePanel({ site }: { site: ReturnType<typeof useSelectedSite> }) {
 }
 
 /**
- * 이 run 의 STEP1 감리 산출물에 조례 근거가 몇 건 있는지. **0 건도 숨기지 않는다.**
+ * 조례 근거를 **못 읽었을 때만** 말한다. 잘 읽혔으면 아무것도 띄우지 않는다.
  *
- * 🔴 **「실어 보낸다」가 아니다**(2026-08-11 계약 변경). 예전엔 프런트가 이 문장들을
- *    `ordinance_contexts` 로 요청에 담았지만 지금은 안 보낸다 — 서버가 `parcel_id` 로
- *    조례·감리 근거를 직접 조회한다. 그래도 이 칸을 지우지 않는 이유는, 사람이
- *    **무엇을 보고 토론을 시작하는지**는 여전히 보여야 하기 때문이다.
- *    ⚠ 그래서 여기 뜬 건수는 서버가 실제로 쓴 근거 건수와 **다를 수 있다**. 같다고
- *      적으면 확인한 적 없는 것을 확인했다고 말하는 셈이다(원칙 4·5).
+ * 🔴 **「N 건 있습니다」는 지웠다**(2026-08-15 사용자 지시). 예전엔 건수를 늘 띄웠는데,
+ *    이 화면을 쓰는 사람이 할 수 있는 일이 없는 문장이었다 — 요청에 싣지도 않고
+ *    (2026-08-11 계약 변경으로 서버가 `parcel_id` 로 직접 조회한다), 건수를 봐도
+ *    누를 것도 고칠 것도 없다. 정상일 때 침묵하는 게 맞다.
+ *
+ * ⚠ **0 건과 읽기 실패는 계속 띄운다.** 그건 성질이 다르다 — 이 화면이 보여줄 근거가
+ *   없다는 뜻이고, 사용자가 「왜 근거가 안 보이지」를 물을 자리다. 조용히 넘기면
+ *   그게 조용한 실패다(원칙 1). 다만 서버가 조회할 근거까지 없다는 뜻은 아니다.
  */
 function OrdinanceNote({
   loading,
@@ -1087,12 +1089,8 @@ function OrdinanceNote({
     );
   }
 
-  return (
-    <div className="mt-3 rounded-xl border border-hairline bg-black/[0.02] px-4 py-2.5 text-[12px] text-ink-secondary">
-      이 run 의 STEP1 감리 산출물에 조례 근거 <b className="text-ink">{count}건</b>이 있습니다.
-      요청에는 싣지 않습니다 — 서버가 parcel_id 로 직접 조회합니다.
-    </div>
-  );
+  // 근거가 있다 = 정상. 할 말이 없다.
+  return null;
 }
 
 function FailureBox({ title, failure }: { title: string; failure: Failure }) {

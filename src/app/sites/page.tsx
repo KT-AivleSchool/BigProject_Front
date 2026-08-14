@@ -95,7 +95,7 @@ export default function Screen4Page() {
   }
 
   return (
-    <PageBody fullWidth={true}>
+    <PageBody>
       <PageHeader
         screen={SCREEN}
         lead="선택된 후보지들이 얼마나 많은 수요를 감당할 수 있는지(커버율)를 확인합니다. 최종 순위는 단순 점수가 아닌 실질적인 수요 해결 기여도를 기준으로 결정됩니다."

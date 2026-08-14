@@ -67,9 +67,18 @@ export function PageFooter({
   );
 }
 
-export function PageBody({ children, fullWidth }: { children: React.ReactNode, fullWidth?: boolean }) {
+/**
+ * 화면 여섯 개가 **같은 폭**을 쓴다. 그래야 단계를 넘길 때 제목이 안 튄다.
+ *
+ * 🔴 `fullWidth` 옵션이 있었고 화면 4(위치 선정)·5-B(다자간 토론) 둘만 그걸 켜고
+ *    있었다. 그 둘만 제목이 왼쪽 끝(x≈18)에 붙고 나머지 넷은 가운데 통(x≈417)에
+ *    들어가서, 단계를 넘길 때마다 제목·설명이 400px 씩 옮겨 다녔다
+ *    (2026-08-15 사용자 지적). 폭을 늘리려면 화면 안쪽에서 늘려야지 통을
+ *    바꾸면 안 된다 — 통은 여섯 화면의 공통 골격이다.
+ */
+export function PageBody({ children }: { children: React.ReactNode }) {
   return (
-    <div className={`mx-auto w-full px-5 pt-7 pb-10 h-full flex flex-col min-h-0 overflow-y-auto ${fullWidth ? '' : 'max-w-[1200px]'}`}>
+    <div className="mx-auto w-full max-w-[1200px] px-5 pt-7 pb-10 h-full flex flex-col min-h-0 overflow-y-auto">
       {children}
     </div>
   );
