@@ -471,7 +471,6 @@ export function Header() {
       )}
       {confirmTargets && (
         <ResetConfirmModal
-          isOpen
           targets={confirmTargets}
           onClose={() => setConfirmTargets(null)}
           onConfirm={() => runReset(confirmTargets)}

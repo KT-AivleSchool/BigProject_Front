@@ -42,6 +42,9 @@ export interface AuditEta {
   reason: string | null;
 }
 
+/** 아직 못 구한 상태. 한 벌만 두어 매 렌더 새 객체가 나가지 않게 한다. */
+const EMPTY: AuditEta = { seconds: null, datasetCount: null, totalBytes: null, reason: null };
+
 export function estimateAuditSeconds(datasetCount: number, totalBytes: number): number | null {
   if (datasetCount <= 0 || totalBytes <= 0) return null;
   const meanMB = totalBytes / datasetCount / 1e6;
@@ -57,20 +60,23 @@ export function estimateAuditSeconds(datasetCount: number, totalBytes: number): 
  *
  * 도메인이 없으면(= run 을 아직 안 골랐다) 아무것도 안 부른다. 실패는 삼키지 않고
  * `reason` 으로 돌려준다 — 화면은 그때 숫자 대신 그 사유를 말할 수 있다.
+ *
+ * 🔴 **값을 `domain` 과 **함께** 들고, 돌려줄 때 대조한다**(2026-08-14). 예전엔
+ *    `AuditEta` 만 들고 있다가 도메인이 바뀌면 `useEffect` 안에서 비웠는데, 그
+ *    방식은 **두 가지가 같이 틀린다**:
+ *      ① 「비운다」가 `domain` 이 **falsy 가 될 때만** 걸렸다 — 흡연 → 재활용처럼
+ *         **다른 도메인으로 바뀌면** 새 응답이 올 때까지 **앞 도메인의 예상시간이
+ *         그대로 떠 있다.** 숫자는 멀쩡해 보이는데 다른 도메인 것이다(원칙 4).
+ *      ② 그 비우기가 곧 eslint `react-hooks/set-state-in-effect` 였다.
+ *    「effect 에서 되돌리기」가 아니라 **유도하기**로 바꾸면 둘 다 사라진다 —
+ *    `got.domain !== domain` 이면 그 값은 **이 도메인의 답이 아니므로** 안 쓴다.
+ *    (같은 판단이 `useSelectedSite.ts` 에도 적혀 있다.)
  */
 export function useAuditEta(domain: string | undefined | null): AuditEta {
-  const [eta, setEta] = useState<AuditEta>({
-    seconds: null,
-    datasetCount: null,
-    totalBytes: null,
-    reason: null,
-  });
+  const [got, setGot] = useState<{ domain: string; eta: AuditEta } | null>(null);
 
   useEffect(() => {
-    if (!domain) {
-      setEta({ seconds: null, datasetCount: null, totalBytes: null, reason: null });
-      return;
-    }
+    if (!domain) return;
     let cancelled = false;
     fetchDataFiles(domain)
       .then((res) => {
@@ -78,20 +84,26 @@ export function useAuditEta(domain: string | undefined | null): AuditEta {
         const files = res.files.filter((f) => f.is_dataset);
         const bytes = files.reduce((s, f) => s + (f.size || 0), 0);
         const n = res.dataset_count || files.length;
-        setEta({
-          seconds: estimateAuditSeconds(n, bytes),
-          datasetCount: n,
-          totalBytes: bytes,
-          reason: null,
+        setGot({
+          domain,
+          eta: {
+            seconds: estimateAuditSeconds(n, bytes),
+            datasetCount: n,
+            totalBytes: bytes,
+            reason: null,
+          },
         });
       })
       .catch((e) => {
         if (cancelled) return;
-        setEta({
-          seconds: null,
-          datasetCount: null,
-          totalBytes: null,
-          reason: e instanceof Error ? e.message : String(e),
+        setGot({
+          domain,
+          eta: {
+            seconds: null,
+            datasetCount: null,
+            totalBytes: null,
+            reason: e instanceof Error ? e.message : String(e),
+          },
         });
       });
     return () => {
@@ -99,5 +111,5 @@ export function useAuditEta(domain: string | undefined | null): AuditEta {
     };
   }, [domain]);
 
-  return eta;
+  return got && got.domain === domain ? got.eta : EMPTY;
 }

@@ -46,6 +46,16 @@ export function PostEditModal({ postId, isOpen, onClose, onSuccess }: PostEditMo
 
   useEffect(() => {
     if (!isOpen || !postId) return;
+    /*
+     * 🔴 누른다(2026-08-14). 여기 앞머리 네 줄(`setInitialLoading` 외 3개)은 **정말로
+     *    동기 `setState`** 라 규칙이 옳다. 그런데 그걸 정리 함수로 옮겨도 **에러는
+     *    안 사라진다** — 옆의 `PostDetailModal` 이 그 모양인데(첫 줄이 `await`,
+     *    동기 setState 0개) 똑같이 잡힌다. 규칙은 `await` 를 경계로 안 보고
+     *    「setState 를 부르는 함수를 effect 가 직접 부르는가」만 본다.
+     *    즉 옮기면 **동작만 바뀌고 lint 는 그대로**라, 검증 못 하는 변경 대신
+     *    사유를 남기고 누른다.
+     */
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDetail(postId);
   }, [isOpen, postId]);
 

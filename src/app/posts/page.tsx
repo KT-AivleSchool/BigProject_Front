@@ -92,6 +92,11 @@ function PostsPageContent() {
   };
 
   useEffect(() => {
+    // 🔴 누른다(2026-08-14). `react-hooks/set-state-in-effect` 는 `await` 를 경계로
+    //    안 보고 「setState 를 부르는 함수를 effect 가 직접 부르는가」만 잡는다 —
+    //    첫 줄이 `await` 인 `PostDetailModal.loadDetail` 도 같은 이유로 걸렸다.
+    //    목록 조건(페이지·정렬·검색)이 바뀌면 다시 조회하는 건 정당한 effect 다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadPosts(page, limit, sortBy, order, activeSearch.type, activeSearch.query, isMineFilter);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, limit, sortBy, order, activeSearch, isMineFilter]);

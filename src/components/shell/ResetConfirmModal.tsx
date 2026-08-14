@@ -19,6 +19,18 @@
  * 🔴 **개수를 글로 적는다.** 「폴더를 지웁니다」는 크기를 안 알려준다 —
  *    「조례 3개 · 데이터 11개」라고 적어야 사람이 무게를 잰다(절대원칙 4).
  *    개수는 우리가 세지 않는다. `GET /upload/domains` 가 준 값 그대로다.
+ *
+ * 🔴 **`isOpen` prop 이 없는 것은 빠뜨린 게 아니다**(2026-08-14). 이 모달은
+ *    `Header.tsx` 가 `{confirmTargets && <ResetConfirmModal …/>}` 로 **조건부
+ *    렌더**한다 — 닫히면 언마운트되므로 **존재 자체가 곧 열림**이다. 그래서
+ *    `useState("")` 의 초기값이 매번 새로 잡히고, 지난번에 친 도메인 이름이
+ *    남을 자리가 **구조적으로** 없다.
+ *    처음엔 `isOpen` 을 받아 `useEffect` 로 비웠는데(그 자리가 곧 eslint
+ *    `react-hooks/set-state-in-effect` 였다) 그 방식은 **안전이 부모의 렌더
+ *    방식에 매달린다** — 누가 나중에 항상 마운트해두고 `isOpen` 만 토글하면
+ *    「이름을 치게 한 이유」가 조용히 사라진다. 규칙을 억누르는 대신 그
+ *    매달림을 없앴다. `AuthModal` 은 항상 마운트라 `isOpen` 을 받는다 —
+ *    **모양이 다른 건 두 모달의 수명이 달라서다.**
  */
 import { useEffect, useState } from "react";
 
@@ -38,12 +50,10 @@ export interface ResetTargets {
 }
 
 export function ResetConfirmModal({
-  isOpen,
   targets,
   onClose,
   onConfirm,
 }: {
-  isOpen: boolean;
   targets: ResetTargets;
   onClose: () => void;
   onConfirm: () => void;
@@ -51,22 +61,13 @@ export function ResetConfirmModal({
   const { runId, live, domain, deletable, countReason } = targets;
   const [typed, setTyped] = useState("");
 
-  // 열 때마다 비운다. 안 그러면 지난번에 친 이름이 남아 **다음 도메인이 곧바로
-  // 삭제 가능** 상태로 열린다 — 이름을 치게 한 이유가 통째로 사라진다.
   useEffect(() => {
-    if (isOpen) setTyped("");
-  }, [isOpen]);
-
-  useEffect(() => {
-    if (!isOpen) return;
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     return () => {
       document.body.style.overflow = prev;
     };
-  }, [isOpen]);
-
-  if (!isOpen) return null;
+  }, []);
 
   const needsTyping = deletable !== null && !!domain;
   const armed = !needsTyping || typed === domain;

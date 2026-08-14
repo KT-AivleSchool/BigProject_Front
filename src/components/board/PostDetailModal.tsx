@@ -36,6 +36,12 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
    * 🔴 `setLoading(true)` 를 여기 두지 않는다 — 그러면 effect 가 이 함수를 부르는
    *    순간이 「동기 setState」가 된다. 켜는 쪽은 **부르는 사람**이 맡는다
    *    (열 때는 초기값·정리 함수가, 수정 후 재조회는 `onSuccess` 가).
+   *    ⚠ **이 옮김으로 lint 가 조용해지진 않는다**(2026-08-14 실측). 이 함수는
+   *      첫 줄이 `await` 라 동기 `setState` 가 **한 개도 없는데도**
+   *      `react-hooks/set-state-in-effect` 가 아래 호출부를 잡는다 — 규칙은
+   *      `await` 를 경계로 안 보고 「setState 를 부르는 함수를 effect 가 직접
+   *      부르는가」만 본다. 그래도 이 옮김은 **유지한다**: 규칙 때문이 아니라
+   *      실제로 렌더 한 번을 덜기 때문이다(초기값이 이미 `true` 다).
    */
   const loadDetail = async (id: number) => {
     try {
@@ -56,6 +62,10 @@ export function PostDetailModal({ postId, isOpen, onClose, onDeleted }: PostDeta
       //    동안의 상태」와 「닫힌 뒤의 상태」가 한 자리에서 안 섞인다.
       return;
     }
+    // 🔴 누른다(고친 게 아니다). 위 주석대로 이 함수엔 동기 `setState` 가 없는데도
+    //    규칙이 **호출 자체**를 잡는다. 피하려면 조회를 마이크로태스크로 미루는
+    //    수밖에 없는데 그건 규칙만 조용해지고 동작은 그대로다 — 속이느니 남긴다.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     loadDetail(postId);
     return () => {
       setPost(null);
