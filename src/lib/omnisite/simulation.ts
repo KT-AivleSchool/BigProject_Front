@@ -121,6 +121,14 @@ export const ERROR_TITLES: Record<string, string> = {
   CANDIDATE_NOT_FOUND: "후보점을 찾지 못했습니다",
   OPENAI_QUOTA_EXCEEDED: "OpenAI 사용량 한도를 초과했습니다",
   AI_ENGINE_ERROR: "AI 엔진 오류",
+  /**
+   * 🔴 여기 하나만 **서버 코드가 아니라 화면이 붙이는 코드**다(`hearing/page.tsx`
+   *    의 `onopen`). 제목을 굳이 넣는 이유는 이 코드가 가리키는 곳이 다른 것들과
+   *    정반대이기 때문이다 — 나머지는 「백엔드를 보라」인데 이건 **「백엔드를 보지
+   *    말라」**다. 제목이 없으면 코드가 그대로 큰 글씨가 되고, 사람은 아래 사유를
+   *    읽기 전에 이미 토론 엔진 로그를 뒤진다(2026-08-14 에 실제로 그랬다).
+   */
+  BACKEND_UNREACHABLE: "백엔드에 연결하지 못했습니다 (프록시 구간)",
 };
 
 /**

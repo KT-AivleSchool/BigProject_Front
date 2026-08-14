@@ -52,6 +52,23 @@ const SS_KEYS = ["sim_messages", "sim_metrics", "sim_started", "sim_finished", "
 /** 버퍼 마감 시한(ms). rAF 가 안 도는 숨은 탭에서 이쪽이 받아낸다. */
 const FLUSH_DEADLINE_MS = 120;
 
+/**
+ * `onopen` 이 판정한 **사유 코드**를 바깥 `catch` 까지 들고 가는 통로.
+ *
+ * `fetchEventSource` 는 던진 것만 밖으로 내보내므로 코드를 문구에 실어 보내고
+ * 다시 파싱하는 수밖에 없는데, 그러면 문구를 한 글자 고치는 날 분기가 조용히
+ * 죽는다. 필드로 들고 간다.
+ */
+class OpenFailure extends Error {
+  constructor(
+    readonly code: string,
+    detail: string,
+  ) {
+    super(detail);
+    this.name = "OpenFailure";
+  }
+}
+
 export default function Screen5Page() {
   /**
    * 🔴 「토론할 위치」 배선은 **`useSelectedSite()` 한 곳**이다(2026-08-11 이관).
@@ -337,7 +354,34 @@ export default function Screen5Page() {
                 errorData.detail || errorData.message || "백엔드에서 JSON 에러를 반환했습니다.",
               );
             }
-            throw new Error(`예상치 못한 Content-Type: ${ct || "(없음)"} (HTTP ${response.status})`);
+            /**
+             * 🔴 **Content-Type 이 아예 없으면 스트림 문제가 아니다.**
+             *    이 자리는 오래 「예상치 못한 Content-Type: (없음) (HTTP 500)」만
+             *    띄웠다. 그 문구를 받은 사람은 백엔드 토론 엔진을 뒤지는데,
+             *    2026-08-14 조사에서 EC2 컨테이너 로그 · nginx 로그 · 로컬
+             *    uvicorn · 핸들러 어디에도 **요청 자체가 닿은 흔적이 없었다.**
+             *
+             *    백엔드는 이 모양으로 응답하지 않는다 — 성공은 `text/event-stream`,
+             *    실패는 `application/json` 이고 둘 다 위에서 걸린다. 헤더 없는 500
+             *    을 만들 수 있는 건 **그 앞에 있는 Next rewrite 프록시**뿐이다
+             *    (`next.config.ts` 의 proxyTimeout·업로드 상한 주석에 같은 서명이
+             *    두 번 적혀 있다 — 「죽인 쪽은 백엔드가 아니다」).
+             *
+             *    그래서 코드부터 가른다. 사유를 스트림 쪽으로 읽히게 두면 조사
+             *    인력이 통째로 엉뚱한 곳으로 간다(원칙 4: 없는 사실을 말하지 않는다).
+             */
+            if (ct === "") {
+              throw new OpenFailure(
+                "BACKEND_UNREACHABLE",
+                `요청이 백엔드에 닿지 않았습니다. 앞단 프록시가 백엔드 응답 없이 ` +
+                  `HTTP ${response.status} 를 만들었습니다(Content-Type 없음 — 백엔드는 ` +
+                  `이런 응답을 만들지 않습니다). 토론 엔진 문제가 아니므로 확인할 곳은 ` +
+                  `ⓐ 백엔드 프로세스가 떠 있는지 ⓑ \`OMNISITE_API_ORIGIN\` 이 그 주소를 ` +
+                  `가리키는지(안 주면 http://127.0.0.1:8000) ⓒ Next 서버 콘솔의 ` +
+                  `\`Failed to proxy … ECONNREFUSED/ECONNRESET\` 줄입니다.`,
+              );
+            }
+            throw new Error(`예상치 못한 Content-Type: ${ct} (HTTP ${response.status})`);
           },
           onmessage(event) {
             if (!event.data) return;
@@ -404,7 +448,9 @@ export default function Screen5Page() {
         }
         if (controller.signal.aborted) return; // 타임아웃·언마운트는 위에서 이미 처리했다
         setFailure({
-          code: "STREAM_FAILED",
+          // `onopen` 이 이미 사유를 판정했으면 그 코드를 쓴다. 여기서 전부
+          // `STREAM_FAILED` 로 덮으면 위에서 가른 것이 도로 뭉개진다.
+          code: err instanceof OpenFailure ? err.code : "STREAM_FAILED",
           detail: err instanceof Error ? err.message : String(err),
         });
         setIsFinished(true);
