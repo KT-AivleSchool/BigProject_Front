@@ -33,7 +33,7 @@ export function ProgressSidebar() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-5 scrollbar-thin">
+      <div className="flex-1 custom-scrollbar overflow-y-auto p-5">
         {restoring ? (
           <p className="text-xs text-gray-500 text-center mt-10">이전 실행을 확인하는 중...</p>
         ) : !run ? (
@@ -129,7 +129,7 @@ function SidebarContent({ run, baseline, runningElapsedSec, refresh }: { run: Ru
         <div className="p-3 border-b border-gray-100 bg-gray-50/50">
           <h3 className="text-xs font-bold text-gray-700">작업 단계</h3>
         </div>
-        <ol className="p-2 flex flex-col gap-1 max-h-[200px] overflow-y-auto scrollbar-thin">
+        <ol className="p-2 flex flex-col gap-1 max-h-[200px] overflow-y-auto custom-scrollbar">
           {run.steps.map((s) => (
             <StepRow key={s.id} step={s} baselineSec={baseline?.[s.id] ?? null} />
           ))}
