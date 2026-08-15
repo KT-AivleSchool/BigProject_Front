@@ -22,31 +22,40 @@ export function ProgressSidebar() {
     return null;
   }
 
+  /**
+   * 🔴 **run 이 없으면 통을 아예 안 그린다**(2026-08-15 사람 지시). 예전엔 420px
+   *    패널을 띄워놓고 그 안에 「진행 중인 분석이 없습니다」를 적었다 — 화면1 에
+   *    처음 들어온 사람은 아직 아무것도 시작하지 않았는데 **모니터가 먼저 켜져
+   *    있고 「없다」고 말하는** 화면을 본다. 감시할 대상이 생긴 뒤에 켜지는 게
+   *    맞다.
+   *
+   * 🔴 **`restoring` 도 같이 막는다.** 이게 진짜 이유다 — `restoring` 은 초깃값이
+   *    `true` 라 **서버 프리렌더에도 참**이고, 그래서 브라우저가 받는 HTML 에 이미
+   *    420px 패널이 들어 있다. `!run` 만 막으면 패널이 **한 번 그려졌다가 사라져**
+   *    본문이 420px 옆으로 튄다. 저장된 run_id 가 없을 때 `restoring` 은
+   *    마이크로태스크 한 번이라(`RunProvider.tsx:193`) 여기서 막으면 깜빡임이
+   *    아예 없다.
+   *
+   * ⚠ 저장된 run 을 복원하는 경우에는 `fetchRun` 왕복만큼 늦게 나타난다. 그건
+   *   **맞는 순서**다 — 있는지 모르는 것을 미리 그려놓고 지우는 것보다 낫다.
+   * ⚠ 그래서 「없음」·「복원 중」 두 상태는 이 컴포넌트에 **없다.** 없는 것을
+   *   그리는 자리를 다시 만들지 말 것.
+   */
+  if (restoring || !run) return null;
+
   return (
     <aside className="relative w-[420px] bg-gray-50/80 backdrop-blur-xl border-l border-gray-200 flex flex-col h-full shadow-sm shrink-0">
       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white/50">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-bold text-gray-800">실시간 분석 모니터링</h2>
-          {run && (run.status === "running" || run.status === "queued") && (
+          {(run.status === "running" || run.status === "queued") && (
              <span className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
           )}
         </div>
       </div>
 
       <div className="flex-1 custom-scrollbar overflow-y-auto p-5">
-        {restoring ? (
-          <p className="text-xs text-gray-500 text-center mt-10">이전 실행을 확인하는 중...</p>
-        ) : !run ? (
-          <div className="text-center mt-20 flex flex-col items-center">
-            <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-gray-400"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-            </div>
-            <p className="text-sm font-medium text-gray-600">진행 중인 분석이 없습니다</p>
-            <p className="text-xs text-gray-400 mt-2">좌측 화면에서 분석을 시작해주세요.</p>
-          </div>
-        ) : (
-          <SidebarContent run={run} baseline={baseline} runningElapsedSec={runningElapsedSec} refresh={refresh} />
-        )}
+        <SidebarContent run={run} baseline={baseline} runningElapsedSec={runningElapsedSec} refresh={refresh} />
       </div>
     </aside>
   );
