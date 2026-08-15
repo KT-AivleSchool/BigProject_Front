@@ -20,7 +20,7 @@ import { useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { ArtifactView2 } from "@/components/ui/ArtifactView";
 import { GridMap, polygonsOf } from "@/components/map/GridMap";
-import { PageBody, PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
+import { PageFooter, PageHeader, SourceNote } from "@/components/ui/Page";
 import { useArtifact } from "@/lib/omnisite/useArtifact";
 import { useRun } from "@/lib/omnisite/RunProvider";
 import { writeSitePick } from "@/lib/omnisite/sitePick";
@@ -94,14 +94,28 @@ export default function Screen4Page() {
     router.push("/hearing/select?force=true");
   }
 
+  /**
+   * 🔴 이 화면만 `PageBody` 를 안 쓴다. 그 통은 `max-w-[1200px]` 이고, 캔버스는
+   *    1750px 이라 **550px 을 잘라 버린다**(실측: 지도가 922px). 지도가 있는 화면은
+   *    여기 하나뿐이고, 넓이가 곧 읽히는 정보량이다.
+   *
+   * ⚠ 그렇다고 `PageBody` 에 `fullWidth` 를 되살리면 안 된다 — 그건 제목까지 같이
+   *    끌고 나가서 단계를 넘길 때마다 제목이 400px 씩 튀었다(2026-08-15 지적).
+   *    그래서 **제목만** 같은 통(`mx-auto max-w-[1200px] px-5`)에 그대로 두고
+   *    지도 아래쪽만 폭을 푼다. 제목의 x 좌표는 나머지 다섯 화면과 글자 단위로 같다.
+   *    ⓐ 바깥에 `px-5` 를 주면 안 된다 — 안쪽 통이 그만큼 좁아져 제목이 20px 밀린다.
+   *    반드시 안쪽 통이 `px-5` 를 갖는다.
+   */
   return (
-    <PageBody>
-      <PageHeader
-        screen={SCREEN}
-        lead="선택된 후보지들이 얼마나 많은 수요를 감당할 수 있는지(커버율)를 확인합니다. 최종 순위는 단순 점수가 아닌 실질적인 수요 해결 기여도를 기준으로 결정됩니다."
-      />
+    <div className="h-full flex flex-col min-h-0 pt-7 pb-5 overflow-y-auto">
+      <div className="mx-auto w-full max-w-[1200px] shrink-0 px-5">
+        <PageHeader
+          screen={SCREEN}
+          lead="선택된 후보지들이 얼마나 많은 수요를 감당할 수 있는지(커버율)를 확인합니다. 최종 순위는 단순 점수가 아닌 실질적인 수요 해결 기여도를 기준으로 결정됩니다."
+        />
+      </div>
 
-      <div className="flex-1 flex flex-col min-h-0 pr-2 mt-4 pb-4">
+      <div className="flex-1 flex flex-col min-h-0 px-5 mt-4">
         <ArtifactView2 a={grid} b={topn} what="점수 격자와 후보지">
           {(g, rows) => {
             if (g.crs !== "EPSG:4326") {
@@ -134,9 +148,15 @@ export default function Screen4Page() {
                     */}
 
 
-                  <div className="flex-1 min-h-0 grid md:grid-cols-5">
-                    {/* Left: Map (4 columns) */}
-                    <div className="relative h-full min-h-0 md:col-span-4 border-r border-hairline overscroll-none touch-none">
+                  {/**
+                    * 🔴 `grid-cols-5` 였다. 비율 분할이라 통이 넓어지면 **오른쪽 패널도
+                    *    같이 넓어져** 늘어난 폭의 1/5 를 리포트가 가져간다. 리포트는
+                    *    글자 폭이 정해진 표라 넓어져 봐야 빈칸이 늘 뿐이다. 고정폭으로
+                    *    묶고 남는 건 전부 지도에 준다.
+                    */}
+                  <div className="flex-1 min-h-0 flex flex-col md:flex-row">
+                    {/* Left: Map (남는 폭 전부) */}
+                    <div className="relative h-full min-h-0 flex-1 min-w-0 border-r border-hairline overscroll-none touch-none">
                       <GridMap
                         grid={g}
                         topn={rows}
@@ -185,8 +205,8 @@ export default function Screen4Page() {
                       </div>
                     </div>
 
-                    {/* Right: Sidebar (1 column) */}
-                    <aside className="flex h-full flex-col min-h-0 bg-gray-50/80 backdrop-blur-xl border-l border-gray-200 md:col-span-1 relative">
+                    {/* Right: Sidebar (고정 320px) */}
+                    <aside className="flex h-full flex-col min-h-0 bg-gray-50/80 backdrop-blur-xl border-l border-gray-200 md:w-[320px] md:shrink-0 relative">
                       <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-white/50 shrink-0">
                         <div className="flex items-center gap-2">
                           <h2 className="text-sm font-bold text-gray-800">최적 입지 분석 리포트</h2>
@@ -230,7 +250,7 @@ export default function Screen4Page() {
           }}
         </ArtifactView2>
       </div>
-    </PageBody>
+    </div>
   );
 }
 
