@@ -28,8 +28,46 @@
  *      다시 나타나고, 그때 `undefined` 를 채워버리면 화면이 거짓말을 한다.
  */
 import { deleteJson, getJson, postForm } from "./client";
+import { directUrl } from "./simulation";
 
 const BASE = "/api/v1/upload";
+
+/**
+ * **올리는 두 호출만** 백엔드를 직접 친다(`POST /regulation` · `POST /data`).
+ * 목록·삭제는 그대로 rewrite 를 탄다 — 몸통이 없으니 걸릴 벽이 없다.
+ *
+ * 🔴 이유는 **느려서가 아니라 몸통 크기** 때문이다. 그리고 그 상한은
+ *    **`Content-Type` 에 따라 다르다** — 같은 바이트 수로 대조한 값이다
+ *    (백엔드 실측 2026-08-15, 우리 실측과 일치):
+ *
+ *      4,716,000 B · application/json     → 422 (오리진이 답했다 · server: nginx 있음)
+ *      4,716,000 B · multipart/form-data  → 413 (오리진에 못 닿았다 · nginx 헤더 없음)
+ *
+ *      형식              통과 최대      차단 최소      실효 상한
+ *      multipart        4,715,000 B   4,716,000 B   ≈ 4.71 MB
+ *      json             5,990,000 B   6,000,000 B   ≈ 5.99 MB
+ *
+ *    설명은 추정이다(Lambda 이벤트에 바이너리는 base64 로 실리고 텍스트는 그대로
+ *    실린다 — `6 MiB × 3/4 = 4,718,592 B` 가 실측 임계와 3KB 차이다). **숫자는
+ *    실측**이니 설계는 숫자로 한다. 직결로 보내면 오리진 nginx 의
+ *    `client_max_body_size 512m`(server 블록 → 전 경로 상속) 만 남고, 우리 실측으로
+ *    **원본 20MB 가 앱까지 닿는다**.
+ *
+ * 🔴 **「6MB 밑으로 쪼개면 된다」는 틀리다.** 원본 5MB·5.9MB 는 이미 413 이다
+ *    (우리 실측). multipart 기준은 6MB 가 아니라 **4.4MB** 다.
+ * 🔴 그리고 그건 **파일 하나가 아니라 요청 바디 전체**다 — 다중 파일이면 합산이고
+ *    multipart 경계·헤더도 같이 센다. 쪼갤 일이 생기면 **요청당 총합 4.4MB**.
+ *
+ * ⚠ 413 은 오리진에 **로그가 안 남는다** — 닿기 전에 잘리기 때문이다. 그래서
+ *   백엔드 nginx 액세스로그에 413 이 0건인 것은 「없었다」가 아니라 **볼 수 없다**
+ *   는 뜻이다. 「우리 쪽엔 400 뿐」을 근거로 벽이 없다고 판단하면 안 된다.
+ * ⚠ 413 헤더에는 `server: nginx` 도 `x-amplify-status` 도 **없고** CloudFront
+ *   헤더만 온다. 504(컴퓨트 타임아웃)와 판별자가 다르다 — 공통은 `server: nginx`
+ *   **부재** 하나뿐이다.
+ * ⚠ 직결이라 **교차 출처**다. `client.ts` 가 `credentials` 를 안 걸어서 preflight
+ *   가 통과한다(OPTIONS 200 · `allow-headers: authorization` 실측). 여기에
+ *   `credentials: "include"` 를 붙이면 조용히 전부 깨진다.
+ */
 
 /**
  * 파일 선택창 `accept` 힌트. **검증은 서버가 한다** — 여기 목록은 사용자가
@@ -251,7 +289,10 @@ export function uploadRegulations(opts: {
   if (opts.facilityType) form.set("facility_type", opts.facilityType);
   if (opts.createDomain !== undefined) form.set("create_domain", String(opts.createDomain));
   if (opts.ingest !== undefined) form.set("ingest", String(opts.ingest));
-  return postForm<RegulationUploadResult>(`${BASE}/regulation`, form);
+  // 🔴 경로는 **단수** `/regulation` 이다. 복수 `/regulations` 는 GET(목록)·
+  //    DELETE 전용이라 POST 로 치면 **405** 다(실측). 백엔드 전달문의
+  //    「`/upload/regulations` 를 직결로」는 이 지점이 틀렸다.
+  return postForm<RegulationUploadResult>(directUrl(`${BASE}/regulation`), form);
 }
 
 /** `DELETE /regulations/{filename}` 응답. `upload.py:550-556` */
@@ -379,7 +420,7 @@ export function uploadDataFiles(opts: {
   form.set("domain", opts.domain);
   for (const f of opts.files) form.append("files", f);
   if (opts.createDomain !== undefined) form.set("create_domain", String(opts.createDomain));
-  return postForm<DataUploadResult>(`${BASE}/data`, form);
+  return postForm<DataUploadResult>(directUrl(`${BASE}/data`), form);
 }
 
 /** `DELETE /data/{filename}` 응답. `upload.py:775-787` */
