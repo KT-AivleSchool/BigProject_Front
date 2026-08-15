@@ -60,6 +60,7 @@
  */
 import { deleteVoid, getJson, postJson, getText } from "./client";
 import { parseCsv } from "./csv";
+import { directUrl } from "./simulation";
 import type {
   ArtifactName,
   AuditAnswer,
@@ -268,7 +269,28 @@ export function artifactUrl(run: RunDoc, name: ArtifactName): string | null {
   return run.artifacts[name] ?? null;
 }
 
-/** 산출물이 없으면 조용히 넘기지 않고 던진다. 화면이 "왜 비었는지"를 말해야 한다. */
+/**
+ * 산출물이 없으면 조용히 넘기지 않고 던진다. 화면이 "왜 비었는지"를 말해야 한다.
+ *
+ * 🔴 **받아오는 주소는 `directUrl` 로 감싼다** — 벽이 요청 크기에만 있는 게
+ *    아니라 **응답 크기에도 있다**(백엔드 실측 2026-08-15). `candidates` 는
+ *    `.gpkg` 15~25MB 라 경유 경로로는 **413 · 0바이트**로 잘린다:
+ *
+ *      직결  api.omnisite.o-r.kr/…/artifacts/candidates → 200 · 24,961,024 B · 0.45s
+ *      경유  omnisite.o-r.kr/…/artifacts/candidates     → 413 · 0 B · x-amplify-status: true
+ *
+ * 🔴 **산출물 이름으로 갈라 걸지 않는다.** 「`candidates` 만 직결」로 짜면
+ *    프런트가 「어느 키가 큰가」라는 규칙을 또 들고 있어야 하고, 산출물이
+ *    늘면 그 규칙이 낡아서 **다음 큰 파일에서 똑같이 413** 이다. 여기 하나로
+ *    막으면 그 규칙이 아예 없어진다.
+ *
+ * ⚠ `run.artifacts[name]` 값 자체는 **여전히 손대지 않는다**(`artifactUrl` 주석).
+ *   서버가 준 경로를 그대로 두고 **오리진만 앞에 붙인다** — 경로 규칙이 바뀌어도
+ *   안 깨진다는 계약 4절이 그대로 산다.
+ * ⚠ 이건 **교차 출처**가 된다. `client.ts` 가 `credentials` 를 안 걸고 preflight
+ *   가 `allow-headers: authorization` 로 200 이라 Bearer 가 그대로 간다
+ *   (`/stakeholders/generate` 직결이 이미 같은 방식으로 돈다).
+ */
 function requireUrl(run: RunDoc, name: ArtifactName): string {
   const url = artifactUrl(run, name);
   if (!url) {
@@ -277,7 +299,7 @@ function requireUrl(run: RunDoc, name: ArtifactName): string {
         `(상태: ${run.status}). 아직 생성 전이거나 실행이 실패했습니다.`,
     );
   }
-  return url;
+  return directUrl(url);
 }
 
 export const loadReviewed = (run: RunDoc) =>
