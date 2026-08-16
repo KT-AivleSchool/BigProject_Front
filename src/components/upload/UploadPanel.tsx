@@ -704,6 +704,15 @@ export function UploadPanel({
               <li key={i}>{l}</li>
             ))}
           </ul>
+          {/**
+            * 🔴 **빨간 상자는 `renumbered` 전용이다**(백엔드 2026-08-16 요청 4).
+            *    「01~03 번호가 이렇게 잡혔다」를 여기 같이 그리지 않는다 — 그건
+            *    경고가 아니라 정보이고, 이미 **바로 아래 목록의 `dataset_id` 칸**이
+            *    전량 그리고 있다(`GET /data` 의 `dataset_id` 는 서버에서
+            *    `dataset_map` 과 같은 `_dataset_map()` 으로 낸다: `upload.py:1201,1221`).
+            *    응답의 `dataset_map` 을 여기 한 번 더 펴면 같은 사실이 화면에
+            *    두 벌이 되고, 둘이 어긋나 보이는 순간 어느 쪽이 정본인지 알 수 없다.
+            */}
           {notice.renumbered && notice.renumbered.length > 0 && (
             <div className="mt-3 rounded-lg border border-amber-400 bg-white/70 p-3">
               <p className="font-bold text-amber-900">
@@ -716,7 +725,7 @@ export function UploadPanel({
               <ul className="mt-2 font-mono text-xs text-amber-900 space-y-0.5">
                 {notice.renumbered.map((r) => (
                   <li key={r.dataset_id}>
-                    {r.dataset_id}: {r.before ?? "(없음)"} → {r.after}
+                    {r.dataset_id}: {r.before} → {r.after}
                   </li>
                 ))}
               </ul>
