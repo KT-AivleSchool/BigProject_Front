@@ -564,14 +564,19 @@ function SourcePicker({ onPick }: { onPick: (s: DataSource) => void }) {
  *      안 그리는 필드가 있다면 그건 **없어서가 아니라 안 그려서**다.
  *
  * 🔴 `root` 는 이 행이 **어느 폴더에서 왔는지**다(백엔드 2026-08-14 루트 분리).
- *    카드는 두 루트를 **같이** 보여준다 — 프리셋 모드는 배포 원본으로 돌고,
- *    업로드 도메인도 기준선만 있으면 같은 모드로 돌기 때문이다. 대신 **어느
- *    쪽인지 배지로 말한다**: 「배포 원본」 카드는 화면1 에서 파일을 올리거나
- *    지울 수 없는데, 그 사실이 화면 어디에도 없으면 사용자는 업로드 탭에서
- *    이유 없는 400 을 만난다.
- *    ⚠ `root` 가 **없는 응답이 정상**이다(루트 분리 전 서버 — 2026-08-14 현재
- *      `origin/back_deploy` 가 그렇다). 그때는 배지를 **안 단다** — 모르는 것을
- *      어느 한쪽으로 찍으면 화면이 확신에 차서 틀린 말을 한다(원칙 5).
+ *    **업로드 루트 행은 여기 안 그린다**(2026-08-16 사람 지시). 프리셋 모드는
+ *    「우리가 미리 넣어둔 배포 원본으로 도는 시연 경로」이고, 사용자가 올린
+ *    `datasets/user_input/<도메인>` 은 업로드 모드 소관이다 — 두 모드를 가르는
+ *    것이 곧 두 폴더를 가르는 것이다.
+ *    ⚠ 예전엔 두 루트를 같이 그리고 배지로만 구분했다. 근거는 「업로드
+ *      도메인도 기준선만 있으면 같은 모드로 돈다」였는데, **그 전제가 성립한
+ *      적이 없다**: 운영 실측(2026-08-16) 업로드 행 셋 다 `has_fixture:false`
+ *      라 다섯 장 중 세 장이 눌러도 무조건 400 인 카드였다.
+ *
+ * 🔴 거르는 조건은 `!== "upload"` 다. `=== "preset"` 으로 쓰면 안 된다 —
+ *    `root` 가 **없는 응답이 정상**이고(루트 분리 전 서버), 그 서버에서는
+ *    카드가 **통째로 사라져** 프리셋 모드가 먹통이 된다. 아는 것만 뺀다
+ *    (`upload.ts:DomainItem.root` 의 「모르면 예전처럼 그린다」와 같은 규칙).
  */
 function PresetPicker({
   selected,
@@ -595,7 +600,7 @@ function PresetPicker({
     let cancelled = false;
     void (async () => {
       try {
-        const list = await fetchDomains();
+        const list = (await fetchDomains()).filter((d) => d.root !== "upload");
         if (cancelled) return;
         setItems(list);
         setFailure(null);
@@ -631,9 +636,17 @@ function PresetPicker({
   }
 
   if (items.length === 0) {
+    /**
+     * 🔴 「서버에 등록된 도메인이 없습니다」라고 쓰면 안 된다 — 위에서 업로드
+     *    루트를 걸러냈으므로, **올린 도메인은 있는데 배포 원본만 없는** 경우가
+     *    여기로 온다. 그때 「없다」고 하면 화면이 틀린 말을 한다(원칙 5).
+     *    같은 이유로 「업로드로 먼저 올리세요」도 지웠다 — 올려도 이 목록엔
+     *    안 뜬다.
+     */
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        서버에 등록된 도메인이 없습니다. 「실제 데이터 업로드」로 먼저 올리세요.
+        시연용 배포 원본 도메인이 서버에 없습니다. 직접 올린 데이터로 돌리려면
+        「다른 방식 선택하기」에서 <b>실제 데이터 업로드</b>를 고르십시오.
       </div>
     );
   }
@@ -662,16 +675,16 @@ function PresetPicker({
                   }`}
                 />
               </div>
-              {/* `root` 를 안 주는 서버면 아무 배지도 안 단다(위 주석). */}
-              {d.root === "preset" ? (
+              {/**
+                * `root` 를 안 주는 서버면 아무 배지도 안 단다(위 주석).
+                * 「내가 올린 데이터」 배지가 있었는데 지웠다 — 그 행은 위 필터에서
+                * 빠지므로 여기 닿지 않는다.
+                */}
+              {d.root === "preset" && (
                 <span className="mt-2 inline-block rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
                   배포 원본 · 읽기 전용
                 </span>
-              ) : d.root === "upload" ? (
-                <span className="mt-2 inline-block rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-[11px] font-medium text-emerald-700">
-                  내가 올린 데이터
-                </span>
-              ) : null}
+              )}
               <dl className="mt-3 space-y-1 text-[12px] text-gray-600">
                 <div className="flex justify-between">
                   <dt>조례 문서</dt>
