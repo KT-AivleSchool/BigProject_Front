@@ -452,27 +452,29 @@ function ExclusionCard({
                 })()
               }&quot;
             </p>
-            {(suspect || q.source_geometry) && (
+            {suspect && (
               <div className="mt-0.5 flex flex-wrap items-center gap-2">
-                {suspect && (
-                  <WarningBadge text="시설명 확인 권장" title="이 시설의 이름이 근거 문장에 명시되어 있지 않아 확인이 필요합니다." />
-                )}
-                {/*
-                  🔴 **답을 고르기 전에** 보여준다. 「반경 없음」을 고른 뒤에만 경고하면
-                     사람은 이미 그 선택으로 기울어 있다. 근거 문장(`source_geometry_why`)은
-                     요약하지 않고 그대로 싣는다 — 판정이 아니라 **잰 사실**이다.
-                */}
-                {q.source_geometry && (
-                  <span
-                    className="text-[11px] text-gray-500"
-                    title={q.source_geometry_why ?? undefined}
-                  >
-                    원본 형태: {q.source_geometry === "point" ? "점(Point)" : "미상"}
-                    {q.source_rows != null ? ` · ${q.source_rows}건` : ""}
-                    {q.source_geometry_why ? ` · ${q.source_geometry_why}` : ""}
-                  </span>
-                )}
+                <WarningBadge text="시설명 확인 권장" title="이 시설의 이름이 근거 문장에 명시되어 있지 않아 확인이 필요합니다." />
               </div>
+            )}
+            {/*
+              🔴 사람이 이 칸에서 답해야 하는 건 「이 반경이 맞나」다. 그러려면
+                 **왜 이 시설이 배제 대상인가**를 알아야 한다 — 그게 감리 AI 가
+                 `roles[i].rationale` 에 적어 둔 문장이고(`감리_result.json`),
+                 서버가 그대로 실어 보낸다(`pipeline_runner.py:1891`).
+                 여기 있던 「원본 형태: 점(Point) · 90건 · 좌표 컬럼 [...]」은
+                 파일 프로파일이라 반경 판단에 쓸 정보가 아니었다(2026-08-17 지시).
+              ⚠ `source_geometry` 를 지운 게 아니다. 백엔드는 점 레이어에 반경을
+                 안 주면 STEP4 가 멈추는 걸 알면서도 사람 게이트를 막지 않는데,
+                 그 근거가 「화면에 source_geometry 가 실려 있다」다
+                 (`pipeline_runner.py:2375-2377`). 그 자리는 **아래 「반경 없음」
+                 경고**다(`isPoint` · `source_rows`) — 거기선 점 여부가 실제로
+                 결과를 가르므로 붙어 있을 이유가 있고, 여기선 없었다.
+            */}
+            {q.rationale && (
+              <p className="text-[12px] text-gray-500 leading-relaxed">
+                판단 근거: {q.rationale}
+              </p>
             )}
           </div>
 
