@@ -18,8 +18,8 @@ COPY . .
 # Next.js telemetry 비활성화 및 빌드 타임 환경변수
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV NODE_ENV=production
-# 빌드 타임 API 오리진 기본값 설정
-ARG OMNISITE_API_ORIGIN=http://127.0.0.1:8000
+# 빌드 타임 API 오리진 기본값 (도커 내부 API 컨테이너 서비스명)
+ARG OMNISITE_API_ORIGIN=http://api:8000
 ENV OMNISITE_API_ORIGIN=$OMNISITE_API_ORIGIN
 
 RUN npm run build
@@ -32,6 +32,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ARG OMNISITE_API_ORIGIN=http://api:8000
+ENV OMNISITE_API_ORIGIN=$OMNISITE_API_ORIGIN
 
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 nextjs
