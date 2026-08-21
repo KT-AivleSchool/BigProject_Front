@@ -448,6 +448,7 @@ export interface DataDeleteResult {
   dataset_map: Record<string, string>;
   renumbered: Renumbered[];
   warning: string | null;
+  redis_stale_removed?: string[];
 }
 
 /** 데이터 삭제. 지운 뒤 **남은 파일의 번호가 어떻게 밀리는지**를 같이 받는다. */

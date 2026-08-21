@@ -236,8 +236,15 @@ export const BACKEND_ORIGIN = "https://api.omnisite.o-r.kr";
  *   없어 분기를 더 얹지 않는다.
  */
 export function directUrl(path: string): string {
-  if (process.env.NODE_ENV === "development") return path;
-  return `${BACKEND_ORIGIN}${path}`;
+  const origin = process.env.NEXT_PUBLIC_API_ORIGIN || process.env.OMNISITE_API_ORIGIN;
+  let cleanPath = path;
+  if (cleanPath.includes("/api/v1/")) {
+    cleanPath = "/api/v1/" + cleanPath.split("/api/v1/")[1];
+  }
+  if (origin) {
+    return `${origin}${cleanPath}`;
+  }
+  return cleanPath;
 }
 
 export const STREAM_URL = directUrl(`${BASE}/stream`);

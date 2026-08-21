@@ -1,5 +1,14 @@
 "use client";
-// Trigger HMR
+
+/**
+ * OmniSite 메인 시작 페이지 컴포넌트 (Screen 1)
+ * ===========================================================
+ * 구조:
+ *  1. Imports (상단)
+ *  2. Types & File-scoped Helper Functions (중단)
+ *  3. Screen1Page 메인 컴포넌트 (상태, 훅, 핸들러, return JSX)
+ *  4. 서브 프레젠터 컴포넌트 (하단)
+ */
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -15,34 +24,36 @@ import { useRun } from "@/lib/omnisite/RunProvider";
 import { SCREENS } from "@/lib/omnisite/screens";
 import { fetchDomains, type DomainItem } from "@/lib/omnisite/upload";
 
+// ─────────────────────────────────────────────────────────────
+// 1. Types & Helper Functions
+// ─────────────────────────────────────────────────────────────
+
 const SCREEN = SCREENS[0]!;
 
-/**
- * 데이터 출처. 이 선택이 **mode 를 정한다** — 둘은 독립이 아니다.
- *
- *   upload → `full`.  `user_input` 필수 · `topn` 선택(기본 20)
- *   preset → `hitl`.  `user_input`·`topn` 을 같이 보내면 **400** 이다(계약 8-2).
- *
- * 🔴 **분석 모드(맞춤형/고속)는 여기와 다른 축이다.** 예전엔 「고속」을
- *    `mode="fixture"` 로 보냈는데 그건 **픽스처 재생**(`datasets/<도메인>_FIX/`
- *    가 있어야 한다)이지 자동승인이 아니다 — 픽스처가 없는 도메인은 400 이고,
- *    있어도 그 실행은 **지금 올린 데이터를 안 본다.** 지금은 mode 를 그대로 두고
- *    `auto_approve` 를 얹는다: 게이트는 서지만 그 자리를 AI 제안값으로 답한다
- *    (`pipeline_runner._run_auto_gate`). 그래서 **업로드 갈래에도 고속이 있다.**
- *
- * 실측 근거: `app/services/pipeline_runner.py` `_PLAN`·`start_run`.
- */
 type DataSource = "upload" | "preset";
 
+function parseTopn(raw: string): number | "empty" | "invalid" {
+  const t = raw.trim();
+  if (!t) return "empty";
+  const n = Number(t);
+  if (!Number.isInteger(n) || n < 1 || n > TOPN_MAX) return "invalid";
+  return n;
+}
+
+// ─────────────────────────────────────────────────────────────
+// 2. Screen1Page Main Component
+// ─────────────────────────────────────────────────────────────
+
 export default function Screen1Page() {
+  // ── Router & Global State ──
   const router = useRouter();
   const { run, starting, error, start } = useRun();
 
+  // ── Component State & Refs ──
   const [dataSource, setDataSource] = useState<DataSource | null>(null);
-
-  // 업로드 갈래에서 사람이 치는 도메인. 프리셋 갈래에서는 카드가 정한다.
   const [typedDomain, setTypedDomain] = useState<string | null>(null);
   const [presetDomain, setPresetDomain] = useState<string | null>(null);
+
   const domain =
     dataSource === "preset"
       ? (presetDomain ?? "")
@@ -51,59 +62,35 @@ export default function Screen1Page() {
   const [facility, setFacility] = useState("");
   const [region, setRegion] = useState("");
   const [intent, setIntent] = useState("");
-  // 🔴 문자열로 들고 있는다. 숫자로 두면 지울 때 0 이 되고, 0 은 서버가 400 으로
-  //    막는 **다른 값**이다. 빈 칸은 "안 정했다"이고 그때만 기본값 20 이 쓰인다.
   const [topnText, setTopnText] = useState(String(TOPN_DEFAULT));
 
-  // 「고속 자동 분석」. mode 와 **다른 축**이다 — 게이트를 빼는 게 아니라
-  // 그 자리를 AI 제안값으로 답한다. 그래서 두 갈래(upload/preset) 다 고를 수 있다.
   const [autoApprove, setAutoApprove] = useState(false);
   const [inputError, setInputError] = useState<string | null>(null);
 
   const [activeStep, setActiveStep] = useState(1);
   const [step1Error, setStep1Error] = useState<string | null>(null);
-  // 「다음 단계」가 업로드를 기다리는 동안 참. 없으면 두 번 눌러 **같은 파일이
-  // 두 번 올라간다** — 패널의 `busy` 는 자기 버튼만 막는다.
   const [step1Busy, setStep1Busy] = useState(false);
   const [step2Error, setStep2Error] = useState<string | null>(null);
 
   const domainRef = useRef<HTMLInputElement>(null);
-  /**
-   * 업로드 패널의 손잡이. **「다음 단계」가 파일을 올린다**(2026-08-14 사람 지시).
-   *
-   * 🔴 「분석 시작하기」가 아니라 여기인 이유: 아래 `{activeStep === 1 && …}` 이라
-   *    다음 칸으로 넘어가는 순간 패널이 **언마운트되고 고른 파일이 사라진다.**
-   *    이 시점엔 패널이 아직 살아 있으므로 파일 목록을 부모로 끌어올릴 필요가 없다.
-   */
   const uploadRef = useRef<UploadPanelHandle>(null);
-  /**
-   * 업로드가 **실제로 쓴** 폴더. `base` 는 사람이 친 이름, `actual` 은 겹쳐서
-   * `_2` 가 붙었을 수도 있는 진짜 이름이다(`UploadPanel.resolveDomain`).
-   *
-   * 🔴 **파이프라인은 `actual` 로 돌려야 한다.** 파일은 `그늘막_2` 에 있는데
-   *    `start("그늘막")` 을 치면 안 터지고 **빈 폴더로 분석한다** — 화면에는
-   *    「정상 실행」으로 보이고 결과만 틀린다.
-   * 🔴 사람이 Step 1 로 돌아가 이름을 고치면 무효다. `base` 를 같이 들고
-   *    렌더 중에 대조한다.
-   */
   const [uploadedDomain, setUploadedDomain] = useState<{
     base: string;
     actual: string;
   } | null>(null);
-  /** 실행에 쓸 도메인. 겹쳐서 다른 폴더에 올라갔으면 **그쪽**이다. */
+
   const runDomain = uploadedDomain?.base === domain ? uploadedDomain.actual : domain;
+
   useEffect(() => {
     const el = domainRef.current;
     if (el && typedDomain === null && el.value.trim()) setTypedDomain(el.value);
   }, [typedDomain]);
 
-  // 업로드는 `full`(STEP0 부터), 프리셋은 `hitl`(STEP2 부터). 「고속」은 mode 를
-  // 바꾸지 않고 `autoApprove` 로 얹는다.
   const effectiveMode = dataSource === "upload" ? MODE_FULL : MODE_HITL;
   const isFull = effectiveMode === MODE_FULL;
-
   const topnParsed = parseTopn(topnText);
 
+  // ── Event Handlers & Business Logic ──
   async function handleStep1Confirm() {
     const fromDom = domainRef.current?.value ?? "";
     const value = (dataSource === "preset" ? domain : fromDom || domain).trim();
@@ -125,22 +112,11 @@ export default function Screen1Page() {
     }
     setStep1Error(null);
 
-    /*
-     * 업로드 갈래에서만 — 고른 파일을 **여기서** 서버로 보낸다.
-     *
-     * 🔴 실패하면 넘어가지 않는다. 사유 문구는 **지어내지 않는다** — 패널이 이미
-     *    자기 자리에 서버 응답을 그대로 적어놨다(같은 실패를 두 곳에서 다르게
-     *    말하면 어느 쪽이 진짜인지 알 수 없다).
-     * 🔴 올릴 게 없어도 `true` 다. `commit()` 은 「성공했다」가 아니라
-     *    **「막을 이유가 없다」**를 돌려준다 — 이미 올려둔 사람은 그냥 지나간다.
-     */
     if (dataSource === "upload" && uploadRef.current) {
       setStep1Busy(true);
       try {
         const actual = await uploadRef.current.commit();
         if (actual === null) return;
-        // 🔴 이름이 겹치면 패널이 `그늘막_2` 에 올린다. 그 사실을 **여기서 받아
-        //    들고 있어야** `onRun` 이 같은 폴더로 실행한다.
         setUploadedDomain({ base: value, actual });
       } finally {
         setStep1Busy(false);
@@ -168,12 +144,6 @@ export default function Screen1Page() {
     const value = (dataSource === "preset" ? domain : fromDom || domain).trim();
     setInputError(null);
 
-    /*
-     * 🔴 **업로드가 실제로 쓴 폴더로 돈다.** 같은 이름이 이미 있으면 파일은
-     *    `그늘막_2` 에 저장됐는데, 여기서 `그늘막` 을 보내면 파이프라인이
-     *    **다른(혹은 빈) 폴더**를 읽는다 — 예외 없이 결과만 틀린다.
-     *    프리셋 갈래는 카드가 정한 이름 그대로다(`uploadedDomain` 이 안 생긴다).
-     */
     const target = uploadedDomain?.base === value ? uploadedDomain.actual : value;
 
     const id = await start(
@@ -182,7 +152,6 @@ export default function Screen1Page() {
       isFull
         ? {
             user_input: intent.trim(),
-            // 빈 칸이거나 유효하지 않으면 아예 안 보낸다(기본값 20 사용). "invalid"는 이미 Step 2에서 막힌다.
             ...(topnParsed === "empty" || topnParsed === "invalid" ? {} : { topn: topnParsed as number }),
           }
         : undefined,
@@ -191,6 +160,7 @@ export default function Screen1Page() {
     if (id) router.push("/audit");
   }
 
+  // ── 3. JSX Return Statement ──
   return (
     <PageBody>
       <PageHeader
@@ -199,8 +169,6 @@ export default function Screen1Page() {
       />
 
       <div className="flex-1 flex flex-col bg-white rounded-2xl shadow-sm border border-gray-100 mt-6 overflow-hidden min-h-0">
-        
-        {/* 전체 컨텐츠 스크롤 영역 */}
         <div className="flex-1 overflow-y-auto p-8">
           {/* Stepper */}
           <div className="flex items-center justify-between mb-10 pb-6 border-b border-gray-100">
@@ -216,7 +184,7 @@ export default function Screen1Page() {
             </div>
           </div>
 
-          {/* ── Step 1 ── */}
+          {/* Step 1 */}
           {activeStep === 1 && (
             <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
               <div className="flex items-center gap-3">
@@ -225,7 +193,6 @@ export default function Screen1Page() {
                 </div>
                 <div className="flex items-baseline gap-3">
                   <h2 className="text-[1.25rem] font-bold text-gray-900 tracking-tight">데이터 및 문서 업로드</h2>
-
                 </div>
               </div>
 
@@ -268,7 +235,7 @@ export default function Screen1Page() {
             </div>
           )}
 
-          {/* ── Step 2 ── */}
+          {/* Step 2 */}
           {activeStep === 2 && (
             <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
               <div className="flex items-center gap-3">
@@ -290,20 +257,9 @@ export default function Screen1Page() {
                       <span className="text-gray-400">— Step 1 에서 먼저 정합니다</span>
                     )}
                   </div>
-                  {/*
-                    🔴 **`_2` 를 알리는 유일한 자리다**(2026-08-14 사람 지시:
-                       도메인 칸을 고칠 때마다 뜨지 말고 「다음 단계」를 지난 뒤
-                       여기서 조그맣게). 같은 이름이 이미 있어서 다른 폴더에 올라갔다는
-                       사실을 아예 안 적으면, 나중에 마이페이지 run 목록에 `그늘막_2`
-                       가 떴을 때 그게 자기 실행인지 알 방법이 없다.
-                       ⚠ 위 칸은 계속 사람이 친 이름을 보여준다 — 바뀐 것은 저장 폴더지
-                         분석 주제가 아니다.
-                  */}
                   {runDomain !== domain && (
                     <p className="mt-1.5 text-xs text-gray-400">
-                      같은 이름이 이미 있어 저장 폴더는{" "}
-                      <code className="font-mono text-gray-500">{runDomain}</code> 입니다. 이번
-                      분석은 이 폴더로 돌아갑니다.
+                      같은 이름이 이미 있어 저장 폴더는 <code className="font-mono text-gray-500">{runDomain}</code> 입니다.
                     </p>
                   )}
                 </div>
@@ -321,7 +277,7 @@ export default function Screen1Page() {
                   onChange={setRegion}
                   note={
                     isFull
-                      ? "⚠ 이 칸은 서버로 안 갑니다. full 모드에서 지역을 정하는 것은 아래 「사용자 의도」 문장입니다 — STEP0.5 가 거기서 읽습니다."
+                      ? "⚠ 이 칸은 서버로 안 갑니다. full 모드에서 지역을 정하는 것은 아래 「사용자 의도」 문장입니다."
                       : undefined
                   }
                 />
@@ -337,7 +293,7 @@ export default function Screen1Page() {
                     disabled={!isFull}
                     note={
                       isFull
-                        ? "STEP0.5 가 이 문장에서 시설·지역을 확정합니다. 200자까지, '--' 로 시작할 수 없습니다."
+                        ? "STEP0.5 가 이 문장에서 시설·지역을 확정합니다. 200자까지 작성할 수 있습니다."
                         : undefined
                     }
                   />
@@ -357,13 +313,13 @@ export default function Screen1Page() {
                     inputMode="numeric"
                     note={
                       isFull
-                        ? `STEP4 가 뽑을 후보 개수입니다 — 화면4 목록의 길이이자 화면5 가 고를 수 있는 후보의 수입니다. 비우면 서버 기본값 ${TOPN_DEFAULT} 이 쓰입니다. 범위 1~${TOPN_MAX}.`
+                        ? `STEP4 가 뽑을 후보 개수입니다. 비우면 기본값 ${TOPN_DEFAULT} 이 쓰입니다. 범위 1~${TOPN_MAX}.`
                         : undefined
                     }
                   />
                   {isFull && topnParsed === "invalid" && (
                     <p className="mt-1.5 text-xs font-medium text-red-600">
-                      정수 1~{TOPN_MAX} 만 됩니다. 지금 값은 서버가 400 으로 막습니다.
+                      정수 1~{TOPN_MAX} 만 됩니다.
                     </p>
                   )}
                 </div>
@@ -377,7 +333,7 @@ export default function Screen1Page() {
             </div>
           )}
 
-          {/* ── Step 3 ── */}
+          {/* Step 3 */}
           {activeStep === 3 && (
             <div className="flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-300">
               <div className="flex items-center gap-3">
@@ -407,9 +363,9 @@ export default function Screen1Page() {
           )}
         </div>
 
-        {/* 바닥 내비게이션 바 */}
+        {/* 하단 버튼 바 */}
         <div className="flex items-center justify-between px-8 py-5 border-t border-gray-100 bg-white shrink-0">
-          <button 
+          <button
              onClick={() => setActiveStep(activeStep - 1)}
              disabled={activeStep === 1 || starting}
              className="px-6 py-2.5 rounded-xl font-bold text-gray-500 bg-white border border-gray-200 hover:bg-gray-50 disabled:opacity-30 transition-colors"
@@ -419,9 +375,9 @@ export default function Screen1Page() {
               이전 단계
             </div>
           </button>
-          
+
           {activeStep === 3 ? (
-            <button 
+            <button
                onClick={onRun}
                disabled={starting || dataSource === null}
                className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 transition-colors shadow-md shadow-blue-200 disabled:bg-gray-300 disabled:shadow-none"
@@ -450,7 +406,7 @@ export default function Screen1Page() {
                className="px-8 py-2.5 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-md shadow-blue-200 disabled:opacity-60"
             >
               <div className="flex items-center gap-2 text-sm">
-                {step1Busy ? "업로드 중..." : "다음 단계"}
+                다음 단계
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
               </div>
             </button>
@@ -461,34 +417,21 @@ export default function Screen1Page() {
   );
 }
 
-/**
- * `topnText` 를 서버에 보낼 값으로 바꾼다.
- *
- * 셋으로 갈리는 이유 — `""` 와 `"0"` 은 **다른 뜻**이다. 빈 칸은 "안 정했다"라
- * 서버 기본값에 맡기면 되고, `0` 은 서버가 400 으로 막는 틀린 값이다. 하나로
- * 뭉개면 사용자가 지운 것과 잘못 친 것이 같아진다.
- */
-function parseTopn(text: string): number | "empty" | "invalid" {
-  const t = text.trim();
-  if (!t) return "empty";
-  if (!/^\d+$/.test(t)) return "invalid";
-  const n = Number(t);
-  if (!Number.isInteger(n) || n < 1 || n > TOPN_MAX) return "invalid";
-  return n;
-}
+// ─────────────────────────────────────────────────────────────
+// 4. Sub Presenter Components
+// ─────────────────────────────────────────────────────────────
 
 function StepIcon({ current, stepNum, label }: { current: number; stepNum: number; label: string }) {
-  const isActive = current === stepNum;
-  const isPast = current > stepNum;
-  
+  const isDone = current > stepNum;
+  const isCurrent = current === stepNum;
   return (
-    <div className={`flex items-center gap-3 transition-opacity ${isActive ? 'opacity-100' : 'opacity-40'}`}>
-      <div className={`flex items-center justify-center w-6 h-6 rounded-full text-[13px] font-bold shadow-sm ${
-        isActive ? 'bg-blue-600 text-white' : isPast ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
+    <div className="flex items-center gap-3">
+      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300 ${
+        isDone ? 'bg-blue-600 text-white' : isCurrent ? 'bg-blue-600 text-white ring-4 ring-blue-100 shadow-sm' : 'bg-gray-100 text-gray-400'
       }`}>
-        {isPast ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg> : stepNum}
+        {isDone ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg> : stepNum}
       </div>
-      <span className={`text-[14px] font-bold ${isActive ? 'text-blue-900' : 'text-gray-500'}`}>
+      <span className={`text-sm font-semibold transition-colors duration-300 ${isCurrent ? 'text-gray-900 font-bold' : isDone ? 'text-gray-700' : 'text-gray-400'}`}>
         {label}
       </span>
     </div>
@@ -500,84 +443,52 @@ function BackLink({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="mb-6 flex items-center gap-2 text-sm text-gray-500 hover:text-gray-800 transition-colors"
+      className="mb-4 inline-flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-800"
     >
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="19" y1="12" x2="5" y2="12"></line><polyline points="12 19 5 12 12 5"></polyline></svg>
-      다른 방식 선택하기
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"/></svg>
+      출처 다시 선택
     </button>
   );
 }
 
 function SourcePicker({ onPick }: { onPick: (s: DataSource) => void }) {
   return (
-    <div className="grid gap-6 sm:grid-cols-2">
+    <div className="grid gap-4 sm:grid-cols-2">
       <button
         type="button"
         onClick={() => onPick("upload")}
-        className="flex flex-col items-center justify-center p-8 border-2 border-gray-200 rounded-2xl hover:border-blue-500 hover:bg-blue-50/50 transition-all duration-300 group"
+        className="group text-left rounded-2xl border-2 border-gray-200 bg-white p-6 transition-all hover:border-blue-400 hover:shadow-md"
       >
-        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+        <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center mb-4 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
         </div>
-        <h3 className="text-lg font-bold text-gray-800 mb-2">실제 데이터 업로드</h3>
-        <p className="text-sm text-gray-500 text-center">
-          분석하고 싶은 새로운 지역의 공간 데이터와 규정 문서를
-          <br />
-          직접 등록하여 처음부터 꼼꼼하게 분석을 시작합니다.
+        <h3 className="text-base font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
+          직접 데이터를 갖고 계신가요?
+        </h3>
+        <p className="mt-1.5 text-xs text-gray-500 leading-relaxed">
+          분석 데이터(.csv·.shp)와 조례 문서(.pdf·.hwpx)를 올려 나만의 파이프라인을 띄웁니다.
         </p>
       </button>
 
       <button
         type="button"
         onClick={() => onPick("preset")}
-        className="flex flex-col items-center justify-center p-8 border-2 border-gray-200 rounded-2xl hover:border-indigo-500 hover:bg-indigo-50/50 transition-all duration-300 group"
+        className="group text-left rounded-2xl border-2 border-gray-200 bg-white p-6 transition-all hover:border-blue-400 hover:shadow-md"
       >
-        <div className="w-16 h-16 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+        <div className="w-12 h-12 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center mb-4 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
         </div>
-        <h3 className="text-lg font-bold text-gray-800 mb-2">프리셋 모드 (DB 데이터)</h3>
-        <p className="text-sm text-gray-500 text-center">
-          시스템에 이미 잘 정제되어 저장된 지역 데이터를 골라
-          <br />
-          즉시 분석을 실행하고 결과를 빠르게 확인합니다.
+        <h3 className="text-base font-bold text-gray-900 group-hover:text-purple-600 transition-colors">
+          준비된 데이터셋을 쓰시겠어요?
+        </h3>
+        <p className="mt-1.5 text-xs text-gray-500 leading-relaxed">
+          서버에 이미 준비된 픽스처 도메인(흡연·따릉이·전기차 등)을 골라 빠르게 시작합니다.
         </p>
       </button>
     </div>
   );
 }
 
-/**
- * 프리셋 도메인 카드.
- *
- * 🔴 목록을 **화면이 들고 있지 않는다.** `GET /api/v1/upload/domains` 가 주는
- *    것만 그린다 — 도메인 이름은 도메인 값이라 프런트가 지어내면 원칙 2 위반이고,
- *    실제로 서버에 없는 도메인을 골라 400 을 맞게 된다.
- *
- * 🔴 「용산구 흡연부스」 같은 **표시명은 API 에 없다.** 응답에 있는 건
- *    `domain`·`law_files`·`data_files`·`has_audit_reviewed`·`has_fixture` 다.
- *    그래서 폴더명을 그대로 보여준다 — 예쁜 이름을 프런트에 적어두면
- *    도메인이 늘 때마다 화면이 거짓말한다.
- *    ⚠ 예전엔 「넷뿐이다(실측 2026-08-10)」라고 적혀 있었다. `has_fixture` 가
- *      나중에 생겼는데 이 주석만 안 고쳐져, **필드가 이미 있는데도 프런트가
- *      「서버가 안 준다」를 근거로 안내를 포기하고 있었다.**
- *      같은 이유로 `preexisting_files`·`root` 도 여기 적어둔다 — 지금 이 카드가
- *      안 그리는 필드가 있다면 그건 **없어서가 아니라 안 그려서**다.
- *
- * 🔴 `root` 는 이 행이 **어느 폴더에서 왔는지**다(백엔드 2026-08-14 루트 분리).
- *    **업로드 루트 행은 여기 안 그린다**(2026-08-16 사람 지시). 프리셋 모드는
- *    「우리가 미리 넣어둔 배포 원본으로 도는 시연 경로」이고, 사용자가 올린
- *    `datasets/user_input/<도메인>` 은 업로드 모드 소관이다 — 두 모드를 가르는
- *    것이 곧 두 폴더를 가르는 것이다.
- *    ⚠ 예전엔 두 루트를 같이 그리고 배지로만 구분했다. 근거는 「업로드
- *      도메인도 기준선만 있으면 같은 모드로 돈다」였는데, **그 전제가 성립한
- *      적이 없다**: 운영 실측(2026-08-16) 업로드 행 셋 다 `has_fixture:false`
- *      라 다섯 장 중 세 장이 눌러도 무조건 400 인 카드였다.
- *
- * 🔴 거르는 조건은 `!== "upload"` 다. `=== "preset"` 으로 쓰면 안 된다 —
- *    `root` 가 **없는 응답이 정상**이고(루트 분리 전 서버), 그 서버에서는
- *    카드가 **통째로 사라져** 프리셋 모드가 먹통이 된다. 아는 것만 뺀다
- *    (`upload.ts:DomainItem.root` 의 「모르면 예전처럼 그린다」와 같은 규칙).
- */
 function PresetPicker({
   selected,
   onSelect,
@@ -585,171 +496,64 @@ function PresetPicker({
   selected: string | null;
   onSelect: (d: string) => void;
 }) {
-  const [items, setItems] = useState<DomainItem[] | null>(null);
-  const [failure, setFailure] = useState<string | null>(null);
-  /** 「다시 시도」용. 값 자체엔 의미가 없고 effect 를 한 번 더 돌리는 방아쇠다. */
-  const [reloadKey, setReloadKey] = useState(0);
+  const [list, setList] = useState<DomainItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  /**
-   * 🔴 `setFailure(null)` 을 첫 await **앞**에 두면 그게 곧 effect 본문의 동기
-   *    setState 라 `react-hooks/set-state-in-effect` 에 걸린다. 상태 초기화를
-   *    응답이 온 뒤로 미루면 규칙도 만족하고, 재시도 중에 옛 오류가 잠깐
-   *    사라졌다 다시 뜨는 깜빡임도 없다.
-   */
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const list = (await fetchDomains()).filter((d) => d.root !== "upload");
-        if (cancelled) return;
-        setItems(list);
-        setFailure(null);
-      } catch (e) {
-        if (cancelled) return;
-        setItems(null);
-        setFailure(e instanceof Error ? e.message : String(e));
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [reloadKey]);
+    fetchDomains()
+      .then((res) => {
+        setList(res.filter((d) => d.has_fixture));
+        setLoading(false);
+      })
+      .catch((e: unknown) => {
+        setError(e instanceof Error ? e.message : String(e));
+        setLoading(false);
+      });
+  }, []);
 
-  if (failure !== null) {
-    return (
-      <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
-        <p className="font-semibold">도메인 목록을 못 받았습니다.</p>
-        <p className="mt-1 font-mono text-xs break-all">{failure}</p>
-        <button
-          type="button"
-          onClick={() => setReloadKey((k) => k + 1)}
-          className="mt-3 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-medium"
-        >
-          다시 시도
-        </button>
-      </div>
-    );
-  }
-
-  if (items === null) {
-    return <p className="text-sm text-gray-500">도메인 목록을 불러오는 중…</p>;
-  }
-
-  if (items.length === 0) {
-    /**
-     * 🔴 「서버에 등록된 도메인이 없습니다」라고 쓰면 안 된다 — 위에서 업로드
-     *    루트를 걸러냈으므로, **올린 도메인은 있는데 배포 원본만 없는** 경우가
-     *    여기로 온다. 그때 「없다」고 하면 화면이 틀린 말을 한다(원칙 5).
-     *    같은 이유로 「업로드로 먼저 올리세요」도 지웠다 — 올려도 이 목록엔
-     *    안 뜬다.
-     */
-    return (
-      <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-        시연용 배포 원본 도메인이 서버에 없습니다. 직접 올린 데이터로 돌리려면
-        「다른 방식 선택하기」에서 <b>실제 데이터 업로드</b>를 고르십시오.
-      </div>
-    );
-  }
+  if (loading) return <p className="text-sm text-gray-400">프리셋 목록을 불러오는 중...</p>;
+  if (error) return <p className="text-sm text-red-600 font-mono">불러오기 실패: {error}</p>;
 
   return (
-    <>
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((d) => {
-          const on = d.domain === selected;
-          return (
-            <button
-              key={d.domain}
-              type="button"
-              onClick={() => onSelect(d.domain)}
-              className={`text-left rounded-2xl border-2 p-5 transition-all duration-200 ${
-                on
-                  ? "border-indigo-500 bg-indigo-50/40 shadow-md ring-4 ring-indigo-500/10"
-                  : "border-gray-200 bg-white hover:border-indigo-300 hover:bg-gray-50"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="text-base font-bold text-gray-900 break-all">{d.domain}</h3>
-                <span
-                  className={`shrink-0 mt-0.5 w-4 h-4 rounded-full border-2 ${
-                    on ? "border-indigo-600 bg-indigo-600" : "border-gray-300 bg-white"
-                  }`}
-                />
-              </div>
-              {/**
-                * `root` 를 안 주는 서버면 아무 배지도 안 단다(위 주석).
-                * 「내가 올린 데이터」 배지가 있었는데 지웠다 — 그 행은 위 필터에서
-                * 빠지므로 여기 닿지 않는다.
-                */}
-              {d.root === "preset" && (
-                <span className="mt-2 inline-block rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700">
-                  배포 원본 · 읽기 전용
-                </span>
-              )}
-              <dl className="mt-3 space-y-1 text-[12px] text-gray-600">
-                <div className="flex justify-between">
-                  <dt>조례 문서</dt>
-                  <dd className="tnum font-medium">{d.law_files}건</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt>분석 데이터</dt>
-                  <dd className="tnum font-medium">{d.data_files}건</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt>감리 확정본</dt>
-                  <dd className="font-medium">{d.has_audit_reviewed ? "있음" : "없음"}</dd>
-                </div>
-                <div className="flex justify-between">
-                  <dt>재실행 기준선</dt>
-                  <dd className="font-medium">{d.has_fixture ? "있음" : "없음"}</dd>
-                </div>
-              </dl>
-              {d.data_files === 0 && (
-                <p className="mt-3 text-[11px] leading-relaxed text-amber-700">
-                  분석 데이터가 0건입니다 — STEP0 을 도는 모드로는 서버가 400 을 돌려줍니다.
-                </p>
-              )}
-              {/**
-                * 🔴 이 도메인은 **아래 두 모드 중 하나도 못 고른다.** 그 말을 카드에서
-                *    안 하면, 모드를 고르고 「분석 시작」을 누른 **뒤에야** 400 을 만난다
-                *    — 화면이 되는 것처럼 그려놓고 실행에서 죽는 건 조용한 실패다(원칙 1).
-                * ⚠ **사유는 안 적는다.** 서버가 `has_fixture` 만 주고 막힌 이유는
-                *   일부러 뺐다(저장소 절대경로가 새기 때문). 프런트가 「_FIX 폴더가
-                *   없어서」 같은 말을 지어내면 그건 실측이 아니라 추측이다(원칙 4·5).
-                */}
-              {!d.has_fixture && (
-                <p className="mt-3 text-[11px] leading-relaxed text-amber-700">
-                  재실행 기준선이 없습니다 — 이 도메인은 <b>맞춤형 대화 분석</b>·
-                  <b>고속 자동 분석</b> 두 모드 다 서버가 400 을 돌려줍니다. (사유는
-                  서버가 알려주지 않습니다.)
-                </p>
-              )}
-            </button>
-          );
-        })}
+    <div>
+      <h3 className="text-sm font-bold text-gray-800 mb-3">사용할 프리셋을 선택하세요</h3>
+      <div className="grid gap-3 sm:grid-cols-3">
+        {list.map((d) => (
+          <button
+            key={d.domain}
+            type="button"
+            onClick={() => onSelect(d.domain)}
+            className={`rounded-xl border p-4 text-left transition-all ${
+              selected === d.domain
+                ? "border-purple-600 bg-purple-50 ring-2 ring-purple-600/20"
+                : "border-gray-200 bg-white hover:border-purple-300"
+            }`}
+          >
+            <b className="font-mono text-sm text-gray-900 block">{d.domain}</b>
+            <span className="mt-1 block text-xs text-gray-400">
+              조례 {d.law_files}개 · 데이터 {d.data_files}개
+            </span>
+          </button>
+        ))}
       </div>
-
-    </>
+    </div>
   );
 }
 
 function Field({
   label,
-  placeholder,
   value,
   onChange,
+  placeholder,
   note,
   disabled,
   inputMode,
 }: {
   label: string;
-  placeholder: string;
   value: string;
   onChange: (v: string) => void;
-  /**
-   * 이 값이 **어디로 가는지**. 안 적으면 사용자는 입력한 값이 서버로 간다고
-   * 읽는다 — 모드에 따라 실제로는 아무 데도 안 가는 칸이 있다.
-   * 화면이 말하지 않으면 화면이 거짓말한 것이다(원칙 4).
-   */
+  placeholder?: string;
   note?: string;
   disabled?: boolean;
   inputMode?: "numeric";
@@ -849,7 +653,6 @@ function PremiumModePicker({
                 </ul>
               </div>
             </div>
-
           </div>
         );
       })}

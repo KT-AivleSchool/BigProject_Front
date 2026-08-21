@@ -1,0 +1,68 @@
+name: Deploy Frontend to EC2/Lightsail
+
+on:
+  push:
+    branches:
+      - main
+      - front_deploy
+      - main_deploy
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy Frontend Container
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Deploy Frontend via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_SSH_KEY }}
+          envs: GITHUB_TOKEN
+          command_timeout: 30m
+          script: |
+            set -e
+
+            # 1. 프론트엔드 디렉터리 이동 (또는 통합 디렉터리)
+            if [ -d "~/BigProject_Front" ]; then
+              cd ~/BigProject_Front
+            elif [ -d "~/aivlebg4/BigProject_Front" ]; then
+              cd ~/aivlebg4/BigProject_Front
+            fi
+
+            # 2. 최신 코드 Fetch & Checkout
+            git remote set-url origin https://x-access-token:$GITHUB_TOKEN@github.com/${{ github.repository }}.git
+            git fetch origin ${{ github.ref_name }}
+            git checkout -B ${{ github.ref_name }} origin/${{ github.ref_name }}
+
+            # 3. Swap 메모리 확인 (도커 빌드 시 OOM 방지)
+            if [ ! -f /swapfile ]; then
+              echo "Creating 2GB swap file..."
+              sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+              sudo chmod 600 /swapfile
+              sudo mkswap /swapfile
+              sudo swapon /swapfile
+            fi
+
+            # 4. 프론트엔드 도커 컨테이너 빌드 & 구동
+            if [ -f "../docker-compose.yml" ]; then
+              cd ..
+              docker compose up -d --build front
+            elif [ -f "docker-compose.yml" ]; then
+              docker compose up -d --build front
+            else
+              docker build -t omnisite-front .
+              docker stop omnisite-front || true
+              docker rm omnisite-front || true
+              docker run -d --name omnisite-front -p 3000:3000 omnisite-front
+            fi
+
+            # 5. 불필요한 미사용 이미지 정리
+            docker image prune -f
