@@ -237,17 +237,14 @@ export const BACKEND_ORIGIN = "https://api.omnisite.o-r.kr";
  */
 export function directUrl(path: string): string {
   const origin = process.env.NEXT_PUBLIC_API_ORIGIN || process.env.OMNISITE_API_ORIGIN;
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    if (origin) {
-      return path.replace("https://api.omnisite.o-r.kr", origin);
-    }
-    return path;
+  let cleanPath = path;
+  if (cleanPath.includes("/api/v1/")) {
+    cleanPath = "/api/v1/" + cleanPath.split("/api/v1/")[1];
   }
-  if (process.env.NODE_ENV === "development") return path;
   if (origin) {
-    return `${origin}${path}`;
+    return `${origin}${cleanPath}`;
   }
-  return path;
+  return cleanPath;
 }
 
 export const STREAM_URL = directUrl(`${BASE}/stream`);
